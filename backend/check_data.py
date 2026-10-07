@@ -158,6 +158,35 @@ try:
     except urllib.error.HTTPError as e:
         print(f"[SECURITY ROLE GATE] Employee send blocked with HTTP {e.code} Forbidden: {e.read().decode()}")
 
+    # Test Screenshot Listing and Deletion APIs
+    req_ss_list = urllib.request.Request(
+        "http://127.0.0.1:8000/api/v1/screenshots?page=1&limit=5",
+        headers={"Authorization": f"Bearer {token}"}
+    )
+    with urllib.request.urlopen(req_ss_list) as resp:
+        ss_data = json.loads(resp.read().decode())
+        print(f"\n[SCREENSHOTS API] Total screenshots available: {ss_data['total']}, items on page: {len(ss_data['items'])}")
+        if ss_data['items']:
+            target_ss = ss_data['items'][0]
+            target_id = target_ss['id']
+            print(f"[SCREENSHOT TEST] Target screenshot to delete: {target_id} ({target_ss['employee_name']})")
+            
+            # Delete single screenshot
+            req_del_single = urllib.request.Request(
+                f"http://127.0.0.1:8000/api/v1/screenshots/{target_id}",
+                headers={"Authorization": f"Bearer {token}"},
+                method="DELETE"
+            )
+            with urllib.request.urlopen(req_del_single) as del_resp:
+                del_result = json.loads(del_resp.read().decode())
+                print(f"[DELETE SINGLE SCREENSHOT] Status: {del_resp.status} | Response: {del_result}")
+            
+            # Verify deleted
+            try:
+                urllib.request.urlopen(req_del_single)
+            except urllib.error.HTTPError as err:
+                print(f"[DELETE VERIFICATION] Re-deletion returns HTTP {err.code} Not Found as expected!")
+
 except urllib.error.HTTPError as e:
     print("HTTPError:", e.code, e.read().decode())
 except Exception as e:

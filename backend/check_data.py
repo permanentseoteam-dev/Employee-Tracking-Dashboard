@@ -145,6 +145,15 @@ try:
             safe_title = n['title'].encode('ascii', errors='replace').decode()
             print(f"  - [{n['notification_type']}] {safe_title} (Read: {n['is_read']})")
 
+    # Verify Employee can view departments roster
+    req_alex_depts = urllib.request.Request(
+        "http://127.0.0.1:8000/api/v1/departments",
+        headers={"Authorization": f"Bearer {alex_token}"}
+    )
+    with urllib.request.urlopen(req_alex_depts) as resp:
+        alex_depts = json.loads(resp.read().decode())
+        print(f"[EMPLOYEE DEPARTMENTS] Alex accessed {len(alex_depts)} departments with status HTTP {resp.status}!")
+
     # Test that Employee cannot send finance messages (Admin Only Gate)
     try:
         req_unauth_send = urllib.request.Request(
@@ -187,9 +196,40 @@ try:
             except urllib.error.HTTPError as err:
                 print(f"[DELETE VERIFICATION] Re-deletion returns HTTP {err.code} Not Found as expected!")
 
+        # Test POST /screenshots/capture
+        print("\nTesting Custom Timer Screenshot Endpoints:")
+        req_capture = urllib.request.Request(
+            "http://127.0.0.1:8000/api/v1/screenshots/capture",
+            headers={"Authorization": f"Bearer {token}"},
+            method="POST"
+        )
+        with urllib.request.urlopen(req_capture) as cap_resp:
+            cap_data = json.loads(cap_resp.read().decode())
+            print(f"[CAPTURE TEST] Status: {cap_resp.status} | Captured for: {cap_data['employee_name']} | ID: {cap_data['id']} | URL: {cap_data['image_url']}")
+
+        # Test GET /screenshots/interval
+        req_get_interval = urllib.request.Request(
+            "http://127.0.0.1:8000/api/v1/screenshots/interval",
+            headers={"Authorization": f"Bearer {token}"}
+        )
+        with urllib.request.urlopen(req_get_interval) as int_resp:
+            int_data = json.loads(int_resp.read().decode())
+            print(f"[GET INTERVAL] Status: {int_resp.status} | Interval: {int_data['interval_minutes']}m ({int_data['interval_seconds']}s)")
+
+        # Test POST /screenshots/interval (e.g. 15 minutes)
+        req_set_interval = urllib.request.Request(
+            "http://127.0.0.1:8000/api/v1/screenshots/interval?interval_minutes=15",
+            headers={"Authorization": f"Bearer {token}"},
+            method="POST"
+        )
+        with urllib.request.urlopen(req_set_interval) as set_resp:
+            set_data = json.loads(set_resp.read().decode())
+            print(f"[SET INTERVAL] Status: {set_resp.status} | New interval: {set_data['interval_minutes']}m | Message: {set_data['message']}")
+
 except urllib.error.HTTPError as e:
     print("HTTPError:", e.code, e.read().decode())
 except Exception as e:
     print("Error:", e)
+
 
 

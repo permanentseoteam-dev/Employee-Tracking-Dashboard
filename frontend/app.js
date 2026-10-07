@@ -11,6 +11,13 @@ const state = {
   employees: [],
   selectedEmpId: null,
   currentDeviceToken: null,
+  ssTimer: {
+    intervalMinutes: parseInt(localStorage.getItem('ss_capture_interval_minutes') || '10', 10),
+    remainingSeconds: parseInt(localStorage.getItem('ss_capture_interval_minutes') || '10', 10) * 60,
+    isRunning: localStorage.getItem('ss_capture_timer_running') !== 'false',
+    timerId: null,
+    lastCapturedAt: null,
+  },
 };
 
 // Global switchTab callable from inline HTML onclick, listeners, and scripts
@@ -44,7 +51,10 @@ window.switchTab = function switchTab(tabId) {
     else if (tabId === 'tab-employees') loadEmployeesDirectory();
     else if (tabId === 'tab-attendance') loadAttendanceRollCall();
     else if (tabId === 'tab-activity') loadActivityTab();
-    else if (tabId === 'tab-screenshots') loadScreenshotsGallery();
+    else if (tabId === 'tab-screenshots') {
+      loadScreenshotsGallery();
+      initScreenshotTimer();
+    }
     else if (tabId === 'tab-rules') loadRulesAndStars();
     else if (tabId === 'tab-finance') loadFinanceTab();
   } catch (err) {
@@ -65,6 +75,7 @@ function initApp() {
   initTheme();
   setupTabs();
   setupEventListeners();
+  initScreenshotTimer();
 
   // Restore cached user info if present
   try {
@@ -72,8 +83,9 @@ function initApp() {
     if (cachedUser) state.currentUser = JSON.parse(cachedUser);
   } catch (e) {}
 
-  // Login as admin and initialize views
-  loginAs('admin').then(() => {
+  // Login with saved role (or admin default) and initialize views
+  const savedRole = localStorage.getItem('wp-role') || 'admin';
+  loginAs(savedRole).then(() => {
     const dateLabel = document.getElementById('todayDateLabel');
     if (dateLabel) {
       dateLabel.textContent = new Date().toLocaleDateString(undefined, {
@@ -189,6 +201,7 @@ async function loginAs(role) {
 
     localStorage.setItem('wp-token', data.access_token);
     localStorage.setItem('wp-user', JSON.stringify(data));
+    localStorage.setItem('wp-role', role);
 
     // Update Header Pill
     const badge = document.getElementById('activeRoleBadge');
@@ -196,6 +209,13 @@ async function loginAs(role) {
       badge.textContent = data.role;
       badge.className = `role-pill ${data.role.toLowerCase()}`;
     }
+
+    // Synchronize Role Switcher Select
+    const roleSelect = document.getElementById('switchUserSelect');
+    if (roleSelect && roleSelect.value !== role) {
+      roleSelect.value = role;
+    }
+
     const nameEl = document.getElementById('activeUserName');
     if (nameEl) {
       nameEl.textContent = data.name;
@@ -214,10 +234,6 @@ function setupEventListeners() {
     loginAs(e.target.value);
   });
 
-  safeListen('refreshDataBtn', 'click', () => {
-    refreshAll();
-  });
-
   safeListen('themeToggleBtn', 'click', toggleTheme);
 
   // Filter Buttons
@@ -225,10 +241,16 @@ function setupEventListeners() {
   safeListen('loadHeatmapBtn', 'click', renderHeatmapForSelected);
   safeListen('heatmapEmpSelect', 'change', renderHeatmapForSelected);
 
-  // Screenshot Filter & Delete Actions
+  // Screenshot Filter, Delete & Auto-Capture Timer Actions
   safeListen('ssEmpSelect', 'change', loadScreenshotsGallery);
   safeListen('deleteScreenshotsBtn', 'click', handleDeleteScreenshots);
   safeListen('deleteActiveScreenshotBtn', 'click', handleDeleteActiveScreenshot);
+  safeListen('ssTimerIntervalSelect', 'change', handleIntervalChange);
+  safeListen('ssApplyCustomMinutesBtn', 'click', handleApplyCustomMinutes);
+  safeListen('ssCustomMinutesInput', 'change', handleApplyCustomMinutes);
+  safeListen('ssTimerToggleBtn', 'click', toggleScreenshotTimer);
+  safeListen('ssTimerResetBtn', 'click', resetScreenshotTimer);
+  safeListen('ssCaptureNowBtn', 'click', () => executeScreenshotCapture(true));
 
   // Policy Rules Edit Form
   safeListen('rulesEditForm', 'submit', handleSaveRules);
@@ -358,6 +380,22 @@ function populateEmployeeDropdowns() {
       opt.textContent = `${emp.name} (${emp.employee_code})`;
       ssSelect.appendChild(opt);
     });
+  }
+
+  const timerTargetSelect = document.getElementById('ssTimerTargetEmp');
+  if (timerTargetSelect) {
+    const curVal = timerTargetSelect.value || 'ACTIVE_FILTER';
+    timerTargetSelect.innerHTML = `
+      <option value="ACTIVE_FILTER">Current Gallery Employee</option>
+      <option value="ALL">All Active Employees (Cycle)</option>
+    `;
+    state.employees.forEach(emp => {
+      const opt = document.createElement('option');
+      opt.value = emp.id;
+      opt.textContent = `${emp.name} (${emp.employee_code})`;
+      timerTargetSelect.appendChild(opt);
+    });
+    if (curVal) timerTargetSelect.value = curVal;
   }
 }
 
@@ -757,6 +795,254 @@ async function deleteSingleScreenshot(screenshotId) {
     }
   } catch (err) {
     console.error('Error deleting screenshot:', err);
+  }
+}
+
+// ============================================
+// Automated Screenshot Capture Timer (5m - 1h)
+// ============================================
+function initScreenshotTimer() {
+  const savedInterval = parseInt(localStorage.getItem('ss_capture_interval_minutes') || '10', 10);
+  const validInterval = Math.max(5, Math.min(60, isNaN(savedInterval) ? 10 : savedInterval));
+  state.ssTimer.intervalMinutes = validInterval;
+  if (!state.ssTimer.remainingSeconds || state.ssTimer.remainingSeconds > validInterval * 60) {
+    state.ssTimer.remainingSeconds = validInterval * 60;
+  }
+
+  // Set interval dropdown & controls
+  const intervalSelect = document.getElementById('ssTimerIntervalSelect');
+  const customWrapper = document.getElementById('ssCustomMinutesWrapper');
+  const customInput = document.getElementById('ssCustomMinutesInput');
+  const notice = document.getElementById('ssTimerNotice');
+
+  if (intervalSelect) {
+    const isStandard = ['5', '10', '15', '20', '30', '45', '60'].includes(String(validInterval));
+    if (isStandard) {
+      intervalSelect.value = String(validInterval);
+      if (customWrapper) customWrapper.style.display = 'none';
+    } else {
+      intervalSelect.value = 'custom';
+      if (customWrapper) customWrapper.style.display = 'inline-flex';
+      if (customInput) customInput.value = validInterval;
+    }
+  }
+
+  if (notice) notice.textContent = `Interval: ${validInterval} mins`;
+
+  updateScreenshotCountdownDisplay();
+  updateScreenshotTimerBadgeAndButton();
+
+  // Ensure timer tick interval is running
+  if (!state.ssTimer.timerId) {
+    state.ssTimer.timerId = setInterval(tickScreenshotTimer, 1000);
+  }
+}
+
+function updateScreenshotCountdownDisplay() {
+  const countdownEl = document.getElementById('ssTimerCountdownText');
+  const progressFill = document.getElementById('ssTimerProgressFill');
+  if (!countdownEl) return;
+
+  const rem = Math.max(0, state.ssTimer.remainingSeconds);
+  const mins = Math.floor(rem / 60);
+  const secs = rem % 60;
+  const formatted = `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+  countdownEl.textContent = formatted;
+
+  const totalSecs = Math.max(1, state.ssTimer.intervalMinutes * 60);
+  const pct = Math.max(0, Math.min(100, (rem / totalSecs) * 100));
+  if (progressFill) {
+    progressFill.style.width = `${pct}%`;
+  }
+}
+
+function updateScreenshotTimerBadgeAndButton() {
+  const badge = document.getElementById('ssTimerStatusBadge');
+  const statusText = document.getElementById('ssTimerStatusText');
+  const toggleBtn = document.getElementById('ssTimerToggleBtn');
+  const toggleText = document.getElementById('ssTimerToggleText');
+  const toggleIcon = document.getElementById('ssTimerToggleIcon');
+  const countdownEl = document.getElementById('ssTimerCountdownText');
+
+  if (state.ssTimer.isRunning) {
+    if (badge) {
+      badge.className = 'ss-timer-badge ss-badge-active';
+    }
+    if (statusText) statusText.textContent = 'Auto-Capture Active';
+    if (toggleText) toggleText.textContent = 'Pause Timer';
+    if (toggleIcon) {
+      toggleIcon.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>`;
+    }
+    if (countdownEl) {
+      countdownEl.style.color = '#10b981';
+      countdownEl.style.textShadow = '0 0 12px rgba(16, 185, 129, 0.4)';
+    }
+  } else {
+    if (badge) {
+      badge.className = 'ss-timer-badge ss-badge-paused';
+    }
+    if (statusText) statusText.textContent = 'Auto-Capture Paused';
+    if (toggleText) toggleText.textContent = 'Resume Timer';
+    if (toggleIcon) {
+      toggleIcon.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>`;
+    }
+    if (countdownEl) {
+      countdownEl.style.color = '#f59e0b';
+      countdownEl.style.textShadow = '0 0 12px rgba(245, 158, 11, 0.4)';
+    }
+  }
+}
+
+function tickScreenshotTimer() {
+  if (!state.ssTimer.isRunning) return;
+
+  if (state.ssTimer.remainingSeconds > 0) {
+    state.ssTimer.remainingSeconds--;
+    updateScreenshotCountdownDisplay();
+  }
+
+  if (state.ssTimer.remainingSeconds <= 0) {
+    // When selected timer occurs, automatically capture screenshot
+    state.ssTimer.remainingSeconds = state.ssTimer.intervalMinutes * 60;
+    updateScreenshotCountdownDisplay();
+    executeScreenshotCapture(false);
+  }
+}
+
+function toggleScreenshotTimer() {
+  state.ssTimer.isRunning = !state.ssTimer.isRunning;
+  localStorage.setItem('ss_capture_timer_running', state.ssTimer.isRunning ? 'true' : 'false');
+  updateScreenshotTimerBadgeAndButton();
+}
+
+function resetScreenshotTimer() {
+  state.ssTimer.remainingSeconds = state.ssTimer.intervalMinutes * 60;
+  updateScreenshotCountdownDisplay();
+  const notice = document.getElementById('ssTimerNotice');
+  if (notice) {
+    notice.textContent = `Countdown reset to ${state.ssTimer.intervalMinutes}m`;
+    setTimeout(() => {
+      if (notice) notice.textContent = `Interval: ${state.ssTimer.intervalMinutes} mins`;
+    }, 2500);
+  }
+}
+
+async function handleIntervalChange(e) {
+  const val = e.target.value;
+  const customWrapper = document.getElementById('ssCustomMinutesWrapper');
+  const customInput = document.getElementById('ssCustomMinutesInput');
+
+  if (val === 'custom') {
+    if (customWrapper) customWrapper.style.display = 'inline-flex';
+    if (customInput) customInput.focus();
+    return;
+  }
+
+  if (customWrapper) customWrapper.style.display = 'none';
+  const mins = parseInt(val, 10);
+  await applyScreenshotInterval(mins);
+}
+
+async function handleApplyCustomMinutes() {
+  const input = document.getElementById('ssCustomMinutesInput');
+  if (!input) return;
+  let mins = parseInt(input.value, 10);
+  if (isNaN(mins)) mins = 10;
+  mins = Math.max(5, Math.min(60, mins));
+  input.value = mins;
+  await applyScreenshotInterval(mins);
+}
+
+async function applyScreenshotInterval(minutes) {
+  // Enforce range from 5 mins to 1 hour (60 mins)
+  const bounded = Math.max(5, Math.min(60, minutes));
+  state.ssTimer.intervalMinutes = bounded;
+  state.ssTimer.remainingSeconds = bounded * 60;
+  localStorage.setItem('ss_capture_interval_minutes', bounded);
+
+  const notice = document.getElementById('ssTimerNotice');
+  if (notice) notice.textContent = `Interval: ${bounded} mins`;
+
+  updateScreenshotCountdownDisplay();
+
+  // Sync with backend policy
+  try {
+    await fetch(`${API_BASE}/screenshots/interval?interval_minutes=${bounded}`, {
+      method: 'POST',
+      headers: authHeaders()
+    });
+  } catch (err) {
+    console.debug('Failed to sync screenshot interval with backend:', err);
+  }
+}
+
+async function executeScreenshotCapture(isManual = false) {
+  const targetSelect = document.getElementById('ssTimerTargetEmp');
+  const filterSelect = document.getElementById('ssEmpSelect');
+  let targetEmpId = null;
+
+  if (targetSelect && targetSelect.value === 'ACTIVE_FILTER') {
+    targetEmpId = filterSelect?.value || null;
+  } else if (targetSelect && targetSelect.value && targetSelect.value !== 'ALL') {
+    targetEmpId = targetSelect.value;
+  } else if (state.employees && state.employees.length > 0) {
+    // Round-robin or random active employee
+    const activeEmps = state.employees.filter(e => e.status === 'ACTIVE');
+    const pool = activeEmps.length > 0 ? activeEmps : state.employees;
+    const picked = pool[Math.floor(Math.random() * pool.length)];
+    targetEmpId = picked.id;
+  }
+
+  const btn = document.getElementById('ssCaptureNowBtn');
+  const origBtnContent = btn ? btn.innerHTML : '';
+  if (btn && isManual) {
+    btn.disabled = true;
+    btn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation: spin 1s linear infinite;"><line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/><line x1="4.93" y1="4.93" x2="7.76" y2="7.76"/><line x1="16.24" y1="16.24" x2="19.07" y2="19.07"/><line x1="2" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="22" y2="12"/><line x1="4.93" y1="19.07" x2="7.76" y2="16.24"/><line x1="16.24" y1="7.76" x2="19.07" y2="4.93"/></svg> Capturing...`;
+  }
+
+  try {
+    let url = `${API_BASE}/screenshots/capture`;
+    if (targetEmpId) url += `?employee_id=${encodeURIComponent(targetEmpId)}`;
+
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: authHeaders(),
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+      const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      const lastCapEl = document.getElementById('ssTimerLastCapturedText');
+      if (lastCapEl) {
+        lastCapEl.textContent = `Captured: ${timeStr} (${data.employee_name})`;
+        lastCapEl.style.color = '#10b981';
+      }
+
+      // Visual pulse on countdown box
+      const box = document.querySelector('.ss-countdown-box');
+      if (box) {
+        box.style.borderColor = '#10b981';
+        setTimeout(() => { if (box) box.style.borderColor = 'rgba(99, 102, 241, 0.25)'; }, 1000);
+      }
+
+      // Auto-reload screenshots gallery so the newly captured screenshot immediately appears!
+      await loadScreenshotsGallery();
+
+      if (isManual) {
+        state.ssTimer.remainingSeconds = state.ssTimer.intervalMinutes * 60;
+        updateScreenshotCountdownDisplay();
+      }
+    } else {
+      const err = await res.json().catch(() => ({}));
+      console.error('Failed to capture screenshot:', err);
+    }
+  } catch (err) {
+    console.error('Network error capturing screenshot:', err);
+  } finally {
+    if (btn && isManual) {
+      btn.disabled = false;
+      btn.innerHTML = origBtnContent;
+    }
   }
 }
 

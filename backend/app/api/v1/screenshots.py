@@ -4,7 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_current_user, get_scoped_employee_ids, require_role
 from app.database import get_db
 from app.models.employee import Employee, RoleEnum
-from app.schemas.screenshot import PaginatedScreenshots
+from app.schemas.screenshot import PaginatedScreenshots, ScreenshotOut
 from app.services.screenshot_service import screenshot_service
 from app.services.storage import storage_service
 
@@ -91,4 +91,45 @@ async def delete_multiple_screenshots(
 ):
     deleted_count = await screenshot_service.delete_screenshots(db, employee_id=employee_id)
     return {"status": "success", "deleted_count": deleted_count, "message": f"Successfully deleted {deleted_count} screenshots"}
+
+
+@router.post("/capture", response_model=ScreenshotOut, status_code=status.HTTP_201_CREATED)
+async def trigger_capture_screenshot(
+    request: Request,
+    employee_id: str | None = Query(None),
+    title: str | None = Query(None),
+    db: AsyncSession = Depends(get_db),
+    current_user: Employee = Depends(get_current_user),
+):
+    """Trigger an immediate desktop screenshot capture (or automated timer tick)."""
+    target_id = employee_id or (current_user.id if current_user.role == RoleEnum.EMPLOYEE else None)
+    base_url = str(request.base_url).rstrip("/")
+    try:
+        return await screenshot_service.capture_or_generate_screenshot(
+            db=db,
+            employee_id=target_id,
+            title=title,
+            base_url=base_url,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.get("/interval")
+async def get_screenshot_interval(
+    db: AsyncSession = Depends(get_db),
+    _user: Employee = Depends(get_current_user),
+):
+    """Get active automated screenshot timer interval configuration."""
+    return await screenshot_service.get_screenshot_interval(db)
+
+
+@router.post("/interval")
+async def set_screenshot_interval(
+    interval_minutes: int = Query(..., ge=5, le=60, description="Interval in minutes from 5 mins to 60 mins (1 hour)"),
+    db: AsyncSession = Depends(get_db),
+    _admin: Employee = Depends(require_role([RoleEnum.ADMIN, RoleEnum.MANAGER])),
+):
+    """Configure automated screenshot capture interval (enforces 5 mins to 1 hour)."""
+    return await screenshot_service.set_screenshot_interval(db, interval_minutes)
 

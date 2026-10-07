@@ -1,0 +1,31 @@
+[package]
+name = "tracking-dashboard-app"
+version = "0.1.0"
+description = "Windows Desktop Employee Tracking Agent"
+authors = ["Employee Tracking Team"]
+edition = "2021"
+
+[lib]
+name = "tracking_dashboard_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["tray-icon"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1.0"
+rusqlite = { version = "0.32", features = ["bundled"] }
+uuid = { version = "1", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+tracing-appender = "0.2"
+thiserror = "2.0"
+parking_lot = "0.12"
+keyring = "3.2"
+once_cell = "1.20"
+
+[dev-dependencies]
+tempfile = "3.13"

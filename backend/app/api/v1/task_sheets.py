@@ -106,11 +106,15 @@ async def list_task_sheets(
         stmt = stmt.where(TaskSheet.employee_id == current_user.id)
     elif current_user.role == RoleEnum.MANAGER.value:
         if employee_id:
-            # Check if requested employee is subordinate or self
+            # Check if requested employee is subordinate, in same department, or self
             sub_check = await db.execute(
                 select(Employee).where(
                     Employee.id == employee_id,
-                    or_(Employee.manager_id == current_user.id, Employee.id == current_user.id),
+                    or_(
+                        Employee.manager_id == current_user.id,
+                        Employee.department_id == current_user.department_id,
+                        Employee.id == current_user.id,
+                    ),
                 )
             )
             if not sub_check.scalars().first():
@@ -118,7 +122,11 @@ async def list_task_sheets(
             stmt = stmt.where(TaskSheet.employee_id == employee_id)
         else:
             stmt = stmt.where(
-                or_(Employee.manager_id == current_user.id, Employee.id == current_user.id)
+                or_(
+                    Employee.manager_id == current_user.id,
+                    Employee.department_id == current_user.department_id,
+                    Employee.id == current_user.id,
+                )
             )
     elif current_user.role == RoleEnum.ADMIN.value:
         if employee_id:

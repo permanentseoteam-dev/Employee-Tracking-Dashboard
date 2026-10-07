@@ -157,7 +157,7 @@ async def create_finance_message(
                 )
             )
     else:
-        # Direct notification to target employee
+        # Direct notification ONLY to target employee
         created_notifs.append(
             FinanceNotification(
                 message_id=msg.id,
@@ -167,34 +167,6 @@ async def create_finance_message(
                 notification_type="FINANCE_DIRECT",
             )
         )
-
-        # Notify others (manager and leads) if enabled
-        if payload.notify_others:
-            manager_ids_to_notify = set()
-            if emp.manager_id:
-                manager_ids_to_notify.add(emp.manager_id)
-
-            # Department managers
-            if emp.department_id:
-                mgrs_stmt = select(Employee.id).where(
-                    Employee.department_id == emp.department_id,
-                    Employee.role == RoleEnum.MANAGER.value,
-                    Employee.id != current_user.id,
-                )
-                dept_mgr_ids = (await db.execute(mgrs_stmt)).scalars().all()
-                for m_id in dept_mgr_ids:
-                    manager_ids_to_notify.add(m_id)
-
-            for m_id in manager_ids_to_notify:
-                created_notifs.append(
-                    FinanceNotification(
-                        message_id=msg.id,
-                        target_user_id=m_id,
-                        title=f"📋 Finance Update for {emp.name}: {payload.subject}",
-                        body=f"Admin sent {payload.message_type} communication to {emp.name} ({recipient_code}): {payload.message[:180]}",
-                        notification_type="MANAGER_ALERT",
-                    )
-                )
 
     for notif in created_notifs:
         db.add(notif)

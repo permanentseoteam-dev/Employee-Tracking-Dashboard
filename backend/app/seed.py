@@ -517,8 +517,12 @@ async def seed():
         print("Seeding employee daily task sheets and task items...")
         yesterday_date = today_date - timedelta(days=1)
         two_days_ago = today_date - timedelta(days=2)
+        three_days_ago = today_date - timedelta(days=3)
 
         sarah_mgr = (await db.execute(select(Employee).where(Employee.email == "manager@tracking.local"))).scalars().first()
+        david_mgr = (await db.execute(select(Employee).where(Employee.email == "david.kim@tracking.local"))).scalars().first()
+        priya_mgr = (await db.execute(select(Employee).where(Employee.email == "priya.sharma@tracking.local"))).scalars().first()
+
         alex_emp = (await db.execute(select(Employee).where(Employee.email == "alex@tracking.local"))).scalars().first()
         elena_emp = (await db.execute(select(Employee).where(Employee.email == "elena@tracking.local"))).scalars().first()
         marcus_emp = (await db.execute(select(Employee).where(Employee.email == "marcus@tracking.local"))).scalars().first()
@@ -526,12 +530,15 @@ async def seed():
         james_emp = (await db.execute(select(Employee).where(Employee.email == "james.w@tracking.local"))).scalars().first()
         carlos_emp = (await db.execute(select(Employee).where(Employee.email == "carlos.m@tracking.local"))).scalars().first()
         sophie_emp = (await db.execute(select(Employee).where(Employee.email == "sophie@tracking.local"))).scalars().first()
+        ryan_emp = (await db.execute(select(Employee).where(Employee.email == "ryan.g@tracking.local"))).scalars().first()
+        chloe_emp = (await db.execute(select(Employee).where(Employee.email == "chloe.d@tracking.local"))).scalars().first()
+        liam_emp = (await db.execute(select(Employee).where(Employee.email == "liam@tracking.local"))).scalars().first()
 
         sheets_seed_plan = [
             # Alex Rivera - Today
             (alex_emp, today_date, TaskSheetStatusEnum.SUBMITTED.value, 
              "Completed frontend sheet integration and bugfixes for auth tokens. Starting unit tests.", 
-             None, sarah_mgr, None, [
+             "Waiting on staging mock socket server for multi-client sync tests.", sarah_mgr, "Terrific progress on the task sheets controller Alex! The responsive layout and review flow look great.", [
                 ("Implement Daily Task Sheet UI and Card Grids", "Built modern interactive cards and responsive grid layout for multi-employee daily task management.", "Frontend Development", TaskPriorityEnum.HIGH.value, TaskStatusEnum.COMPLETED.value, 3.5, None),
                 ("JWT Session Auto-refresh Hook", "Created automatic token refresh interceptor for expiring bearer credentials.", "Security & Auth", TaskPriorityEnum.MEDIUM.value, TaskStatusEnum.COMPLETED.value, 2.0, None),
                 ("Refactor Employee Switcher Dropdown", "Added quick role switching synchronization and badge color indicators.", "Frontend Development", TaskPriorityEnum.LOW.value, TaskStatusEnum.COMPLETED.value, 1.0, None),
@@ -544,6 +551,21 @@ async def seed():
                 ("Attendance KPI Query Optimization", "Added subqueries for punctual and late check-in metrics.", "Backend API", TaskPriorityEnum.HIGH.value, TaskStatusEnum.COMPLETED.value, 4.0, None),
                 ("Rules Admin Inspector UI", "Designed scorecard breakdown table and penalty deduction list.", "UI/UX Design", TaskPriorityEnum.MEDIUM.value, TaskStatusEnum.COMPLETED.value, 3.0, None),
             ]),
+            # Alex Rivera - 2 Days Ago
+            (alex_emp, two_days_ago, TaskSheetStatusEnum.APPROVED.value,
+             "Benchmarked SQLite WAL mode under concurrent screenshot ingestion workloads.",
+             None, sarah_mgr, "Excellent performance profiling. Database write latency dropped noticeably.", [
+                ("SQLite WAL PRAGMA Configuration", "Tuned synchronous PRAGMA and checkpoint intervals.", "Database & Backend", TaskPriorityEnum.HIGH.value, TaskStatusEnum.COMPLETED.value, 4.5, None),
+                ("Async Database Session Pool Metrics", "Added telemetry counters for active and idle SQLAlchemy sessions.", "Core Platform", TaskPriorityEnum.MEDIUM.value, TaskStatusEnum.COMPLETED.value, 3.0, None),
+            ]),
+            # Alex Rivera - 3 Days Ago
+            (alex_emp, three_days_ago, TaskSheetStatusEnum.APPROVED.value,
+             "Refactored screenshot carousel keyboard navigation and full-screen lightbox.",
+             None, sarah_mgr, "Very clean UI implementation. Modal UX is smooth.", [
+                ("Lightbox Fullscreen Keyboard Shortcuts", "Added Left/Right arrow handlers and Escape key binding.", "Frontend Development", TaskPriorityEnum.MEDIUM.value, TaskStatusEnum.COMPLETED.value, 4.0, None),
+                ("Custom Interval Screenshot Scheduler", "Built interval selection dropdown with 1m, 5m, 10m, 15m presets.", "Frontend Development", TaskPriorityEnum.HIGH.value, TaskStatusEnum.COMPLETED.value, 4.0, None),
+            ]),
+
             # Elena Rostova - Today
             (elena_emp, today_date, TaskSheetStatusEnum.APPROVED.value,
              "Finished Rust Agent memory leak profiling and batch queue buffering.",
@@ -552,14 +574,23 @@ async def seed():
                 ("Batch Queue Flush Throttling", "Implemented 5-minute debounced flush to reduce server load.", "Backend Architecture", TaskPriorityEnum.HIGH.value, TaskStatusEnum.COMPLETED.value, 2.5, None),
                 ("CI/CD Cross-compilation for Windows x64", "Automated cargo build target artifacts in GitHub Actions.", "DevOps", TaskPriorityEnum.MEDIUM.value, TaskStatusEnum.COMPLETED.value, 1.5, None),
             ]),
+            # Elena Rostova - Yesterday
+            (elena_emp, yesterday_date, TaskSheetStatusEnum.APPROVED.value,
+             "Investigated raw mouse event jitter filter on high-polling gaming mice.",
+             None, sarah_mgr, "Solid filtering algorithm Elena. Jitter is eliminated.", [
+                ("Low-pass Event Coordinate Filter", "Applied weighted smoothing average to prevent synthetic micro-jitters.", "Core Platform", TaskPriorityEnum.HIGH.value, TaskStatusEnum.COMPLETED.value, 4.0, None),
+                ("Rust Native Win32 LowLevelMouseProc", "Optimized hook callback throughput under CPU stress.", "Core Platform", TaskPriorityEnum.HIGH.value, TaskStatusEnum.COMPLETED.value, 3.5, None),
+            ]),
+
             # Marcus Vance - Today
             (marcus_emp, today_date, TaskSheetStatusEnum.SUBMITTED.value,
              "Finalized design tokens for Dark/Light glassmorphism and mobile layout reflow.",
-             "Waiting on brand assets for new vector icons from client team.", None, None, [
+             "Waiting on brand assets for new vector icons from client team.", david_mgr, None, [
                 ("Figma Design System V2 Tokens", "Created full HSL palette, dark theme glass tokens, and responsive typography variables.", "UI/UX Design", TaskPriorityEnum.HIGH.value, TaskStatusEnum.COMPLETED.value, 3.0, None),
                 ("Screenshot Viewer Modal Polish", "Designed full-screen lightbox modal with keyboard arrow navigation.", "UI/UX Design", TaskPriorityEnum.MEDIUM.value, TaskStatusEnum.COMPLETED.value, 2.0, None),
                 ("Mobile Responsive Nav Drawer", "Wireframed collapsible sidebar navigation for smaller tablet screens.", "UI/UX Design", TaskPriorityEnum.LOW.value, TaskStatusEnum.BLOCKED.value, 0.5, "Awaiting approval on navigation hierarchy"),
             ]),
+
             # Aisha Patel - Today
             (aisha_emp, today_date, TaskSheetStatusEnum.SUBMITTED.value,
              "Implemented background database migration and indexing for large audit logs.",
@@ -568,6 +599,14 @@ async def seed():
                 ("Composite Index on Activity Timestamps", "Added index to activity_logs table for fast interval queries.", "Database & Backend", TaskPriorityEnum.HIGH.value, TaskStatusEnum.COMPLETED.value, 2.0, None),
                 ("Database Backup Cron Integration", "Writing automated nightly snapshot script to S3-compatible storage.", "DevOps", TaskPriorityEnum.MEDIUM.value, TaskStatusEnum.IN_PROGRESS.value, 1.0, None),
             ]),
+            # Aisha Patel - Yesterday
+            (aisha_emp, yesterday_date, TaskSheetStatusEnum.APPROVED.value,
+             "Completed activity logs partition planning and migration test script.",
+             None, sarah_mgr, "Partitioning plan looks very solid. Approved for staging rollout.", [
+                ("Table Partitioning DDL Generation", "Designed monthly range partitioning schema for activity records.", "Database & Backend", TaskPriorityEnum.HIGH.value, TaskStatusEnum.COMPLETED.value, 4.0, None),
+                ("Dry-run Benchmark on 1M Records", "Measured query response times before and after index optimization.", "Database & Backend", TaskPriorityEnum.MEDIUM.value, TaskStatusEnum.COMPLETED.value, 3.0, None),
+            ]),
+
             # James Wilson - Today
             (james_emp, today_date, TaskSheetStatusEnum.APPROVED.value,
              "All scheduled bug tickets resolved and closed for sprint 14.",
@@ -576,6 +615,14 @@ async def seed():
                 ("Refactor Employee Punctuality Star Evaluator", "Added grace period condition checker according to active rules.", "Core Platform", TaskPriorityEnum.HIGH.value, TaskStatusEnum.COMPLETED.value, 3.0, None),
                 ("Documentation for API V1 Endpoints", "Generated OpenAPI swagger schemas and route test recipes.", "Documentation", TaskPriorityEnum.LOW.value, TaskStatusEnum.COMPLETED.value, 2.0, None),
             ]),
+            # James Wilson - Yesterday
+            (james_emp, yesterday_date, TaskSheetStatusEnum.APPROVED.value,
+             "Fixed JWT bearer token verification edge case on expired refresh tokens.",
+             None, sarah_mgr, "Good catch on token expiration handling.", [
+                ("Bearer Auth Header Interceptor", "Handled clock skew edge cases in JWT payload expiration check.", "Security & Auth", TaskPriorityEnum.HIGH.value, TaskStatusEnum.COMPLETED.value, 4.0, None),
+                ("Security Audit Trail Integration", "Logged all failed authorization attempts with client IP metadata.", "Security & Auth", TaskPriorityEnum.MEDIUM.value, TaskStatusEnum.COMPLETED.value, 3.5, None),
+            ]),
+
             # Carlos Mendez - Today
             (carlos_emp, today_date, TaskSheetStatusEnum.DRAFT.value,
              "Investigating intermittent agent disconnects on Windows sleep mode.",
@@ -583,11 +630,59 @@ async def seed():
                 ("Desktop Agent Power State Listener", "Added Win32 API power broadcast notification handlers.", "Desktop Agent", TaskPriorityEnum.HIGH.value, TaskStatusEnum.IN_PROGRESS.value, 3.0, None),
                 ("Heartbeat Reconnect Backoff Strategy", "Implementing exponential backoff with jitter on reconnect.", "Desktop Agent", TaskPriorityEnum.MEDIUM.value, TaskStatusEnum.IN_PROGRESS.value, 2.0, None),
             ]),
+            # Carlos Mendez - Yesterday
+            (carlos_emp, yesterday_date, TaskSheetStatusEnum.APPROVED.value,
+             "Added multi-monitor virtual screen coordinate normalization in Rust agent.",
+             None, sarah_mgr, "Multi-monitor coordinate mapping is working smoothly now.", [
+                ("Virtual Screen Boundary Mapping", "Calculated DPI-aware desktop bounds across asymmetric monitors.", "Desktop Agent", TaskPriorityEnum.HIGH.value, TaskStatusEnum.COMPLETED.value, 4.0, None),
+                ("Per-monitor DPI Awareness V2", "Enabled SetProcessDpiAwarenessContext on agent process launch.", "Desktop Agent", TaskPriorityEnum.MEDIUM.value, TaskStatusEnum.COMPLETED.value, 3.0, None),
+            ]),
+
             # Sophie Martin - Today
-            (sophie_emp, today_date, TaskSheetStatusEnum.DRAFT.value,
+            (sophie_emp, today_date, TaskSheetStatusEnum.SUBMITTED.value,
              "Writing Playwright automated regression test suite.",
-             None, None, None, [
-                ("Playwright End-to-End Test Suite", "Created automated browser scripts for login, role switcher, and rules update.", "Testing & QA", TaskPriorityEnum.HIGH.value, TaskStatusEnum.IN_PROGRESS.value, 2.5, None),
+             None, sarah_mgr, None, [
+                ("Playwright End-to-End Test Suite", "Created automated browser scripts for login, role switcher, and rules update.", "Testing & QA", TaskPriorityEnum.HIGH.value, TaskStatusEnum.COMPLETED.value, 3.5, None),
+                ("Cross-browser Consistency Checks", "Verified UI alignment across Chromium, Firefox, and WebKit engines.", "Testing & QA", TaskPriorityEnum.MEDIUM.value, TaskStatusEnum.COMPLETED.value, 2.0, None),
+                ("Screenshot Compression Quality Test", "Verified WEBP 65% quality threshold balances fidelity and size.", "Testing & QA", TaskPriorityEnum.LOW.value, TaskStatusEnum.IN_PROGRESS.value, 1.5, None),
+            ]),
+            # Sophie Martin - Yesterday
+            (sophie_emp, yesterday_date, TaskSheetStatusEnum.APPROVED.value,
+             "Completed smoke test matrix for sprint 14 deployment.",
+             None, sarah_mgr, "Smoke test suite passed with zero blockers.", [
+                ("Authentication & Session Invalidation QA", "Tested forced logout and expired bearer token rejection.", "Testing & QA", TaskPriorityEnum.HIGH.value, TaskStatusEnum.COMPLETED.value, 4.0, None),
+                ("Attendance Summary Report Verification", "Cross-checked automated punctuality stars against rule engine.", "Testing & QA", TaskPriorityEnum.MEDIUM.value, TaskStatusEnum.COMPLETED.value, 3.0, None),
+            ]),
+
+            # Ryan Gallagher - Today
+            (ryan_emp, today_date, TaskSheetStatusEnum.SUBMITTED.value,
+             "Conducted API stress tests and validated concurrent employee check-ins.",
+             None, sarah_mgr, None, [
+                ("Locust Load Test Script for Check-ins", "Simulated 200 concurrent agent heartbeats and check-in calls.", "Testing & QA", TaskPriorityEnum.HIGH.value, TaskStatusEnum.COMPLETED.value, 4.0, None),
+                ("Database Lock Contention Analysis", "Analyzed row lock wait times during bulk attendance updates.", "Testing & QA", TaskPriorityEnum.MEDIUM.value, TaskStatusEnum.COMPLETED.value, 2.5, None),
+            ]),
+            # Ryan Gallagher - Yesterday
+            (ryan_emp, yesterday_date, TaskSheetStatusEnum.APPROVED.value,
+             "Verified desktop screenshot thumbnail generation latency.",
+             None, sarah_mgr, "Latency numbers are well within SLA limits.", [
+                ("Pillow WEBP Encode Benchmarking", "Compared thumbnail generation times across different downsampling filters.", "Testing & QA", TaskPriorityEnum.MEDIUM.value, TaskStatusEnum.COMPLETED.value, 4.0, None),
+                ("Error Handling on Corrupted Uploads", "Wrote unit tests asserting HTTP 422 on truncated image payloads.", "Testing & QA", TaskPriorityEnum.MEDIUM.value, TaskStatusEnum.COMPLETED.value, 3.0, None),
+            ]),
+
+            # Chloe Dubois - Today
+            (chloe_emp, today_date, TaskSheetStatusEnum.APPROVED.value,
+             "Created vector iconography set for rules scorecard and punctuality badges.",
+             None, david_mgr, "Beautiful visual assets Chloe! Ready for integration.", [
+                ("SVG Icon Set for Punctuality Badges", "Designed 12 pixel-perfect SVG icons for gold, silver, and bronze tiers.", "UI/UX Design", TaskPriorityEnum.HIGH.value, TaskStatusEnum.COMPLETED.value, 4.0, None),
+                ("Empty State Illustrations", "Illustrated cohesive empty state graphics for task sheets and gallery.", "UI/UX Design", TaskPriorityEnum.MEDIUM.value, TaskStatusEnum.COMPLETED.value, 3.0, None),
+            ]),
+
+            # Liam Chen - Today
+            (liam_emp, today_date, TaskSheetStatusEnum.SUBMITTED.value,
+             "Configured Kubernetes Helm charts and Docker multi-stage builds for backend API.",
+             "Awaiting staging cluster ingress SSL certificate provisioning.", priya_mgr, None, [
+                ("Docker Multi-stage Build Optimization", "Reduced backend image footprint from 850MB to 165MB.", "DevOps & Cloud", TaskPriorityEnum.HIGH.value, TaskStatusEnum.COMPLETED.value, 4.5, None),
+                ("Helm Values Template for Staging", "Added resource limits, liveness and readiness probe configs.", "DevOps & Cloud", TaskPriorityEnum.HIGH.value, TaskStatusEnum.IN_PROGRESS.value, 2.5, "Awaiting SSL certificate"),
             ]),
         ]
 

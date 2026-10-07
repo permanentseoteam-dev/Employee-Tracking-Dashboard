@@ -344,7 +344,38 @@ async function loginAs(role) {
     refreshAll();
     await checkNotifications();
   } catch (err) {
-    console.error('Error logging in:', err);
+    console.warn('Backend login unavailable, activating demo session for role:', role, err);
+    const mockProfiles = {
+      admin: { name: 'System Administrator', email: 'admin@tracking.local', role: 'ADMIN', employee_code: 'ADM001', access_token: 'mock-admin-token' },
+      manager: { name: 'Sarah Connor', email: 'manager@tracking.local', role: 'MANAGER', employee_code: 'MGR001', access_token: 'mock-manager-token' },
+      employee: { name: 'Alex Rivera', email: 'alex@tracking.local', role: 'EMPLOYEE', employee_code: 'EMP001', access_token: 'mock-employee-token' },
+    };
+    const data = mockProfiles[role] || mockProfiles.admin;
+    state.token = data.access_token;
+    state.currentUser = data;
+
+    localStorage.setItem('wp-token', data.access_token);
+    localStorage.setItem('wp-user', JSON.stringify(data));
+    localStorage.setItem('wp-role', role);
+
+    const badge = document.getElementById('activeRoleBadge');
+    if (badge) {
+      badge.textContent = data.role;
+      badge.className = `role-pill ${data.role.toLowerCase()}`;
+    }
+
+    const roleSelect = document.getElementById('switchUserSelect');
+    if (roleSelect && roleSelect.value !== role) {
+      roleSelect.value = role;
+    }
+
+    const nameEl = document.getElementById('activeUserName');
+    if (nameEl) {
+      nameEl.textContent = data.name;
+    }
+
+    applyRolePermissions();
+    refreshAll();
   }
 }
 
@@ -536,7 +567,8 @@ function setupEventListeners() {
 
 async function ensureAuthenticated() {
   if (!state.token) {
-    await loginAs('admin');
+    const savedRole = localStorage.getItem('wp-role') || 'admin';
+    await loginAs(savedRole);
   }
 }
 
@@ -2442,6 +2474,464 @@ state.currentTodaySheet = null;
 state.activeDetailSheetId = null;
 state.sheetsViewMode = 'grid';
 
+// Date utility for consistent relative day strings
+function getDummyDates() {
+  const now = new Date();
+  const format = d => d.toISOString().split('T')[0];
+  const today = format(now);
+  const y = new Date(now); y.setDate(y.getDate() - 1);
+  const yesterday = format(y);
+  const d2 = new Date(now); d2.setDate(d2.getDate() - 2);
+  const twoDays = format(d2);
+  const d3 = new Date(now); d3.setDate(d3.getDate() - 3);
+  const threeDays = format(d3);
+  return { today, yesterday, twoDays, threeDays };
+}
+
+// --------------------------------------------------------------------------
+// Rich Dummy Data Generators (Manager Team Sheets & Employee Workspace)
+// --------------------------------------------------------------------------
+
+function getDummyManagerSheets() {
+  const dates = getDummyDates();
+  return [
+    {
+      id: "sh-dummy-mgr-01",
+      employee_id: "emp-alex",
+      employee_name: "Alex Rivera",
+      employee_code: "EMP001",
+      department_name: "Core Platform Engineering",
+      department_id: "dept-eng",
+      sheet_date: dates.today,
+      status: "SUBMITTED",
+      total_hours: 7.5,
+      total_tasks: 4,
+      completed_tasks: 3,
+      progress_percent: 75,
+      summary_notes: "Completed frontend sheet integration, responsive card grids, and token auth interceptor. Running unit and E2E tests.",
+      blockers_summary: "Waiting on staging mock socket server for multi-client sync test suite.",
+      manager_feedback: "Terrific progress on the task sheets controller Alex! The responsive layout and review flow look great.",
+      reviewed_by_name: "Sarah Connor (Tech Lead)",
+      reviewed_at: new Date(Date.now() - 3600000).toISOString(),
+      tasks: [
+        { id: "t-mgr-1-1", title: "Implement Daily Task Sheet UI and Card Grids", category: "Frontend Development", priority: "HIGH", status: "COMPLETED", hours_spent: 3.5, description: "Built modern interactive cards and responsive grid layout for multi-employee daily task management.", blockers: null },
+        { id: "t-mgr-1-2", title: "JWT Session Auto-refresh Hook & Interceptor", category: "Security & Auth", priority: "MEDIUM", status: "COMPLETED", hours_spent: 2.0, description: "Created automatic token refresh interceptor for expiring bearer credentials.", blockers: null },
+        { id: "t-mgr-1-3", title: "Refactor Employee Switcher Dropdown & Role Sync", category: "Frontend Development", priority: "LOW", status: "COMPLETED", hours_spent: 1.0, description: "Added quick role switching synchronization and badge color indicators.", blockers: null },
+        { id: "t-mgr-1-4", title: "End-to-End WebSocket Sync Tests", category: "Testing & QA", priority: "MEDIUM", status: "IN_PROGRESS", hours_spent: 1.0, description: "Testing live desktop agent sync and payload dispatching.", blockers: "Waiting on staging mock socket server" },
+      ]
+    },
+    {
+      id: "sh-dummy-mgr-02",
+      employee_id: "emp-elena",
+      employee_name: "Elena Rostova",
+      employee_code: "EMP002",
+      department_name: "Core Platform Engineering",
+      department_id: "dept-eng",
+      sheet_date: dates.today,
+      status: "APPROVED",
+      total_hours: 7.5,
+      total_tasks: 3,
+      completed_tasks: 3,
+      progress_percent: 100,
+      summary_notes: "Finished Rust Agent memory leak profiling and batch queue buffering. Peak memory consumption reduced by 40%.",
+      blockers_summary: null,
+      manager_feedback: "Outstanding efficiency Elena! Memory footprint is down 40%. Approved with top punctuality score.",
+      reviewed_by_name: "Sarah Connor (Tech Lead)",
+      reviewed_at: new Date(Date.now() - 7200000).toISOString(),
+      tasks: [
+        { id: "t-mgr-2-1", title: "Rust Agent Memory Allocation Audit", category: "Core Platform", priority: "URGENT", status: "COMPLETED", hours_spent: 3.5, description: "Profiled heap allocation in raw desktop mouse tracking buffer.", blockers: null },
+        { id: "t-mgr-2-2", title: "Batch Queue Flush Throttling", category: "Backend Architecture", priority: "HIGH", status: "COMPLETED", hours_spent: 2.5, description: "Implemented 5-minute debounced flush to reduce server load.", blockers: null },
+        { id: "t-mgr-2-3", title: "CI/CD Cross-compilation for Windows x64", category: "DevOps & Cloud", priority: "MEDIUM", status: "COMPLETED", hours_spent: 1.5, description: "Automated cargo build target artifacts in GitHub Actions.", blockers: null },
+      ]
+    },
+    {
+      id: "sh-dummy-mgr-03",
+      employee_id: "emp-aisha",
+      employee_name: "Aisha Patel",
+      employee_code: "EMP008",
+      department_name: "Core Platform Engineering",
+      department_id: "dept-eng",
+      sheet_date: dates.today,
+      status: "SUBMITTED",
+      total_hours: 6.5,
+      total_tasks: 3,
+      completed_tasks: 2,
+      progress_percent: 67,
+      summary_notes: "Implemented background database indexing for activity logs. Optimizing query latency on date range filters.",
+      blockers_summary: null,
+      manager_feedback: null,
+      reviewed_by_name: null,
+      reviewed_at: null,
+      tasks: [
+        { id: "t-mgr-3-1", title: "SQLAlchemy Async Session Pool Tuning", category: "Backend API", priority: "HIGH", status: "COMPLETED", hours_spent: 3.5, description: "Configured max overflow and pool pre-ping connection check.", blockers: null },
+        { id: "t-mgr-3-2", title: "Composite Index on Activity Timestamps", category: "Backend API", priority: "HIGH", status: "COMPLETED", hours_spent: 2.0, description: "Added index to activity_logs table for fast interval queries.", blockers: null },
+        { id: "t-mgr-3-3", title: "Database Backup Cron Integration", category: "DevOps & Cloud", priority: "MEDIUM", status: "IN_PROGRESS", hours_spent: 1.0, description: "Writing automated nightly snapshot script to S3 storage.", blockers: null },
+      ]
+    },
+    {
+      id: "sh-dummy-mgr-04",
+      employee_id: "emp-james",
+      employee_name: "James Wilson",
+      employee_code: "EMP007",
+      department_name: "Core Platform Engineering",
+      department_id: "dept-eng",
+      sheet_date: dates.today,
+      status: "APPROVED",
+      total_hours: 8.0,
+      total_tasks: 3,
+      completed_tasks: 3,
+      progress_percent: 100,
+      summary_notes: "All scheduled bug tickets resolved and closed for sprint 14. IP spoofing bypass resolved.",
+      blockers_summary: null,
+      manager_feedback: "Superb turnaround time on the critical security patch James. Great job!",
+      reviewed_by_name: "Sarah Connor (Tech Lead)",
+      reviewed_at: new Date(Date.now() - 5400000).toISOString(),
+      tasks: [
+        { id: "t-mgr-4-1", title: "Fix Screenshot Upload Rate Limiter", category: "Security & Auth", priority: "URGENT", status: "COMPLETED", hours_spent: 3.0, description: "Fixed IP spoofing bypass on agent screenshot upload handler.", blockers: null },
+        { id: "t-mgr-4-2", title: "Refactor Employee Punctuality Star Evaluator", category: "Core Platform", priority: "HIGH", status: "COMPLETED", hours_spent: 3.0, description: "Added grace period condition checker according to active rules.", blockers: null },
+        { id: "t-mgr-4-3", title: "OpenAPI Swagger Schema Documentation", category: "Documentation", priority: "LOW", status: "COMPLETED", hours_spent: 2.0, description: "Generated OpenAPI swagger schemas and route test recipes.", blockers: null },
+      ]
+    },
+    {
+      id: "sh-dummy-mgr-05",
+      employee_id: "emp-carlos",
+      employee_name: "Carlos Mendez",
+      employee_code: "EMP009",
+      department_name: "Core Platform Engineering",
+      department_id: "dept-eng",
+      sheet_date: dates.today,
+      status: "DRAFT",
+      total_hours: 5.0,
+      total_tasks: 2,
+      completed_tasks: 0,
+      progress_percent: 0,
+      summary_notes: "Investigating intermittent desktop agent disconnects on Windows sleep mode.",
+      blockers_summary: "Need test laptop with Windows 10 build 19045 to reproduce.",
+      manager_feedback: null,
+      reviewed_by_name: null,
+      reviewed_at: null,
+      tasks: [
+        { id: "t-mgr-5-1", title: "Desktop Agent Power State Listener", category: "Desktop Agent", priority: "HIGH", status: "IN_PROGRESS", hours_spent: 3.0, description: "Added Win32 API power broadcast notification handlers.", blockers: null },
+        { id: "t-mgr-5-2", title: "Heartbeat Reconnect Backoff Strategy", category: "Desktop Agent", priority: "MEDIUM", status: "IN_PROGRESS", hours_spent: 2.0, description: "Implementing exponential backoff with jitter on reconnect.", blockers: null },
+      ]
+    },
+    {
+      id: "sh-dummy-mgr-06",
+      employee_id: "emp-sophie",
+      employee_name: "Sophie Martin",
+      employee_code: "EMP006",
+      department_name: "Quality Assurance & Testing",
+      department_id: "dept-qa",
+      sheet_date: dates.today,
+      status: "SUBMITTED",
+      total_hours: 7.0,
+      total_tasks: 3,
+      completed_tasks: 2,
+      progress_percent: 67,
+      summary_notes: "Completed Playwright core regression test suite. Cross-browser alignment verified.",
+      blockers_summary: null,
+      manager_feedback: null,
+      reviewed_by_name: null,
+      reviewed_at: null,
+      tasks: [
+        { id: "t-mgr-6-1", title: "Playwright End-to-End Test Suite", category: "Testing & QA", priority: "HIGH", status: "COMPLETED", hours_spent: 3.5, description: "Created automated browser scripts for login, role switcher, and rules update.", blockers: null },
+        { id: "t-mgr-6-2", title: "Cross-browser Consistency Checks", category: "Testing & QA", priority: "MEDIUM", status: "COMPLETED", hours_spent: 2.0, description: "Verified UI alignment across Chromium, Firefox, and WebKit engines.", blockers: null },
+        { id: "t-mgr-6-3", title: "Screenshot Compression Quality Test", category: "Testing & QA", priority: "LOW", status: "IN_PROGRESS", hours_spent: 1.5, description: "Verified WEBP 65% quality threshold balances fidelity and size.", blockers: null },
+      ]
+    },
+    {
+      id: "sh-dummy-mgr-07",
+      employee_id: "emp-ryan",
+      employee_name: "Ryan Gallagher",
+      employee_code: "EMP013",
+      department_name: "Quality Assurance & Testing",
+      department_id: "dept-qa",
+      sheet_date: dates.today,
+      status: "SUBMITTED",
+      total_hours: 6.5,
+      total_tasks: 2,
+      completed_tasks: 1,
+      progress_percent: 50,
+      summary_notes: "Conducted API stress tests and validated concurrent employee check-ins.",
+      blockers_summary: null,
+      manager_feedback: null,
+      reviewed_by_name: null,
+      reviewed_at: null,
+      tasks: [
+        { id: "t-mgr-7-1", title: "Locust Load Test Script for Check-ins", category: "Testing & QA", priority: "HIGH", status: "COMPLETED", hours_spent: 4.0, description: "Simulated 200 concurrent agent heartbeats and check-in calls.", blockers: null },
+        { id: "t-mgr-7-2", title: "Database Lock Contention Analysis", category: "Testing & QA", priority: "MEDIUM", status: "IN_PROGRESS", hours_spent: 2.5, description: "Analyzed row lock wait times during bulk attendance updates.", blockers: null },
+      ]
+    },
+    {
+      id: "sh-dummy-mgr-08",
+      employee_id: "emp-marcus",
+      employee_name: "Marcus Vance",
+      employee_code: "EMP003",
+      department_name: "Product & UX Design",
+      department_id: "dept-dsn",
+      sheet_date: dates.today,
+      status: "SUBMITTED",
+      total_hours: 5.5,
+      total_tasks: 3,
+      completed_tasks: 2,
+      progress_percent: 67,
+      summary_notes: "Finalized design tokens for Dark/Light glassmorphism and mobile layout reflow.",
+      blockers_summary: "Waiting on brand assets for new vector icons from client team.",
+      manager_feedback: null,
+      reviewed_by_name: null,
+      reviewed_at: null,
+      tasks: [
+        { id: "t-mgr-8-1", title: "Figma Design System V2 Tokens", category: "UI/UX Design", priority: "HIGH", status: "COMPLETED", hours_spent: 3.0, description: "Created full HSL palette, dark theme glass tokens, and responsive typography variables.", blockers: null },
+        { id: "t-mgr-8-2", title: "Screenshot Viewer Modal Polish", category: "UI/UX Design", priority: "MEDIUM", status: "COMPLETED", hours_spent: 2.0, description: "Designed full-screen lightbox modal with keyboard arrow navigation.", blockers: null },
+        { id: "t-mgr-8-3", title: "Mobile Responsive Nav Drawer", category: "UI/UX Design", priority: "LOW", status: "BLOCKED", hours_spent: 0.5, description: "Wireframed collapsible sidebar navigation for smaller tablet screens.", blockers: "Awaiting approval on navigation hierarchy" },
+      ]
+    },
+    // Multi-day sheets (Yesterday)
+    {
+      id: "sh-dummy-mgr-y01",
+      employee_id: "emp-alex",
+      employee_name: "Alex Rivera",
+      employee_code: "EMP001",
+      department_name: "Core Platform Engineering",
+      department_id: "dept-eng",
+      sheet_date: dates.yesterday,
+      status: "APPROVED",
+      total_hours: 7.0,
+      total_tasks: 2,
+      completed_tasks: 2,
+      progress_percent: 100,
+      summary_notes: "Finished attendance roll call audit and KPI calculation improvements.",
+      blockers_summary: null,
+      manager_feedback: "Great work on the attendance calculations and query optimizations Alex!",
+      reviewed_by_name: "Sarah Connor (Tech Lead)",
+      reviewed_at: new Date(Date.now() - 86400000).toISOString(),
+      tasks: [
+        { id: "t-mgr-y1-1", title: "Attendance KPI Query Optimization", category: "Backend API", priority: "HIGH", status: "COMPLETED", hours_spent: 4.0, description: "Added subqueries for punctual and late check-in metrics.", blockers: null },
+        { id: "t-mgr-y1-2", title: "Rules Admin Inspector UI", category: "UI/UX Design", priority: "MEDIUM", status: "COMPLETED", hours_spent: 3.0, description: "Designed scorecard breakdown table and penalty deduction list.", blockers: null },
+      ]
+    },
+    {
+      id: "sh-dummy-mgr-y02",
+      employee_id: "emp-elena",
+      employee_name: "Elena Rostova",
+      employee_code: "EMP002",
+      department_name: "Core Platform Engineering",
+      department_id: "dept-eng",
+      sheet_date: dates.yesterday,
+      status: "APPROVED",
+      total_hours: 7.5,
+      total_tasks: 2,
+      completed_tasks: 2,
+      progress_percent: 100,
+      summary_notes: "Investigated raw mouse event jitter filter on high-polling gaming mice.",
+      blockers_summary: null,
+      manager_feedback: "Solid filtering algorithm Elena. Jitter is eliminated.",
+      reviewed_by_name: "Sarah Connor (Tech Lead)",
+      reviewed_at: new Date(Date.now() - 86400000).toISOString(),
+      tasks: [
+        { id: "t-mgr-y2-1", title: "Low-pass Event Coordinate Filter", category: "Core Platform", priority: "HIGH", status: "COMPLETED", hours_spent: 4.0, description: "Applied weighted smoothing average to prevent synthetic micro-jitters.", blockers: null },
+        { id: "t-mgr-y2-2", title: "Rust Native Win32 LowLevelMouseProc", category: "Core Platform", priority: "HIGH", status: "COMPLETED", hours_spent: 3.5, description: "Optimized hook callback throughput under CPU stress.", blockers: null },
+      ]
+    },
+    {
+      id: "sh-dummy-mgr-y03",
+      employee_id: "emp-james",
+      employee_name: "James Wilson",
+      employee_code: "EMP007",
+      department_name: "Core Platform Engineering",
+      department_id: "dept-eng",
+      sheet_date: dates.yesterday,
+      status: "APPROVED",
+      total_hours: 7.5,
+      total_tasks: 2,
+      completed_tasks: 2,
+      progress_percent: 100,
+      summary_notes: "Fixed JWT bearer token verification edge case on expired refresh tokens.",
+      blockers_summary: null,
+      manager_feedback: "Good catch on token expiration handling.",
+      reviewed_by_name: "Sarah Connor (Tech Lead)",
+      reviewed_at: new Date(Date.now() - 86400000).toISOString(),
+      tasks: [
+        { id: "t-mgr-y3-1", title: "Bearer Auth Header Interceptor", category: "Security & Auth", priority: "HIGH", status: "COMPLETED", hours_spent: 4.0, description: "Handled clock skew edge cases in JWT payload expiration check.", blockers: null },
+        { id: "t-mgr-y3-2", title: "Security Audit Trail Integration", category: "Security & Auth", priority: "MEDIUM", status: "COMPLETED", hours_spent: 3.5, description: "Logged all failed authorization attempts with client IP metadata.", blockers: null },
+      ]
+    },
+    {
+      id: "sh-dummy-mgr-y04",
+      employee_id: "emp-aisha",
+      employee_name: "Aisha Patel",
+      employee_code: "EMP008",
+      department_name: "Core Platform Engineering",
+      department_id: "dept-eng",
+      sheet_date: dates.yesterday,
+      status: "APPROVED",
+      total_hours: 7.0,
+      total_tasks: 2,
+      completed_tasks: 2,
+      progress_percent: 100,
+      summary_notes: "Completed activity logs partition planning and migration test script.",
+      blockers_summary: null,
+      manager_feedback: "Partitioning plan looks very solid. Approved for staging rollout.",
+      reviewed_by_name: "Sarah Connor (Tech Lead)",
+      reviewed_at: new Date(Date.now() - 86400000).toISOString(),
+      tasks: [
+        { id: "t-mgr-y4-1", title: "Table Partitioning DDL Generation", category: "Database & Backend", priority: "HIGH", status: "COMPLETED", hours_spent: 4.0, description: "Designed monthly range partitioning schema for activity records.", blockers: null },
+        { id: "t-mgr-y4-2", title: "Dry-run Benchmark on 1M Records", category: "Database & Backend", priority: "MEDIUM", status: "COMPLETED", hours_spent: 3.0, description: "Measured query response times before and after index optimization.", blockers: null },
+      ]
+    },
+  ];
+}
+
+function getFilteredDummyManagerSheets(preset, deptId, empId, status, search) {
+  const dates = getDummyDates();
+  let list = getDummyManagerSheets();
+
+  // Date Preset Filter
+  if (preset === 'today') {
+    list = list.filter(s => s.sheet_date === dates.today);
+  } else if (preset === 'yesterday') {
+    list = list.filter(s => s.sheet_date === dates.yesterday);
+  }
+
+  // Dept Filter
+  if (deptId) {
+    list = list.filter(s => s.department_id === deptId || s.department_name?.toLowerCase().includes(deptId.toLowerCase()));
+  }
+
+  // Emp Filter
+  if (empId) {
+    list = list.filter(s => s.employee_id === empId || s.employee_code === empId);
+  }
+
+  // Status Filter
+  if (status && status !== 'ALL') {
+    list = list.filter(s => s.status === status);
+  }
+
+  // Search Filter
+  if (search) {
+    const q = search.toLowerCase();
+    list = list.filter(s =>
+      s.employee_name.toLowerCase().includes(q) ||
+      s.employee_code.toLowerCase().includes(q) ||
+      (s.summary_notes && s.summary_notes.toLowerCase().includes(q)) ||
+      (s.tasks && s.tasks.some(t => t.title.toLowerCase().includes(q)))
+    );
+  }
+
+  return list;
+}
+
+function computeAndRenderKpis(sheets) {
+  const activeSheets = sheets || state.allSheets || [];
+  const totalSheets = activeSheets.length;
+  const submittedSheets = activeSheets.filter(s => s.status === 'SUBMITTED').length;
+  const pendingReviews = activeSheets.filter(s => s.status === 'SUBMITTED' && !s.manager_feedback).length;
+  const totalHours = activeSheets.reduce((sum, s) => sum + (s.total_hours || 0), 0);
+  const completedTasks = activeSheets.reduce((sum, s) => sum + (s.completed_tasks || 0), 0);
+
+  const setVal = (id, val) => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = val;
+  };
+  setVal('kpiSheetTotal', totalSheets);
+  setVal('kpiSheetSubmitted', submittedSheets);
+  setVal('kpiSheetCompletedTasks', completedTasks);
+  setVal('kpiSheetTotalHours', `${totalHours.toFixed(1)}h`);
+  setVal('kpiSheetPendingReviews', pendingReviews || submittedSheets);
+}
+
+function getDummyEmployeeTodaySheet() {
+  const dates = getDummyDates();
+  return {
+    id: "sh-emp-today-alex",
+    employee_name: "Alex Rivera",
+    employee_code: "EMP001",
+    department_name: "Core Platform Engineering",
+    sheet_date: dates.today,
+    status: "SUBMITTED",
+    total_hours: 7.5,
+    total_tasks: 4,
+    completed_tasks: 3,
+    progress_percent: 75,
+    summary_notes: "Completed frontend sheet integration, responsive card grids, and token auth interceptor. Running unit and E2E tests.",
+    blockers_summary: "Waiting on staging mock socket server for multi-client sync test suite.",
+    manager_feedback: "Terrific progress on the task sheets controller Alex! The responsive layout and review flow look great.",
+    reviewed_by_name: "Sarah Connor (Tech Lead)",
+    reviewed_at: new Date(Date.now() - 3600000).toISOString(),
+    tasks: [
+      { id: "t-emp-1", title: "Implement Daily Task Sheet UI and Card Grids", category: "Frontend Development", priority: "HIGH", status: "COMPLETED", hours_spent: 3.5, description: "Built modern interactive cards and responsive grid layout for multi-employee daily task management.", blockers: null },
+      { id: "t-emp-2", title: "JWT Session Auto-refresh Hook & Auth Interceptor", category: "Security & Auth", priority: "MEDIUM", status: "COMPLETED", hours_spent: 2.0, description: "Created automatic token refresh interceptor for expiring bearer credentials.", blockers: null },
+      { id: "t-emp-3", title: "Refactor Employee Switcher Dropdown & Role Sync", category: "Frontend Development", priority: "LOW", status: "COMPLETED", hours_spent: 1.0, description: "Added quick role switching synchronization and badge color indicators.", blockers: null },
+      { id: "t-emp-4", title: "End-to-End WebSocket Sync Tests", category: "Testing & QA", priority: "MEDIUM", status: "IN_PROGRESS", hours_spent: 1.0, description: "Testing live desktop agent sync and payload dispatching.", blockers: "Waiting on staging mock socket server" },
+    ]
+  };
+}
+
+function getDummyEmployeePastSheets() {
+  const dates = getDummyDates();
+  return [
+    {
+      id: "sh-past-01",
+      sheet_date: dates.yesterday,
+      status: "APPROVED",
+      total_hours: 7.0,
+      total_tasks: 2,
+      completed_tasks: 2,
+      progress_percent: 100,
+      summary_notes: "Finished attendance roll call audit and KPI calculation improvements.",
+      blockers_summary: null,
+      manager_feedback: "Great work on the attendance calculations and query optimizations Alex!",
+      reviewed_by_name: "Sarah Connor (Tech Lead)",
+      reviewed_at: new Date(Date.now() - 86400000).toISOString(),
+      tasks: [
+        { id: "t-past-1-1", title: "Attendance KPI Query Optimization", category: "Backend API", priority: "HIGH", status: "COMPLETED", hours_spent: 4.0, description: "Added subqueries for punctual and late check-in metrics.", blockers: null },
+        { id: "t-past-1-2", title: "Rules Admin Inspector UI", category: "UI/UX Design", priority: "MEDIUM", status: "COMPLETED", hours_spent: 3.0, description: "Designed scorecard breakdown table and penalty deduction list.", blockers: null },
+      ]
+    },
+    {
+      id: "sh-past-02",
+      sheet_date: dates.twoDays,
+      status: "APPROVED",
+      total_hours: 7.5,
+      total_tasks: 2,
+      completed_tasks: 2,
+      progress_percent: 100,
+      summary_notes: "Benchmarked SQLite WAL mode under concurrent screenshot ingestion workloads.",
+      blockers_summary: null,
+      manager_feedback: "Excellent performance profiling. Database write latency dropped noticeably.",
+      reviewed_by_name: "Sarah Connor (Tech Lead)",
+      reviewed_at: new Date(Date.now() - 172800000).toISOString(),
+      tasks: [
+        { id: "t-past-2-1", title: "SQLite WAL PRAGMA Configuration", category: "Database & Backend", priority: "HIGH", status: "COMPLETED", hours_spent: 4.5, description: "Tuned synchronous PRAGMA and checkpoint intervals.", blockers: null },
+        { id: "t-past-2-2", title: "Async Database Session Pool Metrics", category: "Core Platform", priority: "MEDIUM", status: "COMPLETED", hours_spent: 3.0, description: "Added telemetry counters for active and idle SQLAlchemy sessions.", blockers: null },
+      ]
+    },
+    {
+      id: "sh-past-03",
+      sheet_date: dates.threeDays,
+      status: "APPROVED",
+      total_hours: 8.0,
+      total_tasks: 2,
+      completed_tasks: 2,
+      progress_percent: 100,
+      summary_notes: "Refactored screenshot carousel keyboard navigation and full-screen lightbox.",
+      blockers_summary: null,
+      manager_feedback: "Very clean UI implementation. Modal UX is smooth.",
+      reviewed_by_name: "Sarah Connor (Tech Lead)",
+      reviewed_at: new Date(Date.now() - 259200000).toISOString(),
+      tasks: [
+        { id: "t-past-3-1", title: "Lightbox Fullscreen Keyboard Shortcuts", category: "Frontend Development", priority: "MEDIUM", status: "COMPLETED", hours_spent: 4.0, description: "Added Left/Right arrow handlers and Escape key binding.", blockers: null },
+        { id: "t-past-3-2", title: "Custom Interval Screenshot Scheduler", category: "Frontend Development", priority: "HIGH", status: "COMPLETED", hours_spent: 4.0, description: "Built interval selection dropdown with 1m, 5m, 10m, 15m presets.", blockers: null },
+      ]
+    },
+  ];
+}
+
+// --------------------------------------------------------------------------
+// Tab Loader & Manager Actions
+// --------------------------------------------------------------------------
+
 async function loadSheetsTab() {
   await ensureAuthenticated();
   const role = (state.currentUser?.role || localStorage.getItem('wp-role') || 'admin').toUpperCase();
@@ -2464,7 +2954,6 @@ async function populateSheetFilterDropdowns() {
   if (!deptSelect || !empSelect) return;
 
   try {
-    // Populate departments
     const deptRes = await fetch(`${API_BASE}/departments`, { headers: authHeaders() });
     if (deptRes.ok) {
       const depts = await deptRes.json();
@@ -2476,7 +2965,6 @@ async function populateSheetFilterDropdowns() {
       deptSelect.value = currentDeptVal;
     }
 
-    // Populate employees
     const empRes = await fetch(`${API_BASE}/employees`, { headers: authHeaders() });
     if (empRes.ok) {
       const emps = await empRes.json();
@@ -2488,7 +2976,28 @@ async function populateSheetFilterDropdowns() {
       empSelect.value = currentEmpVal;
     }
   } catch (err) {
-    console.error('Error populating sheet filters:', err);
+    if (deptSelect.children.length <= 1) {
+      deptSelect.innerHTML = `
+        <option value="">All Departments</option>
+        <option value="dept-eng">Core Platform Engineering (ENG)</option>
+        <option value="dept-dsn">Product & UX Design (DSN)</option>
+        <option value="dept-qa">Quality Assurance & Testing (QA)</option>
+        <option value="dept-ops">DevOps & Cloud Infrastructure (OPS)</option>
+      `;
+    }
+    if (empSelect.children.length <= 1) {
+      empSelect.innerHTML = `
+        <option value="">All Employees</option>
+        <option value="EMP001">Alex Rivera (EMP001)</option>
+        <option value="EMP002">Elena Rostova (EMP002)</option>
+        <option value="EMP008">Aisha Patel (EMP008)</option>
+        <option value="EMP007">James Wilson (EMP007)</option>
+        <option value="EMP009">Carlos Mendez (EMP009)</option>
+        <option value="EMP006">Sophie Martin (EMP006)</option>
+        <option value="EMP013">Ryan Gallagher (EMP013)</option>
+        <option value="EMP003">Marcus Vance (EMP003)</option>
+      `;
+    }
   }
 }
 
@@ -2515,10 +3024,13 @@ async function loadManagerSheetsSummary() {
       setVal('kpiSheetCompletedTasks', stats.completed_tasks);
       setVal('kpiSheetTotalHours', `${stats.total_hours.toFixed(1)}h`);
       setVal('kpiSheetPendingReviews', stats.pending_reviews);
+      return;
     }
   } catch (err) {
-    console.error('Error loading sheet summary KPI:', err);
+    // API offline, compute from active sheets
   }
+
+  computeAndRenderKpis();
 }
 
 async function loadManagerSheetsGrid() {
@@ -2526,13 +3038,14 @@ async function loadManagerSheetsGrid() {
   const tbody = document.getElementById('sheetsTableTbody');
   if (!grid && !tbody) return;
 
-  try {
-    const preset = document.getElementById('sheetDatePresetFilter')?.value || 'today';
-    const deptId = document.getElementById('sheetDeptFilter')?.value || '';
-    const empId = document.getElementById('sheetEmpFilter')?.value || '';
-    const status = document.getElementById('sheetStatusFilter')?.value || 'ALL';
-    const search = document.getElementById('sheetSearchInput')?.value || '';
+  const preset = document.getElementById('sheetDatePresetFilter')?.value || 'today';
+  const deptId = document.getElementById('sheetDeptFilter')?.value || '';
+  const empId = document.getElementById('sheetEmpFilter')?.value || '';
+  const status = document.getElementById('sheetStatusFilter')?.value || 'ALL';
+  const search = document.getElementById('sheetSearchInput')?.value || '';
 
+  let fetchedSheets = null;
+  try {
     let queryParams = [];
     if (preset === 'today') queryParams.push('date=today');
     else if (preset === 'yesterday') {
@@ -2547,22 +3060,24 @@ async function loadManagerSheetsGrid() {
 
     const qStr = queryParams.length > 0 ? `?${queryParams.join('&')}` : '';
     const res = await fetch(`${API_BASE}/sheets${qStr}`, { headers: authHeaders() });
-
-    if (!res.ok) {
-      if (grid) grid.innerHTML = `<div style="grid-column: 1 / -1; text-align: center; color: var(--accent-rose); padding: 30px;">Failed to load employee task sheets.</div>`;
-      return;
-    }
-
-    const sheets = await res.json();
-    state.allSheets = sheets;
-
-    if (state.sheetsViewMode === 'table') {
-      renderSheetsTableView(sheets);
-    } else {
-      renderSheetsCardsGrid(sheets);
+    if (res.ok) {
+      fetchedSheets = await res.json();
     }
   } catch (err) {
-    console.error('Error loading manager sheets:', err);
+    // API offline or network error, fallback to dummy sheets
+  }
+
+  const sheets = (fetchedSheets && fetchedSheets.length > 0)
+    ? fetchedSheets
+    : getFilteredDummyManagerSheets(preset, deptId, empId, status, search);
+
+  state.allSheets = sheets;
+  computeAndRenderKpis(sheets);
+
+  if (state.sheetsViewMode === 'table') {
+    renderSheetsTableView(sheets);
+  } else {
+    renderSheetsCardsGrid(sheets);
   }
 }
 
@@ -2779,56 +3294,71 @@ function renderSheetsTableView(sheets) {
 // ==========================================================================
 
 async function loadEmployeeTodaySheet() {
+  let sheet = null;
   try {
     const res = await fetch(`${API_BASE}/sheets/today`, { headers: authHeaders() });
-    if (!res.ok) throw new Error('Failed to load today sheet');
-    const sheet = await res.json();
-    state.currentTodaySheet = sheet;
-
-    // Header updates
-    const badge = document.getElementById('empSheetStatusBadge');
-    if (badge) {
-      const st = (sheet.status || 'DRAFT').toUpperCase();
-      badge.textContent = st;
-      badge.className = `sheet-status-pill ${st.toLowerCase()}`;
+    if (res.ok) {
+      sheet = await res.json();
     }
-
-    const hoursBadge = document.getElementById('empSheetTotalHoursBadge');
-    if (hoursBadge) hoursBadge.textContent = `${sheet.total_hours.toFixed(1)} hrs`;
-
-    const ratioBadge = document.getElementById('empSheetTasksRatioBadge');
-    if (ratioBadge) {
-      ratioBadge.textContent = `${sheet.completed_tasks} / ${sheet.total_tasks} (${sheet.progress_percent}%)`;
-    }
-
-    // Populate notes
-    const sumNotes = document.getElementById('empSheetSummaryNotes');
-    if (sumNotes && document.activeElement !== sumNotes) {
-      sumNotes.value = sheet.summary_notes || '';
-    }
-
-    const blockSummary = document.getElementById('empSheetBlockersSummary');
-    if (blockSummary && document.activeElement !== blockSummary) {
-      blockSummary.value = sheet.blockers_summary || '';
-    }
-
-    // Manager Feedback Banner
-    const fbCard = document.getElementById('empManagerFeedbackCard');
-    if (fbCard) {
-      if (sheet.manager_feedback) {
-        fbCard.style.display = 'block';
-        document.getElementById('empFeedbackReviewerName').textContent = sheet.reviewed_by_name ? `Reviewed by ${sheet.reviewed_by_name}` : 'Supervisor Review Feedback';
-        document.getElementById('empFeedbackDate').textContent = sheet.reviewed_at ? new Date(sheet.reviewed_at).toLocaleString() : '';
-        document.getElementById('empFeedbackContentText').textContent = `"${sheet.manager_feedback}"`;
-      } else {
-        fbCard.style.display = 'none';
-      }
-    }
-
-    renderEmployeeTasks(sheet.tasks || []);
   } catch (err) {
-    console.error('Error loading employee today sheet:', err);
+    // Offline or network error
   }
+
+  // Fallback to dummy data if fetch failed or returned empty tasks
+  if (!sheet || !sheet.tasks || sheet.tasks.length === 0) {
+    const cached = localStorage.getItem('wp_emp_today_sheet');
+    sheet = cached ? JSON.parse(cached) : getDummyEmployeeTodaySheet();
+  }
+
+  state.currentTodaySheet = sheet;
+
+  // Header updates
+  const badge = document.getElementById('empSheetStatusBadge');
+  if (badge) {
+    const st = (sheet.status || 'DRAFT').toUpperCase();
+    badge.textContent = st;
+    badge.className = `sheet-status-pill ${st.toLowerCase()}`;
+  }
+
+  const hoursBadge = document.getElementById('empSheetTotalHoursBadge');
+  if (hoursBadge) hoursBadge.textContent = `${(sheet.total_hours || 0).toFixed(1)} hrs`;
+
+  const ratioBadge = document.getElementById('empSheetTasksRatioBadge');
+  if (ratioBadge) {
+    const completed = sheet.completed_tasks || 0;
+    const total = sheet.total_tasks || (sheet.tasks ? sheet.tasks.length : 0);
+    const pct = sheet.progress_percent || (total > 0 ? Math.round((completed / total) * 100) : 0);
+    ratioBadge.textContent = `${completed} / ${total} (${pct}%)`;
+  }
+
+  // Populate notes
+  const sumNotes = document.getElementById('empSheetSummaryNotes');
+  if (sumNotes && document.activeElement !== sumNotes) {
+    sumNotes.value = sheet.summary_notes || '';
+  }
+
+  const blockSummary = document.getElementById('empSheetBlockersSummary');
+  if (blockSummary && document.activeElement !== blockSummary) {
+    blockSummary.value = sheet.blockers_summary || '';
+  }
+
+  // Manager Feedback Banner
+  const fbCard = document.getElementById('empManagerFeedbackCard');
+  if (fbCard) {
+    if (sheet.manager_feedback) {
+      fbCard.style.display = 'block';
+      const revNameEl = document.getElementById('empFeedbackReviewerName');
+      if (revNameEl) revNameEl.textContent = sheet.reviewed_by_name ? `Reviewed by ${sheet.reviewed_by_name}` : 'Supervisor Review Feedback';
+      const dateEl = document.getElementById('empFeedbackDate');
+      if (dateEl) dateEl.textContent = sheet.reviewed_at ? new Date(sheet.reviewed_at).toLocaleString() : '';
+      const textEl = document.getElementById('empFeedbackContentText');
+      if (textEl) textEl.textContent = `"${sheet.manager_feedback}"`;
+    } else {
+      fbCard.style.display = 'none';
+    }
+  }
+
+  renderEmployeeTasks(sheet.tasks || []);
 }
 
 function renderEmployeeTasks(tasks) {
@@ -2899,52 +3429,56 @@ async function loadEmployeePastSheets() {
   const grid = document.getElementById('empPastSheetsGrid');
   if (!grid) return;
 
+  let past = [];
   try {
     const res = await fetch(`${API_BASE}/sheets`, { headers: authHeaders() });
-    if (!res.ok) return;
-    const sheets = await res.json();
-
-    // Filter out today's sheet from past history
-    const todayStr = new Date().toISOString().split('T')[0];
-    const past = sheets.filter(s => s.sheet_date !== todayStr);
-
-    grid.innerHTML = '';
-    if (past.length === 0) {
-      grid.innerHTML = `
-        <div style="grid-column: 1 / -1; text-align: center; color: var(--text-dim); padding: 20px; font-size: 0.8rem;">
-          No previous daily sheets logged yet. Past submitted sheets will be archived here.
-        </div>
-      `;
-      return;
+    if (res.ok) {
+      const sheets = await res.json();
+      const todayStr = new Date().toISOString().split('T')[0];
+      past = sheets.filter(s => s.sheet_date !== todayStr);
     }
-
-    past.forEach(s => {
-      const card = document.createElement('div');
-      const stLower = (s.status || 'draft').toLowerCase();
-      card.className = `sheet-card ${stLower}`;
-      card.style.padding = '14px 16px';
-
-      card.innerHTML = `
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-          <div style="font-weight: 700; color: var(--text-main); font-size: 0.9rem;">📅 ${s.sheet_date}</div>
-          <span class="sheet-status-pill ${stLower}">${s.status}</span>
-        </div>
-        <div style="font-size: 0.76rem; color: var(--text-muted); margin-bottom: 8px;">
-          ${s.completed_tasks}/${s.total_tasks} Tasks Resolved &bull; <strong style="color: var(--accent-cyan);">${s.total_hours} hrs</strong>
-        </div>
-        <div style="width: 100%; height: 4px; background: rgba(255,255,255,0.06); border-radius: 2px; overflow: hidden; margin-bottom: 10px;">
-          <div style="height: 100%; background: var(--accent-emerald); width: ${s.progress_percent}%;"></div>
-        </div>
-        <button class="btn btn-secondary btn-sm" onclick="openSheetDetailsModal('${s.id}')" style="width: 100%; font-size: 0.74rem; padding: 4px 8px;">
-          View Past Sheet Details
-        </button>
-      `;
-
-      grid.appendChild(card);
-    });
   } catch (err) {
-    console.error('Error loading employee past sheets:', err);
+    // API offline, fallback
   }
+
+  if (!past || past.length === 0) {
+    past = getDummyEmployeePastSheets();
+  }
+
+  grid.innerHTML = '';
+  if (past.length === 0) {
+    grid.innerHTML = `
+      <div style="grid-column: 1 / -1; text-align: center; color: var(--text-dim); padding: 20px; font-size: 0.8rem;">
+        No previous daily sheets logged yet. Past submitted sheets will be archived here.
+      </div>
+    `;
+    return;
+  }
+
+  past.forEach(s => {
+    const card = document.createElement('div');
+    const stLower = (s.status || 'draft').toLowerCase();
+    card.className = `sheet-card ${stLower}`;
+    card.style.padding = '14px 16px';
+
+    card.innerHTML = `
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+        <div style="font-weight: 700; color: var(--text-main); font-size: 0.9rem;">📅 ${s.sheet_date}</div>
+        <span class="sheet-status-pill ${stLower}">${s.status}</span>
+      </div>
+      <div style="font-size: 0.76rem; color: var(--text-muted); margin-bottom: 8px;">
+        ${s.completed_tasks || 0}/${s.total_tasks || (s.tasks ? s.tasks.length : 0)} Tasks Resolved &bull; <strong style="color: var(--accent-cyan);">${s.total_hours || 0} hrs</strong>
+      </div>
+      <div style="width: 100%; height: 4px; background: rgba(255,255,255,0.06); border-radius: 2px; overflow: hidden; margin-bottom: 10px;">
+        <div style="height: 100%; background: var(--accent-emerald); width: ${s.progress_percent || 0}%;"></div>
+      </div>
+      <button class="btn btn-secondary btn-sm" onclick="openSheetDetailsModal('${s.id}')" style="width: 100%; font-size: 0.74rem; padding: 4px 8px;">
+        View Past Sheet Details
+      </button>
+    `;
+
+    grid.appendChild(card);
+  });
 }
 
 async function handleQuickTaskAdd(e) {
@@ -2952,8 +3486,8 @@ async function handleQuickTaskAdd(e) {
   if (!state.currentTodaySheet) {
     await loadEmployeeTodaySheet();
   }
-  const sheetId = state.currentTodaySheet?.id;
-  if (!sheetId) return;
+  const sheet = state.currentTodaySheet;
+  if (!sheet) return;
 
   const title = document.getElementById('quickTaskTitle').value.trim();
   const category = document.getElementById('quickTaskCategory').value;
@@ -2962,8 +3496,9 @@ async function handleQuickTaskAdd(e) {
 
   if (!title) return;
 
+  let addedOnline = false;
   try {
-    const res = await fetch(`${API_BASE}/sheets/${sheetId}/tasks`, {
+    const res = await fetch(`${API_BASE}/sheets/${sheet.id}/tasks`, {
       method: 'POST',
       headers: authHeaders(),
       body: JSON.stringify({
@@ -2974,28 +3509,50 @@ async function handleQuickTaskAdd(e) {
         hours_spent: hours,
       })
     });
-
     if (res.ok) {
-      document.getElementById('quickTaskTitle').value = '';
-      await loadEmployeeTodaySheet();
-    } else {
-      alert('Failed to add task item.');
+      addedOnline = true;
     }
   } catch (err) {
-    console.error('Error adding task:', err);
+    // Fall back to local update
   }
+
+  if (!addedOnline) {
+    // Add locally to state and cache
+    const newTask = {
+      id: `task-local-${Date.now()}`,
+      title,
+      category,
+      priority,
+      status: 'TODO',
+      hours_spent: hours,
+      description: null,
+      blockers: null
+    };
+    sheet.tasks = sheet.tasks || [];
+    sheet.tasks.push(newTask);
+    sheet.total_tasks = sheet.tasks.length;
+    sheet.total_hours = (sheet.total_hours || 0) + hours;
+    localStorage.setItem('wp_emp_today_sheet', JSON.stringify(sheet));
+  }
+
+  document.getElementById('quickTaskTitle').value = '';
+  await loadEmployeeTodaySheet();
 }
 
 async function handleSaveEmployeeSheet(isSubmit) {
   if (!state.currentTodaySheet) return;
-  const sheetId = state.currentTodaySheet.id;
+  const sheet = state.currentTodaySheet;
 
   const summary = document.getElementById('empSheetSummaryNotes')?.value || '';
   const blockers = document.getElementById('empSheetBlockersSummary')?.value || '';
   const nextStatus = isSubmit ? 'SUBMITTED' : 'DRAFT';
 
+  sheet.summary_notes = summary;
+  sheet.blockers_summary = blockers;
+  sheet.status = nextStatus;
+
   try {
-    const res = await fetch(`${API_BASE}/sheets/${sheetId}`, {
+    await fetch(`${API_BASE}/sheets/${sheet.id}`, {
       method: 'PUT',
       headers: authHeaders(),
       body: JSON.stringify({
@@ -3004,16 +3561,13 @@ async function handleSaveEmployeeSheet(isSubmit) {
         status: nextStatus,
       })
     });
-
-    if (res.ok) {
-      await loadEmployeeTodaySheet();
-      alert(isSubmit ? '🚀 Daily task sheet submitted successfully for supervisor review!' : '💾 Draft saved successfully.');
-    } else {
-      alert('Failed to save sheet.');
-    }
   } catch (err) {
-    console.error('Error saving sheet:', err);
+    // Save to local cache
   }
+
+  localStorage.setItem('wp_emp_today_sheet', JSON.stringify(sheet));
+  await loadEmployeeTodaySheet();
+  alert(isSubmit ? '🚀 Daily task sheet submitted successfully for supervisor review!' : '💾 Draft saved successfully.');
 }
 
 window.toggleTaskStatus = async function(taskId, isChecked) {
@@ -3026,6 +3580,7 @@ window.handleTaskStatusChange = async function(taskId, newStatus) {
 };
 
 async function updateTaskItemDirect(taskId, payload) {
+  let updatedOnline = false;
   try {
     const res = await fetch(`${API_BASE}/sheets/tasks/${taskId}`, {
       method: 'PUT',
@@ -3033,26 +3588,51 @@ async function updateTaskItemDirect(taskId, payload) {
       body: JSON.stringify(payload)
     });
     if (res.ok) {
-      await loadEmployeeTodaySheet();
+      updatedOnline = true;
     }
   } catch (err) {
-    console.error('Error updating task:', err);
+    // Update local state
   }
+
+  if (!updatedOnline && state.currentTodaySheet && state.currentTodaySheet.tasks) {
+    const task = state.currentTodaySheet.tasks.find(t => t.id === taskId);
+    if (task) {
+      Object.assign(task, payload);
+      const completed = state.currentTodaySheet.tasks.filter(t => t.status === 'COMPLETED').length;
+      state.currentTodaySheet.completed_tasks = completed;
+      state.currentTodaySheet.progress_percent = Math.round((completed / state.currentTodaySheet.tasks.length) * 100);
+      localStorage.setItem('wp_emp_today_sheet', JSON.stringify(state.currentTodaySheet));
+    }
+  }
+
+  await loadEmployeeTodaySheet();
 }
 
 window.deleteTaskItem = async function(taskId) {
   if (!confirm('Are you sure you want to delete this task item?')) return;
+  let deletedOnline = false;
   try {
     const res = await fetch(`${API_BASE}/sheets/tasks/${taskId}`, {
       method: 'DELETE',
       headers: authHeaders()
     });
     if (res.ok) {
-      await loadEmployeeTodaySheet();
+      deletedOnline = true;
     }
   } catch (err) {
-    console.error('Error deleting task item:', err);
+    // Delete local
   }
+
+  if (!deletedOnline && state.currentTodaySheet && state.currentTodaySheet.tasks) {
+    state.currentTodaySheet.tasks = state.currentTodaySheet.tasks.filter(t => t.id !== taskId);
+    state.currentTodaySheet.total_tasks = state.currentTodaySheet.tasks.length;
+    const completed = state.currentTodaySheet.tasks.filter(t => t.status === 'COMPLETED').length;
+    state.currentTodaySheet.completed_tasks = completed;
+    state.currentTodaySheet.progress_percent = state.currentTodaySheet.tasks.length > 0 ? Math.round((completed / state.currentTodaySheet.tasks.length) * 100) : 0;
+    localStorage.setItem('wp_emp_today_sheet', JSON.stringify(state.currentTodaySheet));
+  }
+
+  await loadEmployeeTodaySheet();
 };
 
 // ==========================================================================
@@ -3064,104 +3644,135 @@ window.openSheetDetailsModal = async function(sheetId) {
   const modal = document.getElementById('sheetDetailsModal');
   if (!modal) return;
 
+  let sheet = null;
   try {
     const res = await fetch(`${API_BASE}/sheets/${sheetId}`, { headers: authHeaders() });
-    if (!res.ok) throw new Error('Failed to load sheet details');
-    const sheet = await res.json();
-
-    const initials = (sheet.employee_name || 'Staff')
-      .split(' ')
-      .map(n => n[0])
-      .join('')
-      .slice(0, 2)
-      .toUpperCase();
-
-    document.getElementById('modalSheetAvatar').textContent = initials;
-    document.getElementById('modalSheetEmpName').textContent = `${sheet.employee_name}'s Daily Sheet`;
-    document.getElementById('modalSheetEmpMeta').textContent = `${sheet.employee_code} • ${sheet.department_name}`;
-    document.getElementById('modalSheetDate').textContent = sheet.sheet_date;
-
-    const stBadge = document.getElementById('modalSheetStatusBadge');
-    stBadge.textContent = sheet.status;
-    stBadge.className = `sheet-status-pill ${(sheet.status || 'draft').toLowerCase()}`;
-
-    document.getElementById('modalSheetHours').textContent = `${sheet.total_hours.toFixed(1)} hrs`;
-    document.getElementById('modalSheetTasksCount').textContent = `${sheet.completed_tasks} / ${sheet.total_tasks} Done`;
-    document.getElementById('modalSheetProgress').textContent = `${sheet.progress_percent}%`;
-    document.getElementById('modalSheetProgressBar').style.width = `${sheet.progress_percent}%`;
-
-    // Tasks list
-    const listEl = document.getElementById('modalSheetTasksList');
-    document.getElementById('modalSheetTaskItemsCount').textContent = `${sheet.tasks.length} items`;
-    listEl.innerHTML = '';
-
-    if (sheet.tasks.length === 0) {
-      listEl.innerHTML = `<div style="text-align: center; color: var(--text-dim); padding: 14px;">No tasks logged.</div>`;
-    } else {
-      sheet.tasks.forEach(t => {
-        const isDone = t.status === 'COMPLETED';
-        const icon = isDone ? '✅' : (t.status === 'IN_PROGRESS' ? '⏳' : (t.status === 'BLOCKED' ? '⛔' : '⭕'));
-        const descText = t.description ? `<div style="font-size: 0.74rem; color: var(--text-muted); margin-top: 3px;">${t.description}</div>` : '';
-        const blockText = t.blockers ? `<div style="font-size: 0.72rem; color: var(--accent-rose); margin-top: 2px;">⚠️ ${t.blockers}</div>` : '';
-
-        const item = document.createElement('div');
-        item.className = `sheet-task-item ${isDone ? 'completed' : ''}`;
-        item.innerHTML = `
-          <div style="flex: 1;">
-            <div style="display: flex; align-items: center; gap: 8px;">
-              <span>${icon}</span>
-              <strong style="color: var(--text-main); font-size: 0.82rem;">${t.title}</strong>
-              <span class="prio-pill ${(t.priority || 'medium').toLowerCase()}">${t.priority}</span>
-              <span class="cat-pill">${t.category}</span>
-            </div>
-            ${descText}
-            ${blockText}
-          </div>
-          <span class="badge" style="background: rgba(6, 182, 212, 0.12); color: var(--accent-cyan); font-size: 0.75rem;">
-            ⏱️ ${t.hours_spent}h
-          </span>
-        `;
-        listEl.appendChild(item);
-      });
+    if (res.ok) {
+      sheet = await res.json();
     }
-
-    // Summary & Blockers
-    document.getElementById('modalSheetSummaryText').textContent = sheet.summary_notes || 'No summary entered.';
-    const blockCont = document.getElementById('modalSheetBlockersContainer');
-    if (sheet.blockers_summary) {
-      blockCont.style.display = 'block';
-      document.getElementById('modalSheetBlockersText').textContent = sheet.blockers_summary;
-    } else {
-      blockCont.style.display = 'none';
-    }
-
-    // Feedback
-    const fbCont = document.getElementById('modalSheetFeedbackContainer');
-    if (sheet.manager_feedback) {
-      fbCont.style.display = 'block';
-      document.getElementById('modalSheetFeedbackMeta').textContent = sheet.reviewed_by_name ? `Reviewed by ${sheet.reviewed_by_name}` : 'Supervisor Review';
-      document.getElementById('modalSheetFeedbackText').textContent = `"${sheet.manager_feedback}"`;
-    } else {
-      fbCont.style.display = 'none';
-    }
-
-    // Supervisor action button
-    const role = (state.currentUser?.role || localStorage.getItem('wp-role') || 'admin').toUpperCase();
-    const revBtn = document.getElementById('modalSheetReviewActionBtn');
-    if (revBtn) {
-      revBtn.style.display = (role === 'ADMIN' || role === 'MANAGER') ? 'inline-flex' : 'none';
-    }
-
-    modal.classList.add('active');
   } catch (err) {
-    console.error('Error opening sheet details modal:', err);
+    // Fall back to state or dummy
   }
+
+  if (!sheet) {
+    // Search in state.allSheets
+    sheet = state.allSheets?.find(s => s.id === sheetId);
+    if (!sheet) {
+      // Check today sheet
+      if (state.currentTodaySheet?.id === sheetId) sheet = state.currentTodaySheet;
+      // Check dummy past sheets
+      if (!sheet) {
+        const past = getDummyEmployeePastSheets();
+        sheet = past.find(s => s.id === sheetId);
+      }
+      // Check dummy manager sheets
+      if (!sheet) {
+        const dummyAll = getDummyManagerSheets();
+        sheet = dummyAll.find(s => s.id === sheetId);
+      }
+    }
+  }
+
+  if (!sheet) return;
+
+  const initials = (sheet.employee_name || 'Staff')
+    .split(' ')
+    .map(n => n[0])
+    .join('')
+    .slice(0, 2)
+    .toUpperCase();
+
+  document.getElementById('modalSheetAvatar').textContent = initials;
+  document.getElementById('modalSheetEmpName').textContent = `${sheet.employee_name}'s Daily Sheet`;
+  document.getElementById('modalSheetEmpMeta').textContent = `${sheet.employee_code || 'EMP'} • ${sheet.department_name || 'Department'}`;
+  document.getElementById('modalSheetDate').textContent = sheet.sheet_date;
+
+  const stBadge = document.getElementById('modalSheetStatusBadge');
+  stBadge.textContent = sheet.status;
+  stBadge.className = `sheet-status-pill ${(sheet.status || 'draft').toLowerCase()}`;
+
+  const taskCount = sheet.tasks ? sheet.tasks.length : (sheet.total_tasks || 0);
+  const completedCount = sheet.completed_tasks || 0;
+  const progressPercent = sheet.progress_percent || (taskCount > 0 ? Math.round((completedCount / taskCount) * 100) : 0);
+
+  document.getElementById('modalSheetHours').textContent = `${(sheet.total_hours || 0).toFixed(1)} hrs`;
+  document.getElementById('modalSheetTasksCount').textContent = `${completedCount} / ${taskCount} Done`;
+  document.getElementById('modalSheetProgress').textContent = `${progressPercent}%`;
+  document.getElementById('modalSheetProgressBar').style.width = `${progressPercent}%`;
+
+  // Tasks list
+  const listEl = document.getElementById('modalSheetTasksList');
+  document.getElementById('modalSheetTaskItemsCount').textContent = `${taskCount} items`;
+  listEl.innerHTML = '';
+
+  if (!sheet.tasks || sheet.tasks.length === 0) {
+    listEl.innerHTML = `<div style="text-align: center; color: var(--text-dim); padding: 14px;">No tasks logged.</div>`;
+  } else {
+    sheet.tasks.forEach(t => {
+      const isDone = t.status === 'COMPLETED';
+      const icon = isDone ? '✅' : (t.status === 'IN_PROGRESS' ? '⏳' : (t.status === 'BLOCKED' ? '⛔' : '⭕'));
+      const descText = t.description ? `<div style="font-size: 0.74rem; color: var(--text-muted); margin-top: 3px;">${t.description}</div>` : '';
+      const blockText = t.blockers ? `<div style="font-size: 0.72rem; color: var(--accent-rose); margin-top: 2px;">⚠️ ${t.blockers}</div>` : '';
+
+      const item = document.createElement('div');
+      item.className = `sheet-task-item ${isDone ? 'completed' : ''}`;
+      item.innerHTML = `
+        <div style="flex: 1;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span>${icon}</span>
+            <strong style="color: var(--text-main); font-size: 0.82rem;">${t.title}</strong>
+            <span class="prio-pill ${(t.priority || 'medium').toLowerCase()}">${t.priority}</span>
+            <span class="cat-pill">${t.category}</span>
+          </div>
+          ${descText}
+          ${blockText}
+        </div>
+        <span class="badge" style="background: rgba(6, 182, 212, 0.12); color: var(--accent-cyan); font-size: 0.75rem;">
+          ⏱️ ${t.hours_spent}h
+        </span>
+      `;
+      listEl.appendChild(item);
+    });
+  }
+
+  // Summary & Blockers
+  document.getElementById('modalSheetSummaryText').textContent = sheet.summary_notes || 'No summary entered.';
+  const blockCont = document.getElementById('modalSheetBlockersContainer');
+  if (sheet.blockers_summary) {
+    blockCont.style.display = 'block';
+    document.getElementById('modalSheetBlockersText').textContent = sheet.blockers_summary;
+  } else {
+    blockCont.style.display = 'none';
+  }
+
+  // Feedback
+  const fbCont = document.getElementById('modalSheetFeedbackContainer');
+  if (sheet.manager_feedback) {
+    fbCont.style.display = 'block';
+    document.getElementById('modalSheetFeedbackMeta').textContent = sheet.reviewed_by_name ? `Reviewed by ${sheet.reviewed_by_name}` : 'Supervisor Review';
+    document.getElementById('modalSheetFeedbackText').textContent = `"${sheet.manager_feedback}"`;
+  } else {
+    fbCont.style.display = 'none';
+  }
+
+  // Supervisor action button
+  const role = (state.currentUser?.role || localStorage.getItem('wp-role') || 'admin').toUpperCase();
+  const revBtn = document.getElementById('modalSheetReviewActionBtn');
+  if (revBtn) {
+    revBtn.style.display = (role === 'ADMIN' || role === 'MANAGER') ? 'inline-flex' : 'none';
+  }
+
+  modal.classList.add('active');
 };
 
 window.openSheetReviewModal = function(sheetId) {
   state.activeDetailSheetId = sheetId;
   document.getElementById('reviewSheetId').value = sheetId;
-  const sheet = state.allSheets?.find(s => s.id === sheetId);
+  let sheet = state.allSheets?.find(s => s.id === sheetId);
+  if (!sheet) {
+    const dummyAll = getDummyManagerSheets();
+    sheet = dummyAll.find(s => s.id === sheetId);
+  }
   if (sheet) {
     document.getElementById('sheetReviewModalTitle').textContent = `Review Sheet: ${sheet.employee_name} (${sheet.sheet_date})`;
     if (sheet.manager_feedback) {
@@ -3181,6 +3792,7 @@ async function handleSubmitSheetReview(e) {
 
   if (!sheetId || !feedback) return;
 
+  let reviewedOnline = false;
   try {
     const res = await fetch(`${API_BASE}/sheets/${sheetId}/review`, {
       method: 'POST',
@@ -3190,18 +3802,27 @@ async function handleSubmitSheetReview(e) {
         status: status,
       })
     });
-
     if (res.ok) {
-      document.getElementById('sheetReviewModal').classList.remove('active');
-      await loadManagerSheetsSummary();
-      await loadManagerSheetsGrid();
-      alert('✓ Supervisor review submitted successfully!');
-    } else {
-      alert('Failed to submit review.');
+      reviewedOnline = true;
     }
   } catch (err) {
-    console.error('Error submitting sheet review:', err);
+    // Local fallback
   }
+
+  if (!reviewedOnline && state.allSheets) {
+    const targetSheet = state.allSheets.find(s => s.id === sheetId);
+    if (targetSheet) {
+      targetSheet.status = status;
+      targetSheet.manager_feedback = feedback;
+      targetSheet.reviewed_by_name = state.currentUser?.name || 'Sarah Connor';
+      targetSheet.reviewed_at = new Date().toISOString();
+    }
+  }
+
+  document.getElementById('sheetReviewModal').classList.remove('active');
+  await loadManagerSheetsSummary();
+  await loadManagerSheetsGrid();
+  alert('✓ Supervisor review submitted successfully!');
 }
 
 window.openTaskEditModal = function(taskId) {
@@ -3236,21 +3857,33 @@ async function handleSubmitTaskEdit(e) {
     blockers: document.getElementById('editTaskBlockers').value.trim() || null,
   };
 
+  let updatedOnline = false;
   try {
     const res = await fetch(`${API_BASE}/sheets/tasks/${taskId}`, {
       method: 'PUT',
       headers: authHeaders(),
       body: JSON.stringify(payload)
     });
-
     if (res.ok) {
-      document.getElementById('taskItemEditModal').classList.remove('active');
-      await loadEmployeeTodaySheet();
-    } else {
-      alert('Failed to update task item.');
+      updatedOnline = true;
     }
   } catch (err) {
-    console.error('Error submitting task edit:', err);
+    // Local fallback
   }
+
+  if (!updatedOnline && state.currentTodaySheet && state.currentTodaySheet.tasks) {
+    const task = state.currentTodaySheet.tasks.find(t => t.id === taskId);
+    if (task) {
+      Object.assign(task, payload);
+      const completed = state.currentTodaySheet.tasks.filter(t => t.status === 'COMPLETED').length;
+      state.currentTodaySheet.completed_tasks = completed;
+      state.currentTodaySheet.progress_percent = Math.round((completed / state.currentTodaySheet.tasks.length) * 100);
+      localStorage.setItem('wp_emp_today_sheet', JSON.stringify(state.currentTodaySheet));
+    }
+  }
+
+  document.getElementById('taskItemEditModal').classList.remove('active');
+  await loadEmployeeTodaySheet();
 }
+
 

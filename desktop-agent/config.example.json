@@ -1,0 +1,13 @@
+{
+  "server_url": "http://YOUR_SERVER_IP:8000",
+  "employee_code": "EMP001",
+  "sync_interval_seconds": 60,
+  "screenshot_interval_seconds": 600,
+  "screenshot_quality": 65,
+  "screenshot_max_width": 1280,
+  "screenshot_max_height": 720,
+  "grid_cols": 20,
+  "grid_rows": 12,
+  "idle_threshold_seconds": 60,
+  "max_queue_items": 1000
+}

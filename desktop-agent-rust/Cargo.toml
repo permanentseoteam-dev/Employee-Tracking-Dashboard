@@ -1,0 +1,22 @@
+[package]
+name = "workpulse-agent"
+version = "0.1.0"
+edition = "2021"
+description = "Lightweight Windows attendance, input aggregator and screenshot agent"
+
+[dependencies]
+tokio = { version = "1.38", features = ["full"] }
+reqwest = { version = "0.12", features = ["json", "multipart"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+rusqlite = { version = "0.31", features = ["bundled"] }
+chrono = { version = "0.4", features = ["serde"] }
+image = { version = "0.25", default-features = false, features = ["webp"] }
+windows = { version = "0.58", features = [
+    "Win32_UI_WindowsAndMessaging",
+    "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_Graphics_Gdi",
+    "Win32_System_SystemInformation"
+] }
+whoami = "1.5"
+uuid = { version = "1.8", features = ["v4"] }

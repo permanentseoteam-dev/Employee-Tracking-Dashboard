@@ -704,30 +704,6 @@ body {
   box-shadow: 0 4px 24px rgba(0,0,0,0.6);
 }
 
-/* Simulator Drawer */
-.sim-box {
-  background: rgba(99, 102, 241, 0.05);
-  border: 1px dashed var(--border-accent);
-  border-radius: var(--radius-md);
-  padding: 18px;
-  margin-bottom: 24px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  flex-wrap: wrap;
-}
-
-.sim-text h4 {
-  font-size: 0.95rem;
-  color: #fff;
-  margin-bottom: 4px;
-}
-
-.sim-text p {
-  font-size: 0.8rem;
-  color: var(--text-muted);
-}
 
 /* Danger Button */
 .btn-danger {

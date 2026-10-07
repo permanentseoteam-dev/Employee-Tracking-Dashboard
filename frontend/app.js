@@ -220,11 +220,6 @@ function setupEventListeners() {
 
   safeListen('themeToggleBtn', 'click', toggleTheme);
 
-  // Simulator Buttons
-  safeListen('simulateOnTimeBtn', 'click', () => simulateCheckIn('ontime'));
-  safeListen('simulateLateBtn', 'click', () => simulateCheckIn('late'));
-  safeListen('simulateScreenshotBtn', 'click', simulateScreenshotCapture);
-
   // Filter Buttons
   safeListen('applyAttFilterBtn', 'click', loadAttendanceRollCall);
   safeListen('loadHeatmapBtn', 'click', renderHeatmapForSelected);
@@ -473,7 +468,7 @@ async function loadOverviewData() {
       const tbody = document.getElementById('overviewAttendanceTbody');
       tbody.innerHTML = '';
       if (list.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; color: var(--text-dim);">No attendance recorded yet today. Click "Simulate Check-in" above!</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; color: var(--text-dim);">No attendance recorded yet today.</td></tr>`;
         return;
       }
       list.forEach(row => {
@@ -1113,139 +1108,7 @@ async function purgeRetentionNow() {
   }
 }
 
-// 6. Windows Agent Simulator Implementation
-async function getOrRegisterSimulatorDevice() {
-  if (state.currentDeviceToken) return state.currentDeviceToken;
 
-  const res = await fetch(`${API_BASE}/devices/register`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      employee_code: 'EMP001',
-      device_identifier: 'DEV-SIMULATOR-001',
-      hostname: 'ALEX-SIMULATED-PC',
-      os_version: 'Windows 11 Pro 23H2',
-      agent_version: '1.0.0-rust-sim'
-    })
-  });
-  if (res.ok) {
-    const data = await res.json();
-    state.currentDeviceToken = data.api_token;
-    return state.currentDeviceToken;
-  }
-  return null;
-}
-
-async function simulateCheckIn(type) {
-  const token = await getOrRegisterSimulatorDevice();
-  if (!token) {
-    alert('Failed to register device token.');
-    return;
-  }
-
-  const todayStr = new Date().toISOString().split('T')[0];
-  const startTime = type === 'ontime' ? `${todayStr}T08:54:00Z` : `${todayStr}T09:25:00Z`;
-  const endTime = type === 'ontime' ? `${todayStr}T09:00:00Z` : `${todayStr}T09:30:00Z`;
-
-  const syncPayload = {
-    system_events: [
-      { event_type: 'BOOT', timestamp: `${todayStr}T08:30:00Z` },
-      { event_type: 'LOGIN', timestamp: startTime }
-    ],
-    activity_batches: [
-      {
-        start_time: startTime,
-        end_time: endTime,
-        key_press_count: type === 'ontime' ? 340 : 120,
-        mouse_click_count: 55,
-        mouse_move_count: 850,
-        active_seconds: 360,
-        idle_seconds: 0
-      }
-    ],
-    heatmap_batches: [
-      {
-        window_start: startTime,
-        window_end: endTime,
-        screen_width: 1920,
-        screen_height: 1080,
-        grid_cols: 20,
-        grid_rows: 12,
-        grid_matrix: {
-          '1,2': 18, '2,2': 24, '3,5': 12, '5,8': 35, '6,8': 42,
-          '4,10': 15, '7,15': 29, '8,15': 38, '0,0': 8
-        }
-      }
-    ]
-  };
-
-  const res = await fetch(`${API_BASE}/agent/sync/batch`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-Device-Token': token
-    },
-    body: JSON.stringify(syncPayload)
-  });
-
-  if (res.ok) {
-    alert(`Simulated ${type === 'ontime' ? 'On-Time (PRESENT)' : 'Late Arrival (LATE)'} check-in successfully!`);
-    refreshAll();
-  }
-}
-
-async function simulateScreenshotCapture() {
-  const token = await getOrRegisterSimulatorDevice();
-  if (!token) return;
-
-  // Generate mock WebP canvas screenshot
-  const simCanvas = document.createElement('canvas');
-  simCanvas.width = 1280;
-  simCanvas.height = 720;
-  const simCtx = simCanvas.getContext('2d');
-
-  // Draw simulated desktop
-  simCtx.fillStyle = '#0f172a';
-  simCtx.fillRect(0, 0, 1280, 720);
-
-  // Gradient window
-  const grad = simCtx.createLinearGradient(100, 100, 1100, 600);
-  grad.addColorStop(0, '#1e293b');
-  grad.addColorStop(1, '#0f172a');
-  simCtx.fillStyle = grad;
-  simCtx.fillRect(80, 80, 1120, 540);
-
-  // Code editor lines
-  simCtx.fillStyle = '#38bdf8';
-  simCtx.font = '24px monospace';
-  simCtx.fillText('// WorkPulse Desktop Session Simulator', 120, 140);
-  simCtx.fillStyle = '#a5b4fc';
-  simCtx.fillText(`// Captured: ${new Date().toISOString()}`, 120, 180);
-
-  for (let i = 0; i < 8; i++) {
-    simCtx.fillStyle = i % 2 === 0 ? 'rgba(99, 102, 241, 0.4)' : 'rgba(16, 185, 129, 0.3)';
-    simCtx.fillRect(120, 220 + i * 35, 300 + (i * 70 % 500), 18);
-  }
-
-  simCanvas.toBlob(async (blob) => {
-    const formData = new FormData();
-    formData.append('file', blob, 'desktop_capture.webp');
-    formData.append('captured_at', new Date().toISOString());
-    formData.append('width', '1280');
-    formData.append('height', '720');
-
-    const res = await fetch(`${API_BASE}/agent/screenshots/upload`, {
-      method: 'POST',
-      headers: { 'X-Device-Token': token },
-      body: formData
-    });
-
-    if (res.ok) {
-      alert('Simulated screenshot uploaded and compressed as WebP!');
-      if (state.activeTab === 'tab-screenshots') loadScreenshotsGallery();
-    }
-  }, 'image/webp', 0.65);
-}
 
 // ============================================
 // Notification Center Controller

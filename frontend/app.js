@@ -24,7 +24,63 @@ const state = {
 function applyRolePermissions() {
   const role = (state.currentUser?.role || localStorage.getItem('wp-role') || 'admin').toUpperCase();
 
-  // 1. Finance Tab Navigation Button: Visible ONLY for ADMIN
+  // 1. Task Sheets vs Activity Heatmap: Employee replaces Heatmap with Sheet tab
+  const sheetTabBtn = document.getElementById('btn-tab-sheets');
+  const sheetNavLabel = document.getElementById('sheetTabNavLabel');
+  const activityTabBtn = document.getElementById('btn-tab-activity');
+  const sheetsMgrWs = document.getElementById('sheetsManagerWorkspace');
+  const sheetsEmpWs = document.getElementById('sheetsEmployeeWorkspace');
+  const sheetsRoleBadge = document.getElementById('sheetsRoleContextBadge');
+
+  if (sheetTabBtn) {
+    sheetTabBtn.style.display = 'inline-flex';
+    if (role === 'EMPLOYEE') {
+      if (sheetNavLabel) sheetNavLabel.textContent = 'Daily Task Sheet';
+    } else if (role === 'MANAGER') {
+      if (sheetNavLabel) sheetNavLabel.textContent = 'Team Task Sheets';
+    } else {
+      if (sheetNavLabel) sheetNavLabel.textContent = 'Employee Task Sheets';
+    }
+  }
+
+  // Employee role replaces Heatmap tab with Sheet tab
+  if (activityTabBtn) {
+    if (role === 'EMPLOYEE') {
+      activityTabBtn.style.display = 'none';
+      if (state.activeTab === 'tab-activity') {
+        state.activeTab = 'tab-sheets';
+      }
+    } else {
+      activityTabBtn.style.display = 'inline-flex';
+    }
+  }
+
+  // Sheet Tab Workspaces: Manager/Admin Cards Grid vs Employee Task Submission
+  if (role === 'EMPLOYEE') {
+    if (sheetsEmpWs) sheetsEmpWs.style.display = 'block';
+    if (sheetsMgrWs) sheetsMgrWs.style.display = 'none';
+    if (sheetsRoleBadge) {
+      sheetsRoleBadge.textContent = 'MY DAILY SHEET';
+      sheetsRoleBadge.className = 'role-pill employee';
+    }
+  } else if (role === 'MANAGER') {
+    if (sheetsMgrWs) sheetsMgrWs.style.display = 'block';
+    if (sheetsEmpWs) sheetsEmpWs.style.display = 'none';
+    if (sheetsRoleBadge) {
+      sheetsRoleBadge.textContent = 'MANAGER VIEW';
+      sheetsRoleBadge.className = 'role-pill manager';
+    }
+  } else {
+    // ADMIN
+    if (sheetsMgrWs) sheetsMgrWs.style.display = 'block';
+    if (sheetsEmpWs) sheetsEmpWs.style.display = 'none';
+    if (sheetsRoleBadge) {
+      sheetsRoleBadge.textContent = 'ADMIN VIEW';
+      sheetsRoleBadge.className = 'role-pill admin';
+    }
+  }
+
+  // 2. Finance Tab Navigation Button: Visible ONLY for ADMIN
   const finTabBtn = document.getElementById('btn-tab-finance');
   if (finTabBtn) {
     if (role === 'ADMIN') {
@@ -37,7 +93,7 @@ function applyRolePermissions() {
     }
   }
 
-  // 2. Screenshot Gallery Tab: Visible for ADMIN and MANAGER, HIDDEN for EMPLOYEE
+  // 3. Screenshot Gallery Tab: Visible for ADMIN and MANAGER, HIDDEN for EMPLOYEE
   const ssTabBtn = document.getElementById('btn-tab-screenshots');
   if (ssTabBtn) {
     if (role === 'EMPLOYEE') {
@@ -50,14 +106,13 @@ function applyRolePermissions() {
     }
   }
 
-  // 3. Rules & Stars Workspaces: Admin Hub vs Personal Performance Scorecard
+  // 4. Rules & Stars Workspaces: Admin Hub vs Personal Performance Scorecard
   const adminWs = document.getElementById('rulesAdminWorkspace');
   const personalWs = document.getElementById('rulesPersonalWorkspace');
   if (role === 'ADMIN') {
     if (adminWs) adminWs.style.display = 'block';
     if (personalWs) personalWs.style.display = 'none';
   } else {
-    // Both EMPLOYEE and MANAGER view only personal performance & policy violations
     if (adminWs) adminWs.style.display = 'none';
     if (personalWs) personalWs.style.display = 'block';
   }
@@ -72,6 +127,9 @@ window.switchTab = function switchTab(tabId) {
   }
   if (tabId === 'tab-screenshots' && role === 'EMPLOYEE') {
     tabId = 'tab-overview';
+  }
+  if (tabId === 'tab-activity' && role === 'EMPLOYEE') {
+    tabId = 'tab-sheets';
   }
   state.activeTab = tabId;
 
@@ -103,7 +161,10 @@ window.switchTab = function switchTab(tabId) {
     if (tabId === 'tab-overview') loadOverviewData();
     else if (tabId === 'tab-employees') loadEmployeesDirectory();
     else if (tabId === 'tab-attendance') loadAttendanceRollCall();
-    else if (tabId === 'tab-activity') loadActivityTab();
+    else if (tabId === 'tab-sheets') loadSheetsTab();
+    else if (tabId === 'tab-activity') {
+      if (role !== 'EMPLOYEE') loadActivityTab();
+    }
     else if (tabId === 'tab-screenshots') {
       if (role !== 'EMPLOYEE') {
         loadScreenshotsGallery();
@@ -397,6 +458,80 @@ function setupEventListeners() {
       if (e.target.id === 'financeDetailModal') finModal.classList.remove('active');
     });
   }
+
+  // Task Sheets Event Listeners
+  safeListen('sheetDatePresetFilter', 'change', loadManagerSheetsGrid);
+  safeListen('sheetDeptFilter', 'change', loadManagerSheetsGrid);
+  safeListen('sheetEmpFilter', 'change', loadManagerSheetsGrid);
+  safeListen('sheetStatusFilter', 'change', loadManagerSheetsGrid);
+  safeListen('sheetSearchInput', 'input', () => {
+    clearTimeout(window._sheetSearchTimeout);
+    window._sheetSearchTimeout = setTimeout(loadManagerSheetsGrid, 250);
+  });
+  safeListen('refreshSheetsBtn', 'click', loadSheetsTab);
+
+  safeListen('sheetsViewGridBtn', 'click', () => {
+    state.sheetsViewMode = 'grid';
+    const gridBtn = document.getElementById('sheetsViewGridBtn');
+    const tblBtn = document.getElementById('sheetsViewTableBtn');
+    if (gridBtn) { gridBtn.className = 'btn btn-sm active'; gridBtn.style.background = 'var(--accent-primary)'; gridBtn.style.color = '#fff'; }
+    if (tblBtn) { tblBtn.className = 'btn btn-sm btn-secondary'; tblBtn.style.background = ''; tblBtn.style.color = ''; }
+    const gridContainer = document.getElementById('sheetsCardsGrid');
+    const tblContainer = document.getElementById('sheetsTableContainer');
+    if (gridContainer) gridContainer.style.display = 'grid';
+    if (tblContainer) tblContainer.style.display = 'none';
+    renderSheetsCardsGrid(state.allSheets || []);
+  });
+
+  safeListen('sheetsViewTableBtn', 'click', () => {
+    state.sheetsViewMode = 'table';
+    const gridBtn = document.getElementById('sheetsViewGridBtn');
+    const tblBtn = document.getElementById('sheetsViewTableBtn');
+    if (tblBtn) { tblBtn.className = 'btn btn-sm active'; tblBtn.style.background = 'var(--accent-primary)'; tblBtn.style.color = '#fff'; }
+    if (gridBtn) { gridBtn.className = 'btn btn-sm btn-secondary'; gridBtn.style.background = ''; gridBtn.style.color = ''; }
+    const gridContainer = document.getElementById('sheetsCardsGrid');
+    const tblContainer = document.getElementById('sheetsTableContainer');
+    if (gridContainer) gridContainer.style.display = 'none';
+    if (tblContainer) tblContainer.style.display = 'block';
+    renderSheetsTableView(state.allSheets || []);
+  });
+
+  // Employee Task Sheet Form Actions
+  safeListen('quickTaskAddForm', 'submit', handleQuickTaskAdd);
+  safeListen('empOpenAddTaskBtn', 'click', () => {
+    const input = document.getElementById('quickTaskTitle');
+    if (input) { input.focus(); input.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
+  });
+  safeListen('empSaveDraftBtn', 'click', () => handleSaveEmployeeSheet(false));
+  safeListen('empSubmitSheetBtn', 'click', () => handleSaveEmployeeSheet(true));
+
+  // Task Sheet Modals
+  safeListen('closeSheetDetailsModalBtn', 'click', () => {
+    document.getElementById('sheetDetailsModal')?.classList.remove('active');
+  });
+  safeListen('modalSheetCloseFooterBtn', 'click', () => {
+    document.getElementById('sheetDetailsModal')?.classList.remove('active');
+  });
+  safeListen('modalSheetReviewActionBtn', 'click', () => {
+    const sheetId = state.activeDetailSheetId;
+    document.getElementById('sheetDetailsModal')?.classList.remove('active');
+    if (sheetId) openSheetReviewModal(sheetId);
+  });
+  safeListen('closeSheetReviewModalBtn', 'click', () => {
+    document.getElementById('sheetReviewModal')?.classList.remove('active');
+  });
+  safeListen('cancelSheetReviewBtn', 'click', () => {
+    document.getElementById('sheetReviewModal')?.classList.remove('active');
+  });
+  safeListen('sheetReviewForm', 'submit', handleSubmitSheetReview);
+
+  safeListen('closeTaskEditModalBtn', 'click', () => {
+    document.getElementById('taskItemEditModal')?.classList.remove('active');
+  });
+  safeListen('cancelTaskEditBtn', 'click', () => {
+    document.getElementById('taskItemEditModal')?.classList.remove('active');
+  });
+  safeListen('taskItemEditForm', 'submit', handleSubmitTaskEdit);
 }
 
 async function ensureAuthenticated() {
@@ -2295,6 +2430,827 @@ async function loadNonAdminInbox() {
     });
   } catch (err) {
     console.error('Error loading personal inbox:', err);
+  }
+}
+
+// ==========================================================================
+// 8. Daily Task Sheets & Work Logs Controller
+// ==========================================================================
+
+state.allSheets = [];
+state.currentTodaySheet = null;
+state.activeDetailSheetId = null;
+state.sheetsViewMode = 'grid';
+
+async function loadSheetsTab() {
+  await ensureAuthenticated();
+  const role = (state.currentUser?.role || localStorage.getItem('wp-role') || 'admin').toUpperCase();
+  applyRolePermissions();
+
+  if (role === 'EMPLOYEE') {
+    await loadEmployeeTodaySheet();
+    await loadEmployeePastSheets();
+  } else {
+    // MANAGER or ADMIN
+    await populateSheetFilterDropdowns();
+    await loadManagerSheetsSummary();
+    await loadManagerSheetsGrid();
+  }
+}
+
+async function populateSheetFilterDropdowns() {
+  const deptSelect = document.getElementById('sheetDeptFilter');
+  const empSelect = document.getElementById('sheetEmpFilter');
+  if (!deptSelect || !empSelect) return;
+
+  try {
+    // Populate departments
+    const deptRes = await fetch(`${API_BASE}/departments`, { headers: authHeaders() });
+    if (deptRes.ok) {
+      const depts = await deptRes.json();
+      const currentDeptVal = deptSelect.value;
+      deptSelect.innerHTML = '<option value="">All Departments</option>';
+      depts.forEach(d => {
+        deptSelect.innerHTML += `<option value="${d.id}">${d.name} (${d.code})</option>`;
+      });
+      deptSelect.value = currentDeptVal;
+    }
+
+    // Populate employees
+    const empRes = await fetch(`${API_BASE}/employees`, { headers: authHeaders() });
+    if (empRes.ok) {
+      const emps = await empRes.json();
+      const currentEmpVal = empSelect.value;
+      empSelect.innerHTML = '<option value="">All Employees</option>';
+      emps.forEach(e => {
+        empSelect.innerHTML += `<option value="${e.id}">${e.name} (${e.employee_code})</option>`;
+      });
+      empSelect.value = currentEmpVal;
+    }
+  } catch (err) {
+    console.error('Error populating sheet filters:', err);
+  }
+}
+
+async function loadManagerSheetsSummary() {
+  try {
+    const preset = document.getElementById('sheetDatePresetFilter')?.value || 'today';
+    let url = `${API_BASE}/sheets/stats/summary`;
+    if (preset === 'today') url += '?date=today';
+    else if (preset === 'yesterday') {
+      const y = new Date();
+      y.setDate(y.getDate() - 1);
+      url += `?date=${y.toISOString().split('T')[0]}`;
+    }
+
+    const res = await fetch(url, { headers: authHeaders() });
+    if (res.ok) {
+      const stats = await res.json();
+      const setVal = (id, val) => {
+        const el = document.getElementById(id);
+        if (el) el.textContent = val;
+      };
+      setVal('kpiSheetTotal', stats.total_sheets);
+      setVal('kpiSheetSubmitted', stats.submitted_sheets);
+      setVal('kpiSheetCompletedTasks', stats.completed_tasks);
+      setVal('kpiSheetTotalHours', `${stats.total_hours.toFixed(1)}h`);
+      setVal('kpiSheetPendingReviews', stats.pending_reviews);
+    }
+  } catch (err) {
+    console.error('Error loading sheet summary KPI:', err);
+  }
+}
+
+async function loadManagerSheetsGrid() {
+  const grid = document.getElementById('sheetsCardsGrid');
+  const tbody = document.getElementById('sheetsTableTbody');
+  if (!grid && !tbody) return;
+
+  try {
+    const preset = document.getElementById('sheetDatePresetFilter')?.value || 'today';
+    const deptId = document.getElementById('sheetDeptFilter')?.value || '';
+    const empId = document.getElementById('sheetEmpFilter')?.value || '';
+    const status = document.getElementById('sheetStatusFilter')?.value || 'ALL';
+    const search = document.getElementById('sheetSearchInput')?.value || '';
+
+    let queryParams = [];
+    if (preset === 'today') queryParams.push('date=today');
+    else if (preset === 'yesterday') {
+      const y = new Date();
+      y.setDate(y.getDate() - 1);
+      queryParams.push(`date=${y.toISOString().split('T')[0]}`);
+    }
+    if (deptId) queryParams.push(`department_id=${encodeURIComponent(deptId)}`);
+    if (empId) queryParams.push(`employee_id=${encodeURIComponent(empId)}`);
+    if (status && status !== 'ALL') queryParams.push(`status=${encodeURIComponent(status)}`);
+    if (search.trim()) queryParams.push(`search=${encodeURIComponent(search.trim())}`);
+
+    const qStr = queryParams.length > 0 ? `?${queryParams.join('&')}` : '';
+    const res = await fetch(`${API_BASE}/sheets${qStr}`, { headers: authHeaders() });
+
+    if (!res.ok) {
+      if (grid) grid.innerHTML = `<div style="grid-column: 1 / -1; text-align: center; color: var(--accent-rose); padding: 30px;">Failed to load employee task sheets.</div>`;
+      return;
+    }
+
+    const sheets = await res.json();
+    state.allSheets = sheets;
+
+    if (state.sheetsViewMode === 'table') {
+      renderSheetsTableView(sheets);
+    } else {
+      renderSheetsCardsGrid(sheets);
+    }
+  } catch (err) {
+    console.error('Error loading manager sheets:', err);
+  }
+}
+
+function renderSheetsCardsGrid(sheets) {
+  const grid = document.getElementById('sheetsCardsGrid');
+  if (!grid) return;
+  grid.innerHTML = '';
+
+  if (sheets.length === 0) {
+    grid.innerHTML = `
+      <div style="grid-column: 1 / -1; text-align: center; color: var(--text-dim); padding: 50px 20px; background: rgba(255,255,255,0.02); border-radius: var(--radius-lg); border: 1px dashed var(--border-subtle);">
+        <div style="font-size: 2.5rem; margin-bottom: 12px;">📑</div>
+        <div style="font-size: 1.05rem; font-weight: 700; color: var(--text-main);">No employee task sheets found.</div>
+        <div style="font-size: 0.82rem; color: var(--text-muted); margin-top: 6px;">Try adjusting your date or department filters above.</div>
+      </div>
+    `;
+    return;
+  }
+
+  sheets.forEach(sheet => {
+    const card = document.createElement('div');
+    const statusLower = (sheet.status || 'draft').toLowerCase();
+    card.className = `sheet-card ${statusLower}`;
+
+    const initials = (sheet.employee_name || 'Staff')
+      .split(' ')
+      .map(n => n[0])
+      .join('')
+      .slice(0, 2)
+      .toUpperCase();
+
+    // Status Pill
+    let statusLabel = sheet.status;
+    let statusClass = statusLower;
+    if (sheet.status === 'APPROVED') statusLabel = '⭐ APPROVED';
+    else if (sheet.status === 'REVIEWED') statusLabel = '👁️ REVIEWED';
+    else if (sheet.status === 'SUBMITTED') statusLabel = '⏳ SUBMITTED';
+    else statusLabel = '📝 DRAFT';
+
+    // Tasks preview (top 3)
+    const taskCount = sheet.tasks ? sheet.tasks.length : 0;
+    const completedCount = sheet.completed_tasks || 0;
+    const progressPercent = sheet.progress_percent || 0;
+
+    let tasksHtml = '';
+    if (sheet.tasks && sheet.tasks.length > 0) {
+      const previewTasks = sheet.tasks.slice(0, 3);
+      tasksHtml = previewTasks.map(t => {
+        const isDone = t.status === 'COMPLETED';
+        const icon = isDone ? '✅' : (t.status === 'IN_PROGRESS' ? '⏳' : (t.status === 'BLOCKED' ? '⛔' : '⭕'));
+        const prioLower = (t.priority || 'medium').toLowerCase();
+        return `
+          <div class="sheet-task-item ${isDone ? 'completed' : ''}">
+            <div style="display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0;">
+              <span>${icon}</span>
+              <span class="task-title-text" style="font-weight: 600; font-size: 0.78rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${t.title}</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 6px; flex-shrink: 0;">
+              <span class="prio-pill ${prioLower}">${t.priority}</span>
+              <span class="cat-pill">${t.hours_spent}h</span>
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      if (taskCount > 3) {
+        tasksHtml += `
+          <div style="text-align: center; font-size: 0.73rem; color: var(--accent-cyan); font-weight: 600; padding: 2px 0;">
+            +${taskCount - 3} more task${taskCount - 3 > 1 ? 's' : ''} in sheet...
+          </div>
+        `;
+      }
+    } else {
+      tasksHtml = `<div style="text-align: center; color: var(--text-dim); font-size: 0.75rem; padding: 10px;">No task items recorded for this date.</div>`;
+    }
+
+    // Summary excerpt
+    const summaryExcerpt = sheet.summary_notes 
+      ? `<div style="font-size: 0.76rem; color: var(--text-muted); background: rgba(0,0,0,0.2); border-radius: var(--radius-sm); padding: 8px 10px; line-height: 1.4; border-left: 2px solid var(--accent-primary);">
+           <strong>Summary:</strong> ${sheet.summary_notes.slice(0, 95)}${sheet.summary_notes.length > 95 ? '...' : ''}
+         </div>`
+      : '';
+
+    // Blocker snippet
+    const blockerSnippet = sheet.blockers_summary
+      ? `<div style="font-size: 0.74rem; color: var(--accent-rose); background: rgba(244, 63, 94, 0.08); border-radius: var(--radius-sm); padding: 6px 10px; border-left: 2px solid var(--accent-rose);">
+           <strong>⚠️ Blocker:</strong> ${sheet.blockers_summary.slice(0, 80)}
+         </div>`
+      : '';
+
+    // Manager Feedback snippet
+    const feedbackSnippet = sheet.manager_feedback
+      ? `<div style="font-size: 0.74rem; color: var(--accent-violet); background: rgba(139, 92, 246, 0.08); border-radius: var(--radius-sm); padding: 6px 10px; border-left: 2px solid var(--accent-violet); font-style: italic;">
+           <strong>⭐ Review:</strong> "${sheet.manager_feedback.slice(0, 75)}..."
+         </div>`
+      : '';
+
+    card.innerHTML = `
+      <div>
+        <div class="sheet-card-header">
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <div class="sheet-user-avatar">
+              ${initials}
+            </div>
+            <div>
+              <div style="display: flex; align-items: center; gap: 6px;">
+                <h4 style="font-size: 0.96rem; font-weight: 700; color: var(--text-main); margin: 0;">${sheet.employee_name || 'Employee'}</h4>
+                <code style="font-size: 0.7rem; color: var(--accent-cyan);">${sheet.employee_code || ''}</code>
+              </div>
+              <div style="font-size: 0.73rem; color: var(--text-dim); margin-top: 2px;">
+                <span>${sheet.department_name || 'General'}</span> &bull; <strong style="color: var(--text-muted);">${sheet.sheet_date}</strong>
+              </div>
+            </div>
+          </div>
+          <span class="sheet-status-pill ${statusClass}">${statusLabel}</span>
+        </div>
+
+        <!-- Progress and Hours Bar -->
+        <div style="margin: 14px 0 10px 0;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; font-size: 0.75rem;">
+            <span style="color: var(--text-muted); font-weight: 600;">
+              Progress: <strong style="color: var(--text-main);">${completedCount}/${taskCount} Done</strong> (${progressPercent}%)
+            </span>
+            <span class="badge" style="background: rgba(6, 182, 212, 0.12); color: var(--accent-cyan); font-weight: 700; font-size: 0.72rem; padding: 2px 7px;">
+              ⏱️ ${sheet.total_hours} hrs
+            </span>
+          </div>
+          <div style="width: 100%; height: 5px; background: rgba(255, 255, 255, 0.06); border-radius: 3px; overflow: hidden;">
+            <div style="height: 100%; background: linear-gradient(90deg, var(--accent-primary), var(--accent-cyan)); width: ${progressPercent}%;"></div>
+          </div>
+        </div>
+
+        <!-- Task Preview Items -->
+        <div style="display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px;">
+          ${tasksHtml}
+        </div>
+
+        ${summaryExcerpt}
+        ${blockerSnippet}
+        ${feedbackSnippet}
+      </div>
+
+      <!-- Action Buttons Footer -->
+      <div style="display: flex; gap: 8px; justify-content: flex-end; align-items: center; border-top: 1px solid var(--border-subtle); padding-top: 12px; margin-top: 4px;">
+        <button class="btn btn-secondary btn-sm" onclick="openSheetDetailsModal('${sheet.id}')" style="padding: 5px 12px; font-size: 0.74rem; display: flex; align-items: center; gap: 4px;">
+          <span>👁️</span>
+          <span>Full Details</span>
+        </button>
+        <button class="btn btn-primary btn-sm" onclick="openSheetReviewModal('${sheet.id}')" style="padding: 5px 14px; font-size: 0.74rem; display: flex; align-items: center; gap: 4px; background: linear-gradient(135deg, var(--accent-violet), var(--accent-primary)); font-weight: 600;">
+          <span>⭐</span>
+          <span>Review / Approve</span>
+        </button>
+      </div>
+    `;
+
+    grid.appendChild(card);
+  });
+}
+
+function renderSheetsTableView(sheets) {
+  const tbody = document.getElementById('sheetsTableTbody');
+  if (!tbody) return;
+  tbody.innerHTML = '';
+
+  if (sheets.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="9" style="text-align: center; color: var(--text-dim); padding: 30px;">No employee task sheets found matching criteria.</td></tr>`;
+    return;
+  }
+
+  sheets.forEach(sheet => {
+    const tr = document.createElement('tr');
+    const statusLower = (sheet.status || 'draft').toLowerCase();
+    const taskCount = sheet.tasks ? sheet.tasks.length : 0;
+    const completedCount = sheet.completed_tasks || 0;
+    const progressPercent = sheet.progress_percent || 0;
+
+    let reviewInfo = '<span style="color: var(--text-dim);">-</span>';
+    if (sheet.reviewed_by_name) {
+      reviewInfo = `<span style="color: var(--accent-violet); font-size: 0.75rem; font-weight: 600;">Reviewed by ${sheet.reviewed_by_name}</span>`;
+    }
+
+    tr.innerHTML = `
+      <td>
+        <div style="font-weight: 600; color: var(--text-main);">${sheet.employee_name || 'Employee'}</div>
+        <code style="font-size: 0.7rem; color: var(--accent-cyan);">${sheet.employee_code || ''}</code>
+      </td>
+      <td style="color: var(--text-muted); font-size: 0.78rem;">${sheet.sheet_date}</td>
+      <td><span class="cat-pill">${sheet.department_name || 'General'}</span></td>
+      <td style="font-size: 0.78rem;">${completedCount}/${taskCount} items</td>
+      <td>
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <div style="width: 60px; height: 5px; background: rgba(255,255,255,0.06); border-radius: 3px; overflow: hidden;">
+            <div style="height: 100%; background: var(--accent-emerald); width: ${progressPercent}%;"></div>
+          </div>
+          <span style="font-size: 0.75rem; font-weight: 600;">${progressPercent}%</span>
+        </div>
+      </td>
+      <td><strong style="color: var(--accent-cyan);">${sheet.total_hours} hrs</strong></td>
+      <td><span class="sheet-status-pill ${statusLower}">${sheet.status}</span></td>
+      <td>${reviewInfo}</td>
+      <td>
+        <div style="display: flex; gap: 6px;">
+          <button class="btn btn-secondary btn-sm" onclick="openSheetDetailsModal('${sheet.id}')" style="padding: 3px 8px; font-size: 0.72rem;">Details</button>
+          <button class="btn btn-primary btn-sm" onclick="openSheetReviewModal('${sheet.id}')" style="padding: 3px 8px; font-size: 0.72rem;">Review</button>
+        </div>
+      </td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+// ==========================================================================
+// Employee View: Personal Daily Task Sheet
+// ==========================================================================
+
+async function loadEmployeeTodaySheet() {
+  try {
+    const res = await fetch(`${API_BASE}/sheets/today`, { headers: authHeaders() });
+    if (!res.ok) throw new Error('Failed to load today sheet');
+    const sheet = await res.json();
+    state.currentTodaySheet = sheet;
+
+    // Header updates
+    const badge = document.getElementById('empSheetStatusBadge');
+    if (badge) {
+      const st = (sheet.status || 'DRAFT').toUpperCase();
+      badge.textContent = st;
+      badge.className = `sheet-status-pill ${st.toLowerCase()}`;
+    }
+
+    const hoursBadge = document.getElementById('empSheetTotalHoursBadge');
+    if (hoursBadge) hoursBadge.textContent = `${sheet.total_hours.toFixed(1)} hrs`;
+
+    const ratioBadge = document.getElementById('empSheetTasksRatioBadge');
+    if (ratioBadge) {
+      ratioBadge.textContent = `${sheet.completed_tasks} / ${sheet.total_tasks} (${sheet.progress_percent}%)`;
+    }
+
+    // Populate notes
+    const sumNotes = document.getElementById('empSheetSummaryNotes');
+    if (sumNotes && document.activeElement !== sumNotes) {
+      sumNotes.value = sheet.summary_notes || '';
+    }
+
+    const blockSummary = document.getElementById('empSheetBlockersSummary');
+    if (blockSummary && document.activeElement !== blockSummary) {
+      blockSummary.value = sheet.blockers_summary || '';
+    }
+
+    // Manager Feedback Banner
+    const fbCard = document.getElementById('empManagerFeedbackCard');
+    if (fbCard) {
+      if (sheet.manager_feedback) {
+        fbCard.style.display = 'block';
+        document.getElementById('empFeedbackReviewerName').textContent = sheet.reviewed_by_name ? `Reviewed by ${sheet.reviewed_by_name}` : 'Supervisor Review Feedback';
+        document.getElementById('empFeedbackDate').textContent = sheet.reviewed_at ? new Date(sheet.reviewed_at).toLocaleString() : '';
+        document.getElementById('empFeedbackContentText').textContent = `"${sheet.manager_feedback}"`;
+      } else {
+        fbCard.style.display = 'none';
+      }
+    }
+
+    renderEmployeeTasks(sheet.tasks || []);
+  } catch (err) {
+    console.error('Error loading employee today sheet:', err);
+  }
+}
+
+function renderEmployeeTasks(tasks) {
+  const container = document.getElementById('empTasksListContainer');
+  const countLabel = document.getElementById('empTasksCountLabel');
+  if (!container) return;
+
+  if (countLabel) countLabel.textContent = `${tasks.length} Task${tasks.length === 1 ? '' : 's'} Listed`;
+  container.innerHTML = '';
+
+  if (tasks.length === 0) {
+    container.innerHTML = `
+      <div style="text-align: center; color: var(--text-dim); padding: 30px; background: rgba(255,255,255,0.02); border-radius: var(--radius-sm); border: 1px dashed var(--border-subtle);">
+        <div style="font-size: 1.8rem; margin-bottom: 6px;">📝</div>
+        <div style="font-weight: 600; color: var(--text-main);">No tasks logged yet for today.</div>
+        <div style="font-size: 0.78rem; color: var(--text-dim); margin-top: 4px;">Use the Quick Task Entry above to list what you're working on today!</div>
+      </div>
+    `;
+    return;
+  }
+
+  tasks.forEach(t => {
+    const isDone = t.status === 'COMPLETED';
+    const prioLower = (t.priority || 'medium').toLowerCase();
+    const row = document.createElement('div');
+    row.className = `sheet-task-item ${isDone ? 'completed' : ''}`;
+    row.style.padding = '12px 16px';
+
+    const descHtml = t.description ? `<div style="font-size: 0.74rem; color: var(--text-muted); margin-top: 4px;">${t.description}</div>` : '';
+    const blockerHtml = t.blockers ? `<div style="font-size: 0.72rem; color: var(--accent-rose); margin-top: 3px;">⚠️ ${t.blockers}</div>` : '';
+
+    row.innerHTML = `
+      <div style="display: flex; align-items: flex-start; gap: 12px; flex: 1; min-width: 0;">
+        <input type="checkbox" class="task-checkbox-custom" ${isDone ? 'checked' : ''} onchange="toggleTaskStatus('${t.id}', this.checked)" title="Mark as completed" style="margin-top: 2px;">
+        <div style="flex: 1; min-width: 0;">
+          <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+            <span class="task-title-text" style="font-weight: 700; font-size: 0.88rem; color: var(--text-main);">${t.title}</span>
+            <span class="prio-pill ${prioLower}">${t.priority}</span>
+            <span class="cat-pill">${t.category}</span>
+          </div>
+          ${descHtml}
+          ${blockerHtml}
+        </div>
+      </div>
+
+      <div style="display: flex; align-items: center; gap: 10px; flex-shrink: 0;">
+        <span class="badge" style="background: rgba(6, 182, 212, 0.12); color: var(--accent-cyan); font-weight: 700; font-size: 0.75rem;">
+          ⏱️ ${t.hours_spent}h
+        </span>
+
+        <select class="input-control" onchange="handleTaskStatusChange('${t.id}', this.value)" style="padding: 3px 8px; font-size: 0.72rem; width: auto;">
+          <option value="TODO" ${t.status === 'TODO' ? 'selected' : ''}>Todo</option>
+          <option value="IN_PROGRESS" ${t.status === 'IN_PROGRESS' ? 'selected' : ''}>In Progress</option>
+          <option value="COMPLETED" ${t.status === 'COMPLETED' ? 'selected' : ''}>Completed</option>
+          <option value="BLOCKED" ${t.status === 'BLOCKED' ? 'selected' : ''}>Blocked</option>
+        </select>
+
+        <button class="btn btn-secondary btn-sm" onclick="openTaskEditModal('${t.id}')" style="padding: 3px 8px; font-size: 0.72rem;" title="Edit task details">✏️</button>
+        <button class="btn btn-danger btn-sm" onclick="deleteTaskItem('${t.id}')" style="padding: 3px 8px; font-size: 0.72rem;" title="Delete task">&times;</button>
+      </div>
+    `;
+
+    container.appendChild(row);
+  });
+}
+
+async function loadEmployeePastSheets() {
+  const grid = document.getElementById('empPastSheetsGrid');
+  if (!grid) return;
+
+  try {
+    const res = await fetch(`${API_BASE}/sheets`, { headers: authHeaders() });
+    if (!res.ok) return;
+    const sheets = await res.json();
+
+    // Filter out today's sheet from past history
+    const todayStr = new Date().toISOString().split('T')[0];
+    const past = sheets.filter(s => s.sheet_date !== todayStr);
+
+    grid.innerHTML = '';
+    if (past.length === 0) {
+      grid.innerHTML = `
+        <div style="grid-column: 1 / -1; text-align: center; color: var(--text-dim); padding: 20px; font-size: 0.8rem;">
+          No previous daily sheets logged yet. Past submitted sheets will be archived here.
+        </div>
+      `;
+      return;
+    }
+
+    past.forEach(s => {
+      const card = document.createElement('div');
+      const stLower = (s.status || 'draft').toLowerCase();
+      card.className = `sheet-card ${stLower}`;
+      card.style.padding = '14px 16px';
+
+      card.innerHTML = `
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+          <div style="font-weight: 700; color: var(--text-main); font-size: 0.9rem;">📅 ${s.sheet_date}</div>
+          <span class="sheet-status-pill ${stLower}">${s.status}</span>
+        </div>
+        <div style="font-size: 0.76rem; color: var(--text-muted); margin-bottom: 8px;">
+          ${s.completed_tasks}/${s.total_tasks} Tasks Resolved &bull; <strong style="color: var(--accent-cyan);">${s.total_hours} hrs</strong>
+        </div>
+        <div style="width: 100%; height: 4px; background: rgba(255,255,255,0.06); border-radius: 2px; overflow: hidden; margin-bottom: 10px;">
+          <div style="height: 100%; background: var(--accent-emerald); width: ${s.progress_percent}%;"></div>
+        </div>
+        <button class="btn btn-secondary btn-sm" onclick="openSheetDetailsModal('${s.id}')" style="width: 100%; font-size: 0.74rem; padding: 4px 8px;">
+          View Past Sheet Details
+        </button>
+      `;
+
+      grid.appendChild(card);
+    });
+  } catch (err) {
+    console.error('Error loading employee past sheets:', err);
+  }
+}
+
+async function handleQuickTaskAdd(e) {
+  e.preventDefault();
+  if (!state.currentTodaySheet) {
+    await loadEmployeeTodaySheet();
+  }
+  const sheetId = state.currentTodaySheet?.id;
+  if (!sheetId) return;
+
+  const title = document.getElementById('quickTaskTitle').value.trim();
+  const category = document.getElementById('quickTaskCategory').value;
+  const priority = document.getElementById('quickTaskPriority').value;
+  const hours = parseFloat(document.getElementById('quickTaskHours').value || '1.0');
+
+  if (!title) return;
+
+  try {
+    const res = await fetch(`${API_BASE}/sheets/${sheetId}/tasks`, {
+      method: 'POST',
+      headers: authHeaders(),
+      body: JSON.stringify({
+        title,
+        category,
+        priority,
+        status: 'TODO',
+        hours_spent: hours,
+      })
+    });
+
+    if (res.ok) {
+      document.getElementById('quickTaskTitle').value = '';
+      await loadEmployeeTodaySheet();
+    } else {
+      alert('Failed to add task item.');
+    }
+  } catch (err) {
+    console.error('Error adding task:', err);
+  }
+}
+
+async function handleSaveEmployeeSheet(isSubmit) {
+  if (!state.currentTodaySheet) return;
+  const sheetId = state.currentTodaySheet.id;
+
+  const summary = document.getElementById('empSheetSummaryNotes')?.value || '';
+  const blockers = document.getElementById('empSheetBlockersSummary')?.value || '';
+  const nextStatus = isSubmit ? 'SUBMITTED' : 'DRAFT';
+
+  try {
+    const res = await fetch(`${API_BASE}/sheets/${sheetId}`, {
+      method: 'PUT',
+      headers: authHeaders(),
+      body: JSON.stringify({
+        summary_notes: summary,
+        blockers_summary: blockers,
+        status: nextStatus,
+      })
+    });
+
+    if (res.ok) {
+      await loadEmployeeTodaySheet();
+      alert(isSubmit ? '🚀 Daily task sheet submitted successfully for supervisor review!' : '💾 Draft saved successfully.');
+    } else {
+      alert('Failed to save sheet.');
+    }
+  } catch (err) {
+    console.error('Error saving sheet:', err);
+  }
+}
+
+window.toggleTaskStatus = async function(taskId, isChecked) {
+  const newStatus = isChecked ? 'COMPLETED' : 'TODO';
+  await updateTaskItemDirect(taskId, { status: newStatus });
+};
+
+window.handleTaskStatusChange = async function(taskId, newStatus) {
+  await updateTaskItemDirect(taskId, { status: newStatus });
+};
+
+async function updateTaskItemDirect(taskId, payload) {
+  try {
+    const res = await fetch(`${API_BASE}/sheets/tasks/${taskId}`, {
+      method: 'PUT',
+      headers: authHeaders(),
+      body: JSON.stringify(payload)
+    });
+    if (res.ok) {
+      await loadEmployeeTodaySheet();
+    }
+  } catch (err) {
+    console.error('Error updating task:', err);
+  }
+}
+
+window.deleteTaskItem = async function(taskId) {
+  if (!confirm('Are you sure you want to delete this task item?')) return;
+  try {
+    const res = await fetch(`${API_BASE}/sheets/tasks/${taskId}`, {
+      method: 'DELETE',
+      headers: authHeaders()
+    });
+    if (res.ok) {
+      await loadEmployeeTodaySheet();
+    }
+  } catch (err) {
+    console.error('Error deleting task item:', err);
+  }
+};
+
+// ==========================================================================
+// Modals: Sheet Details, Supervisor Review & Task Editing
+// ==========================================================================
+
+window.openSheetDetailsModal = async function(sheetId) {
+  state.activeDetailSheetId = sheetId;
+  const modal = document.getElementById('sheetDetailsModal');
+  if (!modal) return;
+
+  try {
+    const res = await fetch(`${API_BASE}/sheets/${sheetId}`, { headers: authHeaders() });
+    if (!res.ok) throw new Error('Failed to load sheet details');
+    const sheet = await res.json();
+
+    const initials = (sheet.employee_name || 'Staff')
+      .split(' ')
+      .map(n => n[0])
+      .join('')
+      .slice(0, 2)
+      .toUpperCase();
+
+    document.getElementById('modalSheetAvatar').textContent = initials;
+    document.getElementById('modalSheetEmpName').textContent = `${sheet.employee_name}'s Daily Sheet`;
+    document.getElementById('modalSheetEmpMeta').textContent = `${sheet.employee_code} • ${sheet.department_name}`;
+    document.getElementById('modalSheetDate').textContent = sheet.sheet_date;
+
+    const stBadge = document.getElementById('modalSheetStatusBadge');
+    stBadge.textContent = sheet.status;
+    stBadge.className = `sheet-status-pill ${(sheet.status || 'draft').toLowerCase()}`;
+
+    document.getElementById('modalSheetHours').textContent = `${sheet.total_hours.toFixed(1)} hrs`;
+    document.getElementById('modalSheetTasksCount').textContent = `${sheet.completed_tasks} / ${sheet.total_tasks} Done`;
+    document.getElementById('modalSheetProgress').textContent = `${sheet.progress_percent}%`;
+    document.getElementById('modalSheetProgressBar').style.width = `${sheet.progress_percent}%`;
+
+    // Tasks list
+    const listEl = document.getElementById('modalSheetTasksList');
+    document.getElementById('modalSheetTaskItemsCount').textContent = `${sheet.tasks.length} items`;
+    listEl.innerHTML = '';
+
+    if (sheet.tasks.length === 0) {
+      listEl.innerHTML = `<div style="text-align: center; color: var(--text-dim); padding: 14px;">No tasks logged.</div>`;
+    } else {
+      sheet.tasks.forEach(t => {
+        const isDone = t.status === 'COMPLETED';
+        const icon = isDone ? '✅' : (t.status === 'IN_PROGRESS' ? '⏳' : (t.status === 'BLOCKED' ? '⛔' : '⭕'));
+        const descText = t.description ? `<div style="font-size: 0.74rem; color: var(--text-muted); margin-top: 3px;">${t.description}</div>` : '';
+        const blockText = t.blockers ? `<div style="font-size: 0.72rem; color: var(--accent-rose); margin-top: 2px;">⚠️ ${t.blockers}</div>` : '';
+
+        const item = document.createElement('div');
+        item.className = `sheet-task-item ${isDone ? 'completed' : ''}`;
+        item.innerHTML = `
+          <div style="flex: 1;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span>${icon}</span>
+              <strong style="color: var(--text-main); font-size: 0.82rem;">${t.title}</strong>
+              <span class="prio-pill ${(t.priority || 'medium').toLowerCase()}">${t.priority}</span>
+              <span class="cat-pill">${t.category}</span>
+            </div>
+            ${descText}
+            ${blockText}
+          </div>
+          <span class="badge" style="background: rgba(6, 182, 212, 0.12); color: var(--accent-cyan); font-size: 0.75rem;">
+            ⏱️ ${t.hours_spent}h
+          </span>
+        `;
+        listEl.appendChild(item);
+      });
+    }
+
+    // Summary & Blockers
+    document.getElementById('modalSheetSummaryText').textContent = sheet.summary_notes || 'No summary entered.';
+    const blockCont = document.getElementById('modalSheetBlockersContainer');
+    if (sheet.blockers_summary) {
+      blockCont.style.display = 'block';
+      document.getElementById('modalSheetBlockersText').textContent = sheet.blockers_summary;
+    } else {
+      blockCont.style.display = 'none';
+    }
+
+    // Feedback
+    const fbCont = document.getElementById('modalSheetFeedbackContainer');
+    if (sheet.manager_feedback) {
+      fbCont.style.display = 'block';
+      document.getElementById('modalSheetFeedbackMeta').textContent = sheet.reviewed_by_name ? `Reviewed by ${sheet.reviewed_by_name}` : 'Supervisor Review';
+      document.getElementById('modalSheetFeedbackText').textContent = `"${sheet.manager_feedback}"`;
+    } else {
+      fbCont.style.display = 'none';
+    }
+
+    // Supervisor action button
+    const role = (state.currentUser?.role || localStorage.getItem('wp-role') || 'admin').toUpperCase();
+    const revBtn = document.getElementById('modalSheetReviewActionBtn');
+    if (revBtn) {
+      revBtn.style.display = (role === 'ADMIN' || role === 'MANAGER') ? 'inline-flex' : 'none';
+    }
+
+    modal.classList.add('active');
+  } catch (err) {
+    console.error('Error opening sheet details modal:', err);
+  }
+};
+
+window.openSheetReviewModal = function(sheetId) {
+  state.activeDetailSheetId = sheetId;
+  document.getElementById('reviewSheetId').value = sheetId;
+  const sheet = state.allSheets?.find(s => s.id === sheetId);
+  if (sheet) {
+    document.getElementById('sheetReviewModalTitle').textContent = `Review Sheet: ${sheet.employee_name} (${sheet.sheet_date})`;
+    if (sheet.manager_feedback) {
+      document.getElementById('reviewSheetFeedbackText').value = sheet.manager_feedback;
+    } else {
+      document.getElementById('reviewSheetFeedbackText').value = '';
+    }
+  }
+  document.getElementById('sheetReviewModal').classList.add('active');
+};
+
+async function handleSubmitSheetReview(e) {
+  e.preventDefault();
+  const sheetId = document.getElementById('reviewSheetId').value;
+  const status = document.getElementById('reviewSheetStatusSelect').value;
+  const feedback = document.getElementById('reviewSheetFeedbackText').value.trim();
+
+  if (!sheetId || !feedback) return;
+
+  try {
+    const res = await fetch(`${API_BASE}/sheets/${sheetId}/review`, {
+      method: 'POST',
+      headers: authHeaders(),
+      body: JSON.stringify({
+        manager_feedback: feedback,
+        status: status,
+      })
+    });
+
+    if (res.ok) {
+      document.getElementById('sheetReviewModal').classList.remove('active');
+      await loadManagerSheetsSummary();
+      await loadManagerSheetsGrid();
+      alert('✓ Supervisor review submitted successfully!');
+    } else {
+      alert('Failed to submit review.');
+    }
+  } catch (err) {
+    console.error('Error submitting sheet review:', err);
+  }
+}
+
+window.openTaskEditModal = function(taskId) {
+  const tasks = state.currentTodaySheet?.tasks || [];
+  const task = tasks.find(t => t.id === taskId);
+  if (!task) return;
+
+  document.getElementById('editTaskId').value = task.id;
+  document.getElementById('editTaskTitle').value = task.title || '';
+  document.getElementById('editTaskCategory').value = task.category || 'General';
+  document.getElementById('editTaskPriority').value = task.priority || 'MEDIUM';
+  document.getElementById('editTaskStatus').value = task.status || 'TODO';
+  document.getElementById('editTaskHours').value = task.hours_spent || 1.0;
+  document.getElementById('editTaskDescription').value = task.description || '';
+  document.getElementById('editTaskBlockers').value = task.blockers || '';
+
+  document.getElementById('taskItemEditModal').classList.add('active');
+};
+
+async function handleSubmitTaskEdit(e) {
+  e.preventDefault();
+  const taskId = document.getElementById('editTaskId').value;
+  if (!taskId) return;
+
+  const payload = {
+    title: document.getElementById('editTaskTitle').value.trim(),
+    category: document.getElementById('editTaskCategory').value,
+    priority: document.getElementById('editTaskPriority').value,
+    status: document.getElementById('editTaskStatus').value,
+    hours_spent: parseFloat(document.getElementById('editTaskHours').value || '0'),
+    description: document.getElementById('editTaskDescription').value.trim() || null,
+    blockers: document.getElementById('editTaskBlockers').value.trim() || null,
+  };
+
+  try {
+    const res = await fetch(`${API_BASE}/sheets/tasks/${taskId}`, {
+      method: 'PUT',
+      headers: authHeaders(),
+      body: JSON.stringify(payload)
+    });
+
+    if (res.ok) {
+      document.getElementById('taskItemEditModal').classList.remove('active');
+      await loadEmployeeTodaySheet();
+    } else {
+      alert('Failed to update task item.');
+    }
+  } catch (err) {
+    console.error('Error submitting task edit:', err);
   }
 }
 

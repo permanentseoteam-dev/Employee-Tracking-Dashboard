@@ -31,3 +31,5 @@ class AttendanceSummary(BaseModel):
     active_hours: float
     idle_hours: float
     status: str
+    shift_ended: bool = False
+

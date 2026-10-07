@@ -13,6 +13,7 @@ from app.models.employee import Employee, RoleEnum, StatusEnum
 from app.models.rules import EmployeeStar, SettingRule
 from app.models.screenshot import Screenshot
 from app.models.finance import FinanceMessage, FinanceNotification
+from app.models.task_sheet import TaskSheet, TaskItem, TaskSheetStatusEnum, TaskPriorityEnum, TaskStatusEnum
 from app.services.auth import generate_device_token, hash_password
 from app.services.screenshot_service import screenshot_service
 
@@ -325,6 +326,73 @@ async def seed():
                                 awarded_at=now,
                             ))
 
+        # 4b. Multi-day Historical Compliance Data for Performance Scorecards (Alex Rivera & Sarah Connor)
+        alex_emp_obj = (await db.execute(select(Employee).where(Employee.email == "alex@tracking.local"))).scalars().first()
+        sarah_mgr_obj = (await db.execute(select(Employee).where(Employee.email == "manager@tracking.local"))).scalars().first()
+
+        history_items = []
+        if alex_emp_obj:
+            # Yesterday: Alex was LATE (Violation)
+            yest = today_date - timedelta(days=1)
+            history_items.append((alex_emp_obj.id, yest, AttendanceStatusEnum.LATE, "09:28:00", 17200, 2400, []))
+            # 2 days ago: Alex was On-Time + Early Bird (2 Stars)
+            day2 = today_date - timedelta(days=2)
+            history_items.append((alex_emp_obj.id, day2, AttendanceStatusEnum.PRESENT, "08:48:00", 23000, 1500, [
+                ("On-Time Arrival (Punctuality)", 1),
+                ("Early Bird Star (Arrived Before Shift Time)", 1),
+                ("High Daily Engagement & Activity", 1)
+            ]))
+            # 3 days ago: Alex was On-Time (1 Star)
+            day3 = today_date - timedelta(days=3)
+            history_items.append((alex_emp_obj.id, day3, AttendanceStatusEnum.PRESENT, "08:53:00", 21000, 1600, [
+                ("On-Time Arrival (Punctuality)", 1)
+            ]))
+
+        if sarah_mgr_obj:
+            # Today: Sarah on-time
+            history_items.append((sarah_mgr_obj.id, today_date, AttendanceStatusEnum.PRESENT, "08:42:00", 24000, 1200, [
+                ("On-Time Arrival (Punctuality)", 1),
+                ("Early Bird Star (Arrived Before Shift Time)", 1)
+            ]))
+            # Yesterday: Sarah on-time
+            yest = today_date - timedelta(days=1)
+            history_items.append((sarah_mgr_obj.id, yest, AttendanceStatusEnum.PRESENT, "08:40:00", 23500, 1400, [
+                ("On-Time Arrival (Punctuality)", 1),
+                ("Early Bird Star (Arrived Before Shift Time)", 1)
+            ]))
+            # 2 days ago: Sarah was LATE (Violation)
+            day2 = today_date - timedelta(days=2)
+            history_items.append((sarah_mgr_obj.id, day2, AttendanceStatusEnum.LATE, "09:22:00", 16800, 2200, []))
+
+        for target_id, target_date, stat_enum, check_time, a_sec, i_sec, stars_to_award in history_items:
+            existing_att = (await db.execute(select(Attendance).where(Attendance.employee_id == target_id, Attendance.work_date == target_date))).scalars().first()
+            if not existing_att:
+                f_act = datetime.fromisoformat(f"{target_date.isoformat()}T{check_time}Z") if check_time else None
+                db.add(Attendance(
+                    employee_id=target_id,
+                    work_date=target_date,
+                    boot_time=f_act - timedelta(minutes=15) if f_act else None,
+                    login_time=f_act - timedelta(minutes=5) if f_act else None,
+                    first_activity=f_act,
+                    last_activity=f_act + timedelta(seconds=a_sec) if f_act else None,
+                    active_seconds=a_sec,
+                    idle_seconds=i_sec,
+                    status=stat_enum.value,
+                    rule_eval_context={"shift_start": "09:00:00", "grace_period_minutes": 15},
+                ))
+            for s_reason, s_cnt in stars_to_award:
+                s_exist = (await db.execute(select(EmployeeStar).where(EmployeeStar.employee_id == target_id, EmployeeStar.award_date == target_date, EmployeeStar.reason == s_reason))).scalars().first()
+                if not s_exist:
+                    db.add(EmployeeStar(
+                        id=str(uuid.uuid4()),
+                        employee_id=target_id,
+                        award_date=target_date,
+                        star_count=s_cnt,
+                        reason=s_reason,
+                        criteria_snapshot={"status": stat_enum.value, "first_activity": check_time},
+                        awarded_at=now,
+                    ))
+
         # 5. Finance Messages and Delivery Notifications
         existing_finance = (await db.execute(select(FinanceMessage))).scalars().all()
         if len(existing_finance) == 0:
@@ -445,8 +513,123 @@ async def seed():
                         created_at=now - timedelta(days=1),
                     ))
 
+        # 8. Daily Task Sheets & Tasks for Employees
+        print("Seeding employee daily task sheets and task items...")
+        yesterday_date = today_date - timedelta(days=1)
+        two_days_ago = today_date - timedelta(days=2)
+
+        sarah_mgr = (await db.execute(select(Employee).where(Employee.email == "manager@tracking.local"))).scalars().first()
+        alex_emp = (await db.execute(select(Employee).where(Employee.email == "alex@tracking.local"))).scalars().first()
+        elena_emp = (await db.execute(select(Employee).where(Employee.email == "elena@tracking.local"))).scalars().first()
+        marcus_emp = (await db.execute(select(Employee).where(Employee.email == "marcus@tracking.local"))).scalars().first()
+        aisha_emp = (await db.execute(select(Employee).where(Employee.email == "aisha.p@tracking.local"))).scalars().first()
+        james_emp = (await db.execute(select(Employee).where(Employee.email == "james.w@tracking.local"))).scalars().first()
+        carlos_emp = (await db.execute(select(Employee).where(Employee.email == "carlos.m@tracking.local"))).scalars().first()
+        sophie_emp = (await db.execute(select(Employee).where(Employee.email == "sophie@tracking.local"))).scalars().first()
+
+        sheets_seed_plan = [
+            # Alex Rivera - Today
+            (alex_emp, today_date, TaskSheetStatusEnum.SUBMITTED.value, 
+             "Completed frontend sheet integration and bugfixes for auth tokens. Starting unit tests.", 
+             None, sarah_mgr, None, [
+                ("Implement Daily Task Sheet UI and Card Grids", "Built modern interactive cards and responsive grid layout for multi-employee daily task management.", "Frontend Development", TaskPriorityEnum.HIGH.value, TaskStatusEnum.COMPLETED.value, 3.5, None),
+                ("JWT Session Auto-refresh Hook", "Created automatic token refresh interceptor for expiring bearer credentials.", "Security & Auth", TaskPriorityEnum.MEDIUM.value, TaskStatusEnum.COMPLETED.value, 2.0, None),
+                ("Refactor Employee Switcher Dropdown", "Added quick role switching synchronization and badge color indicators.", "Frontend Development", TaskPriorityEnum.LOW.value, TaskStatusEnum.COMPLETED.value, 1.0, None),
+                ("End-to-End WebSocket Sync Tests", "Testing live desktop agent sync and payload dispatching.", "Testing & QA", TaskPriorityEnum.MEDIUM.value, TaskStatusEnum.IN_PROGRESS.value, 1.0, "Waiting on staging mock socket server"),
+            ]),
+            # Alex Rivera - Yesterday
+            (alex_emp, yesterday_date, TaskSheetStatusEnum.APPROVED.value,
+             "Finished attendance roll call audit and KPI calculation improvements.",
+             None, sarah_mgr, "Great work on the attendance calculations and query optimizations Alex!", [
+                ("Attendance KPI Query Optimization", "Added subqueries for punctual and late check-in metrics.", "Backend API", TaskPriorityEnum.HIGH.value, TaskStatusEnum.COMPLETED.value, 4.0, None),
+                ("Rules Admin Inspector UI", "Designed scorecard breakdown table and penalty deduction list.", "UI/UX Design", TaskPriorityEnum.MEDIUM.value, TaskStatusEnum.COMPLETED.value, 3.0, None),
+            ]),
+            # Elena Rostova - Today
+            (elena_emp, today_date, TaskSheetStatusEnum.APPROVED.value,
+             "Finished Rust Agent memory leak profiling and batch queue buffering.",
+             None, sarah_mgr, "Outstanding efficiency Elena! Memory footprint is down 40%.", [
+                ("Rust Agent Memory Allocation Audit", "Profiled heap allocation in raw desktop mouse tracking buffer.", "Core Platform", TaskPriorityEnum.URGENT.value, TaskStatusEnum.COMPLETED.value, 3.5, None),
+                ("Batch Queue Flush Throttling", "Implemented 5-minute debounced flush to reduce server load.", "Backend Architecture", TaskPriorityEnum.HIGH.value, TaskStatusEnum.COMPLETED.value, 2.5, None),
+                ("CI/CD Cross-compilation for Windows x64", "Automated cargo build target artifacts in GitHub Actions.", "DevOps", TaskPriorityEnum.MEDIUM.value, TaskStatusEnum.COMPLETED.value, 1.5, None),
+            ]),
+            # Marcus Vance - Today
+            (marcus_emp, today_date, TaskSheetStatusEnum.SUBMITTED.value,
+             "Finalized design tokens for Dark/Light glassmorphism and mobile layout reflow.",
+             "Waiting on brand assets for new vector icons from client team.", None, None, [
+                ("Figma Design System V2 Tokens", "Created full HSL palette, dark theme glass tokens, and responsive typography variables.", "UI/UX Design", TaskPriorityEnum.HIGH.value, TaskStatusEnum.COMPLETED.value, 3.0, None),
+                ("Screenshot Viewer Modal Polish", "Designed full-screen lightbox modal with keyboard arrow navigation.", "UI/UX Design", TaskPriorityEnum.MEDIUM.value, TaskStatusEnum.COMPLETED.value, 2.0, None),
+                ("Mobile Responsive Nav Drawer", "Wireframed collapsible sidebar navigation for smaller tablet screens.", "UI/UX Design", TaskPriorityEnum.LOW.value, TaskStatusEnum.BLOCKED.value, 0.5, "Awaiting approval on navigation hierarchy"),
+            ]),
+            # Aisha Patel - Today
+            (aisha_emp, today_date, TaskSheetStatusEnum.SUBMITTED.value,
+             "Implemented background database migration and indexing for large audit logs.",
+             None, sarah_mgr, None, [
+                ("SQLAlchemy Async Session Pool Tuning", "Configured max overflow and pool pre-ping connection check.", "Database & Backend", TaskPriorityEnum.HIGH.value, TaskStatusEnum.COMPLETED.value, 3.5, None),
+                ("Composite Index on Activity Timestamps", "Added index to activity_logs table for fast interval queries.", "Database & Backend", TaskPriorityEnum.HIGH.value, TaskStatusEnum.COMPLETED.value, 2.0, None),
+                ("Database Backup Cron Integration", "Writing automated nightly snapshot script to S3-compatible storage.", "DevOps", TaskPriorityEnum.MEDIUM.value, TaskStatusEnum.IN_PROGRESS.value, 1.0, None),
+            ]),
+            # James Wilson - Today
+            (james_emp, today_date, TaskSheetStatusEnum.APPROVED.value,
+             "All scheduled bug tickets resolved and closed for sprint 14.",
+             None, sarah_mgr, "Superb turnaround time on the critical security patch James.", [
+                ("Fix Screenshot Upload Rate Limiter", "Fixed IP spoofing bypass on agent screenshot upload handler.", "Security & Auth", TaskPriorityEnum.URGENT.value, TaskStatusEnum.COMPLETED.value, 3.0, None),
+                ("Refactor Employee Punctuality Star Evaluator", "Added grace period condition checker according to active rules.", "Core Platform", TaskPriorityEnum.HIGH.value, TaskStatusEnum.COMPLETED.value, 3.0, None),
+                ("Documentation for API V1 Endpoints", "Generated OpenAPI swagger schemas and route test recipes.", "Documentation", TaskPriorityEnum.LOW.value, TaskStatusEnum.COMPLETED.value, 2.0, None),
+            ]),
+            # Carlos Mendez - Today
+            (carlos_emp, today_date, TaskSheetStatusEnum.DRAFT.value,
+             "Investigating intermittent agent disconnects on Windows sleep mode.",
+             "Need test laptop with Windows 10 build 19045.", None, None, [
+                ("Desktop Agent Power State Listener", "Added Win32 API power broadcast notification handlers.", "Desktop Agent", TaskPriorityEnum.HIGH.value, TaskStatusEnum.IN_PROGRESS.value, 3.0, None),
+                ("Heartbeat Reconnect Backoff Strategy", "Implementing exponential backoff with jitter on reconnect.", "Desktop Agent", TaskPriorityEnum.MEDIUM.value, TaskStatusEnum.IN_PROGRESS.value, 2.0, None),
+            ]),
+            # Sophie Martin - Today
+            (sophie_emp, today_date, TaskSheetStatusEnum.DRAFT.value,
+             "Writing Playwright automated regression test suite.",
+             None, None, None, [
+                ("Playwright End-to-End Test Suite", "Created automated browser scripts for login, role switcher, and rules update.", "Testing & QA", TaskPriorityEnum.HIGH.value, TaskStatusEnum.IN_PROGRESS.value, 2.5, None),
+            ]),
+        ]
+
+        for emp_obj, s_date, s_status, s_notes, s_blockers, reviewer_obj, m_feedback, task_list in sheets_seed_plan:
+            if not emp_obj:
+                continue
+            existing_sheet = (await db.execute(select(TaskSheet).where(TaskSheet.employee_id == emp_obj.id, TaskSheet.sheet_date == s_date))).scalars().first()
+            if not existing_sheet:
+                total_h = sum(t[5] for t in task_list)
+                sh = TaskSheet(
+                    id=str(uuid.uuid4()),
+                    employee_id=emp_obj.id,
+                    sheet_date=s_date,
+                    status=s_status,
+                    summary_notes=s_notes,
+                    blockers_summary=s_blockers,
+                    total_hours=round(total_h, 2),
+                    manager_feedback=m_feedback,
+                    reviewed_by_id=reviewer_obj.id if reviewer_obj else None,
+                    reviewed_at=now - timedelta(hours=1) if reviewer_obj and m_feedback else None,
+                    created_at=now - timedelta(hours=6),
+                )
+                db.add(sh)
+                await db.flush()
+
+                for t_title, t_desc, t_cat, t_prio, t_stat, t_hrs, t_block in task_list:
+                    ti = TaskItem(
+                        id=str(uuid.uuid4()),
+                        sheet_id=sh.id,
+                        title=t_title,
+                        description=t_desc,
+                        category=t_cat,
+                        priority=t_prio,
+                        status=t_stat,
+                        hours_spent=t_hrs,
+                        blockers=t_block,
+                        created_at=now - timedelta(hours=5),
+                    )
+                    db.add(ti)
+
         await db.commit()
-        print("Successfully seeded employees, attendance, heatmaps, screenshots, and enterprise finance messaging records!")
+        print("Successfully seeded employees, attendance, heatmaps, screenshots, finance messaging, and daily task sheets!")
 
 
 if __name__ == "__main__":

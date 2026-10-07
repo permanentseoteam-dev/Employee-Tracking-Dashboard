@@ -434,128 +434,274 @@
 
     <!-- Tab 5: Rules & Star Rewards -->
     <section class="tab-pane" id="tab-rules">
-      <div class="panel-card">
-        <div class="panel-header">
-          <div class="panel-title">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
-            Configured Policies & Star Ledger
+      <!-- A. Admin Workspace: Policy Management & Employee Scorecard Inspector -->
+      <div id="rulesAdminWorkspace">
+        <div class="panel-card">
+          <div class="panel-header">
+            <div class="panel-title">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+              Configured Policies & Star Ledger (Admin Hub)
+            </div>
+            <button id="evaluateStarsBtn" class="btn btn-primary btn-sm">Evaluate Stars Today</button>
           </div>
-          <button id="evaluateStarsBtn" class="btn btn-primary btn-sm">Evaluate Stars Today</button>
-        </div>
 
-        <div style="display: grid; grid-template-columns: 1.15fr 1fr; gap: 24px; align-items: start;">
-          <!-- Left Column: Active Policy Summary (Interactive with Toggle & Delete) -->
-          <div style="background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: 20px;">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
+          <div style="display: grid; grid-template-columns: 1.15fr 1fr; gap: 24px; align-items: start;">
+            <!-- Left Column: Active Policy Summary (Interactive with Toggle & Delete) -->
+            <div style="background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: 20px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
+                <div>
+                  <h4 style="color: var(--text-main); font-size: 0.95rem; font-weight: 700; margin: 0;">Active Policy Summary</h4>
+                  <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 3px;">Toggle status or delete policies. Changes sync automatically to backend.</div>
+                </div>
+                <span id="rulesCountBadge" class="role-pill admin" style="font-size: 0.7rem;">0 Policies</span>
+              </div>
+              <div id="rulesListContainer" style="display: flex; flex-direction: column; gap: 12px;">
+                Loading policy rules...
+              </div>
+            </div>
+
+            <!-- Right Column: Add Custom Policy & Shift Hours Editor -->
+            <div style="display: flex; flex-direction: column; gap: 20px;">
+              <!-- Card 1: Add Custom Policy Form (Title, Description, and Custom Fields) -->
+              <div style="background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: 20px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
+                  <h4 style="color: var(--text-main); font-size: 0.95rem; font-weight: 700; margin: 0;">+ Add Custom Policy</h4>
+                  <span class="role-pill employee" style="font-size: 0.65rem;">Custom Fields</span>
+                </div>
+                <form id="customRuleCreateForm" style="display: flex; flex-direction: column; gap: 12px;">
+                  <div>
+                    <label style="display:block; font-size: 0.75rem; color: var(--text-muted); margin-bottom: 4px;">Policy Title / Name *</label>
+                    <input type="text" id="newRuleTitle" class="input-control" style="width: 100%;" placeholder="e.g. Remote Work Grace Period, Weekend Overtime" required>
+                  </div>
+                  <div>
+                    <label style="display:block; font-size: 0.75rem; color: var(--text-muted); margin-bottom: 4px;">Description</label>
+                    <textarea id="newRuleDesc" class="input-control" rows="2" style="width: 100%; resize: vertical;" placeholder="Describe what this policy enforces or its business purpose..."></textarea>
+                  </div>
+                  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                    <div>
+                      <label style="display:block; font-size: 0.75rem; color: var(--text-muted); margin-bottom: 4px;">Category / Type</label>
+                      <select id="newRuleType" class="input-control" style="width: 100%;">
+                        <option value="ATTENDANCE">Attendance Policy</option>
+                        <option value="MONITORING">Monitoring Policy</option>
+                        <option value="STAR">Star Reward Policy</option>
+                        <option value="RETENTION">Data Retention</option>
+                        <option value="CUSTOM" selected>Custom Rule</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label style="display:block; font-size: 0.75rem; color: var(--text-muted); margin-bottom: 4px;">Initial State</label>
+                      <label class="switch-label" style="margin-top: 6px;">
+                        <input type="checkbox" id="newRuleActive" class="switch-input" checked>
+                        <span class="toggle-switch"></span>
+                        <span id="newRuleActiveText">Enabled (Active)</span>
+                      </label>
+                    </div>
+                  </div>
+                  <div>
+                    <label style="display:block; font-size: 0.75rem; color: var(--text-muted); margin-bottom: 4px;">Configuration Parameters (JSON or Key-Value)</label>
+                    <textarea id="newRulePayload" class="input-control" rows="2" style="width: 100%; font-family: monospace; font-size: 0.75rem;" placeholder='{"threshold_minutes": 20, "allowed_roles": ["EMPLOYEE"]}'></textarea>
+                  </div>
+                  <div style="display: flex; gap: 10px; align-items: center; margin-top: 4px;">
+                    <button type="submit" id="createCustomRuleBtn" class="btn btn-primary btn-sm">+ Create Policy</button>
+                    <span id="customRuleSaveFeedback" style="font-size: 0.8rem; color: var(--accent-emerald); display: none; font-weight: 500;">Policy Created!</span>
+                  </div>
+                </form>
+              </div>
+
+              <!-- Card 2: Configure Core Work Policies (Shift Times) -->
+              <div style="background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: 20px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
+                  <h4 style="color: var(--text-main); font-size: 0.95rem; font-weight: 700; margin: 0;">Configure Work Policies</h4>
+                  <span class="role-pill admin" style="font-size: 0.65rem;">Self-Service Editor</span>
+                </div>
+                <form id="rulesEditForm" style="display: flex; flex-direction: column; gap: 14px;">
+                  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                    <div>
+                      <label style="display:block; font-size: 0.75rem; color: var(--text-muted); margin-bottom: 4px;">Shift Start Time</label>
+                      <input type="time" id="ruleShiftStart" step="1" class="input-control" style="width: 100%;" required>
+                    </div>
+                    <div>
+                      <label style="display:block; font-size: 0.75rem; color: var(--text-muted); margin-bottom: 4px;">Shift End Time</label>
+                      <input type="time" id="ruleShiftEnd" step="1" class="input-control" style="width: 100%;" required>
+                    </div>
+                  </div>
+
+                  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                    <div>
+                      <label style="display:block; font-size: 0.75rem; color: var(--text-muted); margin-bottom: 4px;">Grace Period (Minutes)</label>
+                      <input type="number" id="ruleGraceMinutes" class="input-control" style="width: 100%;" min="0" max="120" required>
+                    </div>
+                    <div>
+                      <label style="display:block; font-size: 0.75rem; color: var(--text-muted); margin-bottom: 4px;">Full Day Min Active (Hours)</label>
+                      <input type="number" step="0.5" id="ruleMinActiveHours" class="input-control" style="width: 100%;" min="1" max="16" required>
+                    </div>
+                  </div>
+
+                  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                    <div>
+                      <label style="display:block; font-size: 0.75rem; color: var(--text-muted); margin-bottom: 4px;">Half Day Threshold (Hours)</label>
+                      <input type="number" step="0.5" id="ruleHalfDayHours" class="input-control" style="width: 100%;" min="1" max="12" required>
+                    </div>
+                    <div>
+                      <label style="display:block; font-size: 0.75rem; color: var(--text-muted); margin-bottom: 4px;">Daily Star Active Req (Hours)</label>
+                      <input type="number" step="0.5" id="ruleStarActiveHours" class="input-control" style="width: 100%;" min="1" max="16" required>
+                    </div>
+                  </div>
+
+                  <div style="padding: 12px; background: rgba(99, 102, 241, 0.08); border-radius: 6px; border-left: 3px solid var(--accent-indigo); font-size: 0.75rem; color: var(--text-muted); line-height: 1.5;">
+                    <strong style="color: var(--text-main);">Punctuality & Early Bird Stars:</strong> Employees whose first activity starts <em>before Shift Start</em> automatically receive the <strong>Early Bird Star</strong>. First activity within the <em>Grace Period</em> receives the <strong>Punctuality Star</strong>.
+                  </div>
+
+                  <div style="display: flex; gap: 10px; align-items: center; margin-top: 6px;">
+                    <button type="submit" id="saveRulesBtn" class="btn btn-primary btn-sm">Save Policy Changes</button>
+                    <span id="rulesSaveFeedback" style="font-size: 0.8rem; color: var(--accent-emerald); display: none; font-weight: 500;">Saved & Applied!</span>
+                  </div>
+                </form>
+              </div>
+            </div>
+          </div>
+
+          <!-- Admin Inspector: View Any Employee Performance Scorecard -->
+          <div style="margin-top: 28px; padding-top: 24px; border-top: 1px solid var(--border-subtle);">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 12px;">
               <div>
-                <h4 style="color: var(--text-main); font-size: 0.95rem; font-weight: 700; margin: 0;">Active Policy Summary</h4>
-                <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 3px;">Toggle status or delete policies. Changes sync automatically to backend.</div>
+                <h4 style="color: var(--text-main); font-size: 1rem; font-weight: 700; margin: 0; display: flex; align-items: center; gap: 8px;">
+                  <span>🔍</span> Employee Performance & Policy Violations Inspector
+                </h4>
+                <div style="font-size: 0.78rem; color: var(--text-muted); margin-top: 3px;">Select any staff member to inspect their live performance scorecard, star ledger, and policy violation history.</div>
               </div>
-              <span id="rulesCountBadge" class="role-pill admin" style="font-size: 0.7rem;">0 Policies</span>
+              <div style="display: flex; align-items: center; gap: 10px;">
+                <label style="font-size: 0.78rem; color: var(--text-muted);">Employee:</label>
+                <select id="rulesAdminEmpSelect" class="input-control" style="min-width: 220px; font-size: 0.82rem; padding: 6px 12px;">
+                  <option value="">Loading staff...</option>
+                </select>
+              </div>
             </div>
-            <div id="rulesListContainer" style="display: flex; flex-direction: column; gap: 12px;">
-              Loading policy rules...
+            <div id="rulesAdminScorecardContainer">
+              <!-- Rendered via JS -->
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- B. Personal Workspace: Performance Scorecard, Stars & Policy Violations (For Employee & Manager) -->
+      <div id="rulesPersonalWorkspace" style="display: none;">
+        <div class="panel-card">
+          <div class="panel-header" style="flex-wrap: wrap; gap: 12px;">
+            <div>
+              <div class="panel-title" style="display: flex; align-items: center; gap: 8px;">
+                <span style="font-size: 1.25rem;">⭐</span>
+                <span>My Performance & Star Rewards Scorecard</span>
+              </div>
+              <p class="panel-subtitle" style="margin-top: 4px; font-size: 0.8rem; color: var(--text-muted);">
+                Your real-time attendance punctuality, star recognitions, and policy violation impact records.
+              </p>
+            </div>
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <span id="personalScorecardProfilePill" class="role-pill employee" style="font-size: 0.75rem; padding: 4px 10px;">Alex Rivera (EMP001)</span>
+              <span id="personalScorecardDeptPill" class="badge" style="font-size: 0.75rem;">Engineering</span>
             </div>
           </div>
 
-          <!-- Right Column: Add Custom Policy & Shift Hours Editor -->
-          <div style="display: flex; flex-direction: column; gap: 20px;">
-            <!-- Card 1: Add Custom Policy Form (Title, Description, and Custom Fields) -->
-            <div style="background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: 20px;">
-              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
-                <h4 style="color: var(--text-main); font-size: 0.95rem; font-weight: 700; margin: 0;">+ Add Custom Policy</h4>
-                <span class="role-pill employee" style="font-size: 0.65rem;">Custom Fields</span>
+          <!-- Personal Scorecard KPI Grid -->
+          <div class="stat-grid" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); margin-bottom: 24px;">
+            <div class="stat-card" style="border-left: 3px solid var(--accent-amber);">
+              <div class="stat-label">Total Stars Earned</div>
+              <div class="stat-value" id="personalKpiStars" style="color: var(--accent-amber); display: flex; align-items: center; gap: 6px;">
+                0 ⭐
               </div>
-              <form id="customRuleCreateForm" style="display: flex; flex-direction: column; gap: 12px;">
+              <div class="stat-sub" id="personalKpiStarsSub">Recognitions awarded</div>
+            </div>
+            <div class="stat-card emerald">
+              <div class="stat-label">Punctuality Rate</div>
+              <div class="stat-value" id="personalKpiPunctuality">-</div>
+              <div class="stat-sub" id="personalKpiPunctualitySub">On-Time vs Late arrival</div>
+            </div>
+            <div class="stat-card cyan">
+              <div class="stat-label">Active Working Time</div>
+              <div class="stat-value" id="personalKpiActiveHours">-</div>
+              <div class="stat-sub" id="personalKpiActiveHoursSub">Avg daily hours</div>
+            </div>
+            <div class="stat-card" style="border-left: 3px solid var(--accent-rose);">
+              <div class="stat-label">Policy Violations</div>
+              <div class="stat-value" id="personalKpiViolations" style="color: var(--accent-rose);">-</div>
+              <div class="stat-sub" id="personalKpiViolationsSub">Infractions recorded</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">Tracked Work Days</div>
+              <div class="stat-value" id="personalKpiDaysLogged">-</div>
+              <div class="stat-sub">Shift logs on record</div>
+            </div>
+          </div>
+
+          <!-- Two Section Layout: Policy Violations Ledger & Star Rewards Ledger -->
+          <div style="display: flex; flex-direction: column; gap: 24px;">
+
+            <!-- Table 1: Policy Violations & Star Impact Breakdown -->
+            <div style="background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: 20px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; flex-wrap: wrap; gap: 8px;">
                 <div>
-                  <label style="display:block; font-size: 0.75rem; color: var(--text-muted); margin-bottom: 4px;">Policy Title / Name *</label>
-                  <input type="text" id="newRuleTitle" class="input-control" style="width: 100%;" placeholder="e.g. Remote Work Grace Period, Weekend Overtime" required>
-                </div>
-                <div>
-                  <label style="display:block; font-size: 0.75rem; color: var(--text-muted); margin-bottom: 4px;">Description</label>
-                  <textarea id="newRuleDesc" class="input-control" rows="2" style="width: 100%; resize: vertical;" placeholder="Describe what this policy enforces or its business purpose..."></textarea>
-                </div>
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
-                  <div>
-                    <label style="display:block; font-size: 0.75rem; color: var(--text-muted); margin-bottom: 4px;">Category / Type</label>
-                    <select id="newRuleType" class="input-control" style="width: 100%;">
-                      <option value="ATTENDANCE">Attendance Policy</option>
-                      <option value="MONITORING">Monitoring Policy</option>
-                      <option value="STAR">Star Reward Policy</option>
-                      <option value="RETENTION">Data Retention</option>
-                      <option value="CUSTOM" selected>Custom Rule</option>
-                    </select>
+                  <h4 style="color: var(--text-main); font-size: 0.95rem; font-weight: 700; margin: 0; display: flex; align-items: center; gap: 6px;">
+                    <span style="color: var(--accent-rose);">⚠️</span> Policy Violations & Star Deductions
+                  </h4>
+                  <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 3px;">
+                    Itemized list of attendance and shift policy infractions and their direct impact on stars.
                   </div>
-                  <div>
-                    <label style="display:block; font-size: 0.75rem; color: var(--text-muted); margin-bottom: 4px;">Initial State</label>
-                    <label class="switch-label" style="margin-top: 6px;">
-                      <input type="checkbox" id="newRuleActive" class="switch-input" checked>
-                      <span class="toggle-switch"></span>
-                      <span id="newRuleActiveText">Enabled (Active)</span>
-                    </label>
-                  </div>
                 </div>
-                <div>
-                  <label style="display:block; font-size: 0.75rem; color: var(--text-muted); margin-bottom: 4px;">Configuration Parameters (JSON or Key-Value)</label>
-                  <textarea id="newRulePayload" class="input-control" rows="2" style="width: 100%; font-family: monospace; font-size: 0.75rem;" placeholder='{"threshold_minutes": 20, "allowed_roles": ["EMPLOYEE"]}'></textarea>
-                </div>
-                <div style="display: flex; gap: 10px; align-items: center; margin-top: 4px;">
-                  <button type="submit" id="createCustomRuleBtn" class="btn btn-primary btn-sm">+ Create Policy</button>
-                  <span id="customRuleSaveFeedback" style="font-size: 0.8rem; color: var(--accent-emerald); display: none; font-weight: 500;">Policy Created!</span>
-                </div>
-              </form>
+                <span id="personalViolationsCountBadge" class="role-pill admin" style="background: rgba(244,63,94,0.15); color: var(--accent-rose); border-color: rgba(244,63,94,0.3); font-size: 0.7rem;">0 Infractions</span>
+              </div>
+
+              <div class="table-responsive">
+                <table class="data-table" style="width: 100%;">
+                  <thead>
+                    <tr>
+                      <th style="width: 110px;">Date</th>
+                      <th style="width: 140px;">Violation Type</th>
+                      <th>Policy Violated</th>
+                      <th style="width: 90px;">Severity</th>
+                      <th>Infraction Details</th>
+                      <th style="width: 220px;">Star Impact / Penalty</th>
+                    </tr>
+                  </thead>
+                  <tbody id="personalViolationsTbody">
+                    <tr><td colspan="6" style="text-align: center; color: var(--text-dim); padding: 20px;">Loading violation records...</td></tr>
+                  </tbody>
+                </table>
+              </div>
             </div>
 
-            <!-- Card 2: Configure Core Work Policies (Shift Times) -->
+            <!-- Table 2: Star Rewards & Recognitions Ledger -->
             <div style="background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: 20px;">
-              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
-                <h4 style="color: var(--text-main); font-size: 0.95rem; font-weight: 700; margin: 0;">Configure Work Policies</h4>
-                <span class="role-pill admin" style="font-size: 0.65rem;">Self-Service Editor</span>
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; flex-wrap: wrap; gap: 8px;">
+                <div>
+                  <h4 style="color: var(--text-main); font-size: 0.95rem; font-weight: 700; margin: 0; display: flex; align-items: center; gap: 6px;">
+                    <span style="color: var(--accent-amber);">⭐</span> Star Rewards & Recognitions History
+                  </h4>
+                  <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 3px;">
+                    Official log of stars awarded for early arrival, punctuality, and high daily engagement.
+                  </div>
+                </div>
+                <span id="personalStarsCountBadge" class="role-pill employee" style="font-size: 0.7rem;">0 Stars</span>
               </div>
-              <form id="rulesEditForm" style="display: flex; flex-direction: column; gap: 14px;">
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
-                  <div>
-                    <label style="display:block; font-size: 0.75rem; color: var(--text-muted); margin-bottom: 4px;">Shift Start Time</label>
-                    <input type="time" id="ruleShiftStart" step="1" class="input-control" style="width: 100%;" required>
-                  </div>
-                  <div>
-                    <label style="display:block; font-size: 0.75rem; color: var(--text-muted); margin-bottom: 4px;">Shift End Time</label>
-                    <input type="time" id="ruleShiftEnd" step="1" class="input-control" style="width: 100%;" required>
-                  </div>
-                </div>
 
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
-                  <div>
-                    <label style="display:block; font-size: 0.75rem; color: var(--text-muted); margin-bottom: 4px;">Grace Period (Minutes)</label>
-                    <input type="number" id="ruleGraceMinutes" class="input-control" style="width: 100%;" min="0" max="120" required>
-                  </div>
-                  <div>
-                    <label style="display:block; font-size: 0.75rem; color: var(--text-muted); margin-bottom: 4px;">Full Day Min Active (Hours)</label>
-                    <input type="number" step="0.5" id="ruleMinActiveHours" class="input-control" style="width: 100%;" min="1" max="16" required>
-                  </div>
-                </div>
-
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
-                  <div>
-                    <label style="display:block; font-size: 0.75rem; color: var(--text-muted); margin-bottom: 4px;">Half Day Threshold (Hours)</label>
-                    <input type="number" step="0.5" id="ruleHalfDayHours" class="input-control" style="width: 100%;" min="1" max="12" required>
-                  </div>
-                  <div>
-                    <label style="display:block; font-size: 0.75rem; color: var(--text-muted); margin-bottom: 4px;">Daily Star Active Req (Hours)</label>
-                    <input type="number" step="0.5" id="ruleStarActiveHours" class="input-control" style="width: 100%;" min="1" max="16" required>
-                  </div>
-                </div>
-
-                <div style="padding: 12px; background: rgba(99, 102, 241, 0.08); border-radius: 6px; border-left: 3px solid var(--accent-indigo); font-size: 0.75rem; color: var(--text-muted); line-height: 1.5;">
-                  <strong style="color: var(--text-main);">Punctuality & Early Bird Stars:</strong> Employees whose first activity starts <em>before Shift Start</em> automatically receive the <strong>Early Bird Star</strong>. First activity within the <em>Grace Period</em> receives the <strong>Punctuality Star</strong>.
-                </div>
-
-                <div style="display: flex; gap: 10px; align-items: center; margin-top: 6px;">
-                  <button type="submit" id="saveRulesBtn" class="btn btn-primary btn-sm">Save Policy Changes</button>
-                  <span id="rulesSaveFeedback" style="font-size: 0.8rem; color: var(--accent-emerald); display: none; font-weight: 500;">Saved & Applied!</span>
-                </div>
-              </form>
+              <div class="table-responsive">
+                <table class="data-table" style="width: 100%;">
+                  <thead>
+                    <tr>
+                      <th style="width: 110px;">Award Date</th>
+                      <th style="width: 100px;">Stars</th>
+                      <th>Award Reason / Category</th>
+                      <th>Eligibility Criteria Snapshot</th>
+                      <th style="width: 160px;">Awarded At</th>
+                    </tr>
+                  </thead>
+                  <tbody id="personalStarsTbody">
+                    <tr><td colspan="5" style="text-align: center; color: var(--text-dim); padding: 20px;">Loading star ledger...</td></tr>
+                  </tbody>
+                </table>
+              </div>
             </div>
+
           </div>
         </div>
       </div>

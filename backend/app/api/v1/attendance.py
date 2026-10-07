@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime, time, timezone
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -8,6 +8,7 @@ from app.models.attendance import Attendance
 from app.models.department import Department
 from app.models.employee import Employee
 from app.schemas.attendance import AttendanceOut, AttendanceSummary
+from app.services.attendance_engine import AttendanceEngine
 
 router = APIRouter(prefix="/attendance", tags=["Attendance"])
 
@@ -67,8 +68,26 @@ async def get_attendance_summary(
     res = await db.execute(stmt)
     rows = res.all()
 
+    rules = await AttendanceEngine.get_active_rules(db)
+    shift_end_str = rules.get("shift_end", "18:00:00")
+    try:
+        sh_parts = [int(p) for p in shift_end_str.split(":")[:2]]
+        shift_end_time = time(sh_parts[0], sh_parts[1])
+    except Exception:
+        shift_end_time = time(18, 0)
+
+    now_utc = datetime.now(timezone.utc)
+    today_date = date.today()
+
     summaries = []
     for att, emp_name, emp_code, dept_name in rows:
+        shift_ended = True
+        if att.work_date >= today_date:
+            if now_utc.time() < shift_end_time:
+                shift_ended = False
+
+        effective_last_activity = att.last_activity if shift_ended else None
+
         summaries.append(
             AttendanceSummary(
                 employee_id=att.employee_id,
@@ -77,10 +96,11 @@ async def get_attendance_summary(
                 department_name=dept_name,
                 work_date=att.work_date,
                 first_activity=att.first_activity,
-                last_activity=att.last_activity,
+                last_activity=effective_last_activity,
                 active_hours=round(att.active_seconds / 3600.0, 2),
                 idle_hours=round(att.idle_seconds / 3600.0, 2),
                 status=att.status,
+                shift_ended=shift_ended,
             )
         )
     return summaries

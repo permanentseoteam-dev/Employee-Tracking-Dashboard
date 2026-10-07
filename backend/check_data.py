@@ -222,14 +222,53 @@ try:
             headers={"Authorization": f"Bearer {token}"},
             method="POST"
         )
-        with urllib.request.urlopen(req_set_interval) as set_resp:
-            set_data = json.loads(set_resp.read().decode())
-            print(f"[SET INTERVAL] Status: {set_resp.status} | New interval: {set_data['interval_minutes']}m | Message: {set_data['message']}")
+        # Test Daily Task Sheets Endpoints
+        print("\nTesting Daily Task Sheets API:")
+        req_sheets = urllib.request.Request(
+            "http://127.0.0.1:8000/api/v1/sheets",
+            headers={"Authorization": f"Bearer {token}"}
+        )
+        with urllib.request.urlopen(req_sheets) as sh_resp:
+            sheets_data = json.loads(sh_resp.read().decode())
+            print(f"[GET /sheets] Status: {sh_resp.status} | Found {len(sheets_data)} sheets for admin")
+            if sheets_data:
+                first_sh = sheets_data[0]
+                print(f" - Sheet: {first_sh['employee_name']} ({first_sh['employee_code']}) | Date: {first_sh['sheet_date']} | Status: {first_sh['status']} | Tasks: {len(first_sh['tasks'])} | Hours: {first_sh['total_hours']}")
+
+        # Test GET /sheets/stats/summary
+        req_stats = urllib.request.Request(
+            "http://127.0.0.1:8000/api/v1/sheets/stats/summary",
+            headers={"Authorization": f"Bearer {token}"}
+        )
+        with urllib.request.urlopen(req_stats) as stats_resp:
+            stats_d = json.loads(stats_resp.read().decode())
+            print(f"[GET /sheets/stats/summary] Status: {stats_resp.status} | Stats: {stats_d}")
+
+        # Test login as employee and check their sheet
+        req_alex = urllib.request.Request(
+            "http://127.0.0.1:8000/api/v1/auth/login",
+            data=json.dumps({"email": "alex@tracking.local", "password": "alex123"}).encode(),
+            headers={"Content-Type": "application/json"}
+        )
+        with urllib.request.urlopen(req_alex) as alex_resp:
+            alex_data = json.loads(alex_resp.read().decode())
+            alex_tok = alex_data["access_token"]
+            print(f"\n[ALEX LOGIN] Logged in as: {alex_data['name']}")
+
+        # Alex gets today's sheet
+        req_alex_today = urllib.request.Request(
+            "http://127.0.0.1:8000/api/v1/sheets/today",
+            headers={"Authorization": f"Bearer {alex_tok}"}
+        )
+        with urllib.request.urlopen(req_alex_today) as alex_sh_resp:
+            alex_sh = json.loads(alex_sh_resp.read().decode())
+            print(f"[ALEX /today] Sheet ID: {alex_sh['id']} | Status: {alex_sh['status']} | Total tasks: {len(alex_sh['tasks'])} | Progress: {alex_sh['progress_percent']}%")
 
 except urllib.error.HTTPError as e:
     print("HTTPError:", e.code, e.read().decode())
 except Exception as e:
     print("Error:", e)
+
 
 
 

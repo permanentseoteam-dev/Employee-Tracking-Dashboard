@@ -23,7 +23,7 @@ router = APIRouter(prefix="/finance", tags=["Finance & Compensation"])
 @router.get("/summary", response_model=FinanceSummaryOut)
 async def get_finance_summary(
     db: AsyncSession = Depends(get_db),
-    _user: Employee = Depends(get_current_user),
+    _user: Employee = Depends(require_role([RoleEnum.ADMIN])),
 ):
     total_msgs_res = await db.execute(select(func.count(FinanceMessage.id)))
     total_messages = total_msgs_res.scalar() or 0
@@ -53,38 +53,9 @@ async def get_finance_summary(
 async def list_finance_messages(
     limit: int = Query(50, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
-    current_user: Employee = Depends(get_current_user),
+    current_user: Employee = Depends(require_role([RoleEnum.ADMIN])),
 ):
     stmt = select(FinanceMessage).order_by(desc(FinanceMessage.created_at)).limit(limit)
-
-    if current_user.role == RoleEnum.ADMIN.value:
-        # Admin can view all messages
-        pass
-    elif current_user.role == RoleEnum.MANAGER.value:
-        # Managers view broadcast messages or messages for their department/subordinates
-        dept_emps_stmt = select(Employee.id).where(
-            or_(
-                Employee.department_id == current_user.department_id,
-                Employee.manager_id == current_user.id,
-            )
-        )
-        dept_emp_ids = (await db.execute(dept_emps_stmt)).scalars().all()
-        stmt = stmt.where(
-            or_(
-                FinanceMessage.is_broadcast == True,
-                FinanceMessage.recipient_id.in_(dept_emp_ids),
-                FinanceMessage.sender_id == current_user.id,
-            )
-        )
-    else:
-        # Employees only view broadcast messages or messages directed to them
-        stmt = stmt.where(
-            or_(
-                FinanceMessage.is_broadcast == True,
-                FinanceMessage.recipient_id == current_user.id,
-            )
-        )
-
     res = await db.execute(stmt)
     messages = res.scalars().all()
 

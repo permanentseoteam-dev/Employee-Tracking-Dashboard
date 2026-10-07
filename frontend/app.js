@@ -20,12 +20,49 @@ const state = {
   },
 };
 
+// Global Role & Tab Permission Enforcer
+function applyRolePermissions() {
+  const role = (state.currentUser?.role || localStorage.getItem('wp-role') || 'admin').toUpperCase();
+
+  // 1. Finance Tab Navigation Button: Visible ONLY for ADMIN
+  const finTabBtn = document.getElementById('btn-tab-finance');
+  if (finTabBtn) {
+    if (role === 'ADMIN') {
+      finTabBtn.style.display = 'inline-flex';
+    } else {
+      finTabBtn.style.display = 'none';
+      if (state.activeTab === 'tab-finance') {
+        state.activeTab = 'tab-overview';
+      }
+    }
+  }
+
+  // 2. Rules & Stars Workspaces: Admin Hub vs Personal Performance Scorecard
+  const adminWs = document.getElementById('rulesAdminWorkspace');
+  const personalWs = document.getElementById('rulesPersonalWorkspace');
+  if (role === 'ADMIN') {
+    if (adminWs) adminWs.style.display = 'block';
+    if (personalWs) personalWs.style.display = 'none';
+  } else {
+    // Both EMPLOYEE and MANAGER view only personal performance & policy violations
+    if (adminWs) adminWs.style.display = 'none';
+    if (personalWs) personalWs.style.display = 'block';
+  }
+}
+
 // Global switchTab callable from inline HTML onclick, listeners, and scripts
 window.switchTab = function switchTab(tabId) {
   if (!tabId) return;
+  const role = (state.currentUser?.role || localStorage.getItem('wp-role') || 'admin').toUpperCase();
+  if (tabId === 'tab-finance' && role !== 'ADMIN') {
+    tabId = 'tab-overview';
+  }
   state.activeTab = tabId;
 
-  // 1. Update tab navigation buttons
+  // 1. Enforce Role Visibility Permissions
+  applyRolePermissions();
+
+  // 2. Update tab navigation buttons
   const tabBtns = document.querySelectorAll('.tab-btn');
   tabBtns.forEach(btn => {
     const isTarget = btn.getAttribute('data-tab') === tabId;
@@ -37,7 +74,7 @@ window.switchTab = function switchTab(tabId) {
     }
   });
 
-  // 2. Explicitly toggle visibility on all tab panes
+  // 3. Explicitly toggle visibility on all tab panes
   const tabPanes = document.querySelectorAll('.tab-pane');
   tabPanes.forEach(pane => {
     const isTarget = pane.id === tabId;
@@ -45,7 +82,7 @@ window.switchTab = function switchTab(tabId) {
     pane.style.display = isTarget ? 'block' : 'none';
   });
 
-  // 3. Load tab content safely with isolated error catching
+  // 4. Load tab content safely with isolated error catching
   try {
     if (tabId === 'tab-overview') loadOverviewData();
     else if (tabId === 'tab-employees') loadEmployeesDirectory();
@@ -56,7 +93,9 @@ window.switchTab = function switchTab(tabId) {
       initScreenshotTimer();
     }
     else if (tabId === 'tab-rules') loadRulesAndStars();
-    else if (tabId === 'tab-finance') loadFinanceTab();
+    else if (tabId === 'tab-finance') {
+      if (role === 'ADMIN') loadFinanceTab();
+    }
   } catch (err) {
     console.error(`Error loading content for ${tabId}:`, err);
   }
@@ -221,6 +260,7 @@ async function loginAs(role) {
       nameEl.textContent = data.name;
     }
 
+    applyRolePermissions();
     await fetchEmployees();
     refreshAll();
     await checkNotifications();
@@ -262,6 +302,11 @@ function setupEventListeners() {
     if (txt) txt.textContent = e.target.checked ? 'Enabled (Active)' : 'Disabled (Inactive)';
   });
 
+  // Rules Admin Inspector Select
+  safeListen('rulesAdminEmpSelect', 'change', (e) => {
+    if (e.target.value) loadAdminScorecardInspector(e.target.value);
+  });
+
   // Employee Directory Filters
   safeListen('employeeSearchInput', 'input', () => loadEmployeesDirectory());
   safeListen('empRoleFilter', 'change', () => loadEmployeesDirectory());
@@ -288,9 +333,16 @@ function setupEventListeners() {
 
   // Finance Banner Actions
   safeListen('financeBannerActionBtn', 'click', () => {
-    window.switchTab('tab-finance');
+    const role = (state.currentUser?.role || localStorage.getItem('wp-role') || 'admin').toUpperCase();
     const banner = document.getElementById('financeAlertBanner');
+    const title = document.getElementById('financeBannerTitle')?.textContent || '';
+    const body = document.getElementById('financeBannerText')?.textContent || '';
     if (banner) banner.style.display = 'none';
+    if (role === 'ADMIN') {
+      window.switchTab('tab-finance');
+    } else {
+      showFinanceNoticeModal(title, body, 'FINANCE NOTICE', state.currentUser?.name);
+    }
   });
   safeListen('financeBannerDismissBtn', 'click', () => {
     const banner = document.getElementById('financeAlertBanner');
@@ -445,11 +497,19 @@ async function loadEmployeesDirectory() {
       return;
     }
 
+    // For employee and admin role, don't show heatmap in this tab. Only show for manager role (and not for admin rows)
+    const currentRole = (state.currentUser?.role || localStorage.getItem('wp-role') || 'admin').toUpperCase();
+    const canViewHeatmap = (currentRole === 'MANAGER');
+
     filtered.forEach(emp => {
       const tr = document.createElement('tr');
       const deptName = deptMap[emp.department_id] || 'General';
       const roleClass = emp.role.toLowerCase();
       const statusClass = emp.status.toLowerCase();
+      const showHeatmapBtn = canViewHeatmap && (emp.role !== 'ADMIN');
+      const actionHtml = showHeatmapBtn
+        ? `<button class="btn btn-secondary btn-sm" onclick="viewEmployeeHeatmap('${emp.id}')" style="padding: 3px 8px; font-size: 0.72rem;">Heatmap</button>`
+        : `<span style="color: var(--text-dim);">-</span>`;
 
       tr.innerHTML = `
         <td><code style="color: var(--accent-cyan); font-weight: 700;">${emp.employee_code}</code></td>
@@ -465,11 +525,7 @@ async function loadEmployeesDirectory() {
         <td style="color: var(--text-muted);">${emp.email}</td>
         <td><span class="badge ${statusClass}">${emp.status}</span></td>
         <td>${deptName}</td>
-        <td>
-          <button class="btn btn-secondary btn-sm" onclick="viewEmployeeHeatmap('${emp.id}')" style="padding: 3px 8px; font-size: 0.72rem;">
-            Heatmap
-          </button>
-        </td>
+        <td>${actionHtml}</td>
       `;
       tbody.appendChild(tr);
     });
@@ -528,6 +584,31 @@ async function loadOverviewData() {
   }
 }
 
+// Helper to determine if a shift has ended for a given work date
+function isShiftEnded(workDateStr, shiftEndTime = '18:00:00') {
+  if (!workDateStr) return true;
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, '0');
+  const d = String(now.getDate()).padStart(2, '0');
+  const todayStr = `${y}-${m}-${d}`;
+
+  // Past dates: shift ended
+  if (workDateStr < todayStr) return true;
+  // Future dates: shift has not ended
+  if (workDateStr > todayStr) return false;
+
+  // Today: check if current time is past shift_end
+  const parts = (shiftEndTime || '18:00:00').split(':').map(Number);
+  const endHour = isNaN(parts[0]) ? 18 : parts[0];
+  const endMin = isNaN(parts[1]) ? 0 : parts[1];
+
+  const shiftEndDate = new Date();
+  shiftEndDate.setHours(endHour, endMin, 0, 0);
+
+  return now >= shiftEndDate;
+}
+
 // 2. Attendance Roll Call Tab
 async function loadAttendanceRollCall() {
   await ensureAuthenticated();
@@ -547,7 +628,13 @@ async function loadAttendanceRollCall() {
       }
       records.forEach(r => {
         const firstAct = r.first_activity ? new Date(r.first_activity).toLocaleTimeString() : '-';
-        const lastAct = r.last_activity ? new Date(r.last_activity).toLocaleTimeString() : '-';
+        
+        // When shift didn't end, leave a blank space in Last Activity
+        const shiftEnded = (r.shift_ended !== undefined) ? r.shift_ended : isShiftEnded(r.work_date);
+        const lastAct = (shiftEnded && r.last_activity)
+          ? new Date(r.last_activity).toLocaleTimeString()
+          : (shiftEnded ? '-' : ''); // Blank space when shift didn't end
+
         const tr = document.createElement('tr');
         tr.innerHTML = `
           <td style="font-weight: 600;">${r.employee_name} (${r.employee_code})</td>
@@ -1046,118 +1133,462 @@ async function executeScreenshotCapture(isManual = false) {
   }
 }
 
-// 5. Rules & Stars Tab
+// 5. Rules & Stars Tab Controller
 async function loadRulesAndStars() {
   await ensureAuthenticated();
+  applyRolePermissions();
+  const role = (state.currentUser?.role || localStorage.getItem('wp-role') || 'admin').toUpperCase();
+
+  if (role === 'ADMIN') {
+    await loadAdminRulesConfig();
+    await populateRulesAdminInspectorSelect();
+  } else {
+    // Both EMPLOYEE and MANAGER only see their own performance and policy violations
+    await loadPersonalPerformanceScorecard();
+  }
+}
+
+// Admin: Load and Render Configured Policies & Shift Forms
+async function loadAdminRulesConfig() {
   try {
     const rulesRes = await fetch(`${API_BASE}/rules`, { headers: authHeaders() });
-    if (rulesRes.ok) {
-      const rules = await rulesRes.json();
-      const container = document.getElementById('rulesListContainer');
-      container.innerHTML = '';
+    if (!rulesRes.ok) return;
+    const rules = await rulesRes.json();
+    const container = document.getElementById('rulesListContainer');
+    if (!container) return;
+    container.innerHTML = '';
 
-      const attRule = rules.find(r => r.rule_type === 'ATTENDANCE') || rules[0];
-      const starRule = rules.find(r => r.rule_type === 'STAR');
+    const attRule = rules.find(r => r.rule_type === 'ATTENDANCE') || rules[0];
+    const starRule = rules.find(r => r.rule_type === 'STAR');
 
-      if (attRule) {
-        state.activeAttendanceRuleId = attRule.id;
-        const p = attRule.config_payload || {};
-        const shiftStartInput = document.getElementById('ruleShiftStart');
-        const shiftEndInput = document.getElementById('ruleShiftEnd');
-        const graceInput = document.getElementById('ruleGraceMinutes');
-        const minActiveInput = document.getElementById('ruleMinActiveHours');
-        const halfDayInput = document.getElementById('ruleHalfDayHours');
+    if (attRule) {
+      state.activeAttendanceRuleId = attRule.id;
+      const p = attRule.config_payload || {};
+      const shiftStartInput = document.getElementById('ruleShiftStart');
+      const shiftEndInput = document.getElementById('ruleShiftEnd');
+      const graceInput = document.getElementById('ruleGraceMinutes');
+      const minActiveInput = document.getElementById('ruleMinActiveHours');
+      const halfDayInput = document.getElementById('ruleHalfDayHours');
 
-        if (shiftStartInput) shiftStartInput.value = p.shift_start || '09:00:00';
-        if (shiftEndInput) shiftEndInput.value = p.shift_end || '18:00:00';
-        if (graceInput) graceInput.value = p.grace_period_minutes !== undefined ? p.grace_period_minutes : 15;
-        if (minActiveInput) minActiveInput.value = p.minimum_active_hours_full_day || 7.0;
-        if (halfDayInput) halfDayInput.value = p.half_day_hours || 4.0;
-      }
-
-      if (starRule) {
-        state.activeStarRuleId = starRule.id;
-        const sp = starRule.config_payload || {};
-        const starHours = (sp.min_active_seconds_for_star || 21600) / 3600;
-        const starInput = document.getElementById('ruleStarActiveHours');
-        if (starInput) starInput.value = starHours;
-      }
-
-      const badge = document.getElementById('rulesCountBadge');
-      if (badge) badge.textContent = `${rules.length} Policies`;
-
-      rules.forEach(r => {
-        const card = document.createElement('div');
-        card.className = `policy-card ${r.is_active ? 'active' : 'inactive'}`;
-        card.id = `policy-card-${r.id}`;
-
-        const typeColor = r.rule_type === 'ATTENDANCE' ? 'employee' : (r.rule_type === 'STAR' ? 'manager' : 'admin');
-        const descText = r.description ? `<div class="policy-desc">${r.description}</div>` : '';
-
-        // Formatted parameters preview
-        const payloadKeys = Object.keys(r.config_payload || {});
-        let paramsHtml = '';
-        if (payloadKeys.length > 0) {
-          paramsHtml = `<div style="display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0;">`;
-          payloadKeys.forEach(k => {
-            const val = typeof r.config_payload[k] === 'object' ? JSON.stringify(r.config_payload[k]) : r.config_payload[k];
-            paramsHtml += `<span style="font-size: 0.72rem; padding: 2px 7px; background: rgba(255,255,255,0.05); border-radius: 4px; border: 1px solid var(--border-subtle); color: var(--text-muted); font-family: monospace;">${k}: <strong style="color: var(--text-main);">${val}</strong></span>`;
-          });
-          paramsHtml += `</div>`;
-        }
-
-        card.innerHTML = `
-          <div class="policy-header">
-            <div style="flex: 1;">
-              <div class="policy-title">
-                ${r.name}
-                <span class="role-pill ${typeColor}" style="font-size: 0.65rem;">${r.rule_type}</span>
-              </div>
-              ${descText}
-            </div>
-          </div>
-          ${paramsHtml}
-          <div class="policy-actions">
-            <!-- Active / Inactive Toggle Switch -->
-            <label class="switch-label" title="Click to toggle active/inactive status">
-              <input type="checkbox" class="switch-input policy-toggle-input" data-id="${r.id}" ${r.is_active ? 'checked' : ''}>
-              <span class="toggle-switch"></span>
-              <span class="policy-status-text" style="color: ${r.is_active ? 'var(--accent-emerald)' : 'var(--text-dim)'};">${r.is_active ? 'Active' : 'Inactive'}</span>
-            </label>
-            
-            <div style="display: flex; gap: 8px; align-items: center;">
-              <span id="sync-indicator-${r.id}" style="font-size: 0.7rem; color: var(--accent-emerald); display: none; font-weight: 600;">Saved!</span>
-              <button class="btn btn-danger btn-sm delete-rule-btn" data-id="${r.id}" data-name="${r.name}" style="padding: 3px 9px; font-size: 0.72rem;">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-                Delete
-              </button>
-            </div>
-          </div>
-        `;
-        container.appendChild(card);
-      });
-
-      // Attach Toggle Listeners
-      container.querySelectorAll('.policy-toggle-input').forEach(input => {
-        input.addEventListener('change', async (e) => {
-          const ruleId = e.target.getAttribute('data-id');
-          const newStatus = e.target.checked;
-          await handleToggleRuleStatus(ruleId, newStatus);
-        });
-      });
-
-      // Attach Delete Listeners
-      container.querySelectorAll('.delete-rule-btn').forEach(btn => {
-        btn.addEventListener('click', async () => {
-          const ruleId = btn.getAttribute('data-id');
-          const ruleName = btn.getAttribute('data-name');
-          await handleDeleteRule(ruleId, ruleName);
-        });
-      });
+      if (shiftStartInput) shiftStartInput.value = p.shift_start || '09:00:00';
+      if (shiftEndInput) shiftEndInput.value = p.shift_end || '18:00:00';
+      if (graceInput) graceInput.value = p.grace_period_minutes !== undefined ? p.grace_period_minutes : 15;
+      if (minActiveInput) minActiveInput.value = p.minimum_active_hours_full_day || 7.0;
+      if (halfDayInput) halfDayInput.value = p.half_day_hours || 4.0;
     }
+
+    if (starRule) {
+      state.activeStarRuleId = starRule.id;
+      const sp = starRule.config_payload || {};
+      const starHours = (sp.min_active_seconds_for_star || 21600) / 3600;
+      const starInput = document.getElementById('ruleStarActiveHours');
+      if (starInput) starInput.value = starHours;
+    }
+
+    const badge = document.getElementById('rulesCountBadge');
+    if (badge) badge.textContent = `${rules.length} Policies`;
+
+    rules.forEach(r => {
+      const card = document.createElement('div');
+      card.className = `policy-card ${r.is_active ? 'active' : 'inactive'}`;
+      card.id = `policy-card-${r.id}`;
+
+      const typeColor = r.rule_type === 'ATTENDANCE' ? 'employee' : (r.rule_type === 'STAR' ? 'manager' : 'admin');
+      const descText = r.description ? `<div class="policy-desc">${r.description}</div>` : '';
+
+      const payloadKeys = Object.keys(r.config_payload || {});
+      let paramsHtml = '';
+      if (payloadKeys.length > 0) {
+        paramsHtml = `<div style="display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0;">`;
+        payloadKeys.forEach(k => {
+          const val = typeof r.config_payload[k] === 'object' ? JSON.stringify(r.config_payload[k]) : r.config_payload[k];
+          paramsHtml += `<span style="font-size: 0.72rem; padding: 2px 7px; background: rgba(255,255,255,0.05); border-radius: 4px; border: 1px solid var(--border-subtle); color: var(--text-muted); font-family: monospace;">${k}: <strong style="color: var(--text-main);">${val}</strong></span>`;
+        });
+        paramsHtml += `</div>`;
+      }
+
+      card.innerHTML = `
+        <div class="policy-header">
+          <div style="flex: 1;">
+            <div class="policy-title">
+              ${r.name}
+              <span class="role-pill ${typeColor}" style="font-size: 0.65rem;">${r.rule_type}</span>
+            </div>
+            ${descText}
+          </div>
+        </div>
+        ${paramsHtml}
+        <div class="policy-actions">
+          <label class="switch-label" title="Click to toggle active/inactive status">
+            <input type="checkbox" class="switch-input policy-toggle-input" data-id="${r.id}" ${r.is_active ? 'checked' : ''}>
+            <span class="toggle-switch"></span>
+            <span class="policy-status-text" style="color: ${r.is_active ? 'var(--accent-emerald)' : 'var(--text-dim)'};">${r.is_active ? 'Active' : 'Inactive'}</span>
+          </label>
+          
+          <div style="display: flex; gap: 8px; align-items: center;">
+            <span id="sync-indicator-${r.id}" style="font-size: 0.7rem; color: var(--accent-emerald); display: none; font-weight: 600;">Saved!</span>
+            <button class="btn btn-danger btn-sm delete-rule-btn" data-id="${r.id}" data-name="${r.name}" style="padding: 3px 9px; font-size: 0.72rem;">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+              Delete
+            </button>
+          </div>
+        </div>
+      `;
+      container.appendChild(card);
+    });
+
+    container.querySelectorAll('.policy-toggle-input').forEach(input => {
+      input.addEventListener('change', async (e) => {
+        const ruleId = e.target.getAttribute('data-id');
+        const newStatus = e.target.checked;
+        await handleToggleRuleStatus(ruleId, newStatus);
+      });
+    });
+
+    container.querySelectorAll('.delete-rule-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const ruleId = btn.getAttribute('data-id');
+        const ruleName = btn.getAttribute('data-name');
+        await handleDeleteRule(ruleId, ruleName);
+      });
+    });
   } catch (err) {
-    console.error('Error loading rules & stars:', err);
+    console.error('Error loading admin rules:', err);
   }
+}
+
+// Admin: Populate Employee Selector for Scorecard Inspector
+async function populateRulesAdminInspectorSelect() {
+  const sel = document.getElementById('rulesAdminEmpSelect');
+  if (!sel) return;
+  const currentVal = sel.value;
+  sel.innerHTML = '';
+
+  if (state.employees.length === 0) {
+    await fetchEmployees();
+  }
+
+  state.employees.forEach(emp => {
+    const opt = document.createElement('option');
+    opt.value = emp.id;
+    opt.textContent = `${emp.name} (${emp.employee_code} • ${emp.role})`;
+    sel.appendChild(opt);
+  });
+
+  const targetEmpId = currentVal && state.employees.some(e => e.id === currentVal)
+    ? currentVal
+    : (state.employees[0]?.id || null);
+
+  if (targetEmpId) {
+    sel.value = targetEmpId;
+    await loadAdminScorecardInspector(targetEmpId);
+  }
+}
+
+// Admin: Fetch and render specific employee scorecard inspector
+async function loadAdminScorecardInspector(empId) {
+  const container = document.getElementById('rulesAdminScorecardContainer');
+  if (!container || !empId) return;
+  container.innerHTML = '<div style="padding: 24px; text-align: center; color: var(--text-dim); font-size: 0.85rem;">Loading employee scorecard...</div>';
+
+  try {
+    const res = await fetch(`${API_BASE}/rules/performance?employee_id=${empId}`, { headers: authHeaders() });
+    if (!res.ok) throw new Error('Failed to fetch scorecard');
+    const data = await res.json();
+    renderScorecardHTMLInto(container, data);
+  } catch (err) {
+    console.error('Error loading inspector scorecard:', err);
+    container.innerHTML = `<div style="padding: 20px; text-align: center; color: var(--accent-rose); font-size: 0.85rem;">Failed to load performance scorecard for selected employee.</div>`;
+  }
+}
+
+// Employee & Manager: Personal Performance Scorecard Controller
+async function loadPersonalPerformanceScorecard() {
+  try {
+    const res = await fetch(`${API_BASE}/rules/performance`, { headers: authHeaders() });
+    if (!res.ok) throw new Error('Failed to load personal scorecard');
+    const data = await res.json();
+
+    // 1. Profile Pill & Dept
+    const profilePill = document.getElementById('personalScorecardProfilePill');
+    if (profilePill) {
+      profilePill.textContent = `${data.employee_name} (${data.employee_code}) • ${data.role}`;
+      profilePill.className = `role-pill ${data.role.toLowerCase()}`;
+    }
+    const deptPill = document.getElementById('personalScorecardDeptPill');
+    if (deptPill) deptPill.textContent = data.department || 'General';
+
+    // 2. Scorecard KPIs
+    const kpiStars = document.getElementById('personalKpiStars');
+    if (kpiStars) kpiStars.textContent = `${data.total_stars} ⭐`;
+    const kpiStarsSub = document.getElementById('personalKpiStarsSub');
+    if (kpiStarsSub) kpiStarsSub.textContent = `${data.stars_ledger.length} award recognitions`;
+
+    const kpiPunct = document.getElementById('personalKpiPunctuality');
+    if (kpiPunct) kpiPunct.textContent = `${data.punctuality_rate_pct}%`;
+    const kpiPunctSub = document.getElementById('personalKpiPunctualitySub');
+    if (kpiPunctSub) kpiPunctSub.textContent = `${data.on_time_days} on-time / ${data.late_days} late`;
+
+    const kpiActive = document.getElementById('personalKpiActiveHours');
+    if (kpiActive) kpiActive.textContent = `${data.total_active_hours} hrs`;
+    const kpiActiveSub = document.getElementById('personalKpiActiveHoursSub');
+    if (kpiActiveSub) kpiActiveSub.textContent = `Avg ${data.avg_daily_active_hours} hrs/day`;
+
+    const kpiViolations = document.getElementById('personalKpiViolations');
+    if (kpiViolations) kpiViolations.textContent = data.total_violations_count;
+    const kpiViolationsSub = document.getElementById('personalKpiViolationsSub');
+    if (kpiViolationsSub) kpiViolationsSub.textContent = data.total_violations_count === 0 ? 'Compliant & Clear' : 'Policy Infractions';
+
+    const kpiDays = document.getElementById('personalKpiDaysLogged');
+    if (kpiDays) kpiDays.textContent = `${data.total_days_logged} Shifts`;
+
+    const vBadge = document.getElementById('personalViolationsCountBadge');
+    if (vBadge) vBadge.textContent = `${data.total_violations_count} Infractions`;
+
+    const sBadge = document.getElementById('personalStarsCountBadge');
+    if (sBadge) sBadge.textContent = `${data.total_stars} Stars`;
+
+    // 3. Render Violations Table
+    const vTbody = document.getElementById('personalViolationsTbody');
+    if (vTbody) {
+      vTbody.innerHTML = '';
+      if (data.violations_ledger.length === 0) {
+        vTbody.innerHTML = `
+          <tr>
+            <td colspan="6" style="text-align: center; color: var(--accent-emerald); padding: 24px; font-size: 0.85rem;">
+              ✨ <strong>Zero Policy Violations!</strong> Excellent work — all workplace punctuality and shift policies are satisfied.
+            </td>
+          </tr>
+        `;
+      } else {
+        data.violations_ledger.forEach(v => {
+          const tr = document.createElement('tr');
+          const typeBadge = v.violation_type === 'LATE_ARRIVAL'
+            ? '<span class="badge late">Late Arrival</span>'
+            : (v.violation_type === 'HOURS_SHORTFALL' ? '<span class="badge absent">Hours Shortfall</span>' : `<span class="badge offline">${v.violation_type}</span>`);
+          
+          const sevBadge = v.severity === 'WARNING'
+            ? '<span class="role-pill manager" style="font-size: 0.65rem;">Warning</span>'
+            : `<span class="role-pill admin" style="background: rgba(244,63,94,0.15); color: #f43f5e; border-color: rgba(244,63,94,0.3); font-size: 0.65rem;">${v.severity}</span>`;
+
+          tr.innerHTML = `
+            <td style="font-weight: 600; font-family: monospace; font-size: 0.82rem; color: var(--text-main);">${v.date}</td>
+            <td>${typeBadge}</td>
+            <td style="font-weight: 500; color: var(--text-main); font-size: 0.82rem;">${v.policy_name}</td>
+            <td>${sevBadge}</td>
+            <td style="font-size: 0.78rem; color: var(--text-muted); line-height: 1.4;">${v.details}</td>
+            <td>
+              <span style="color: var(--accent-rose); font-weight: 600; font-size: 0.78rem; display: flex; align-items: center; gap: 4px;">
+                <span>🔻</span> ${v.star_impact}
+              </span>
+            </td>
+          `;
+          vTbody.appendChild(tr);
+        });
+      }
+    }
+
+    // 4. Render Stars Table
+    const sTbody = document.getElementById('personalStarsTbody');
+    if (sTbody) {
+      sTbody.innerHTML = '';
+      if (data.stars_ledger.length === 0) {
+        sTbody.innerHTML = `
+          <tr>
+            <td colspan="5" style="text-align: center; color: var(--text-dim); padding: 24px; font-size: 0.85rem;">
+              ⭐ No star recognitions earned yet. Arrive before shift start or on-time to unlock daily stars!
+            </td>
+          </tr>
+        `;
+      } else {
+        data.stars_ledger.forEach(s => {
+          const tr = document.createElement('tr');
+          const starIcons = '⭐'.repeat(Math.max(1, s.star_count)) + ` +${s.star_count}`;
+          
+          let critHtml = '';
+          if (s.criteria && Object.keys(s.criteria).length > 0) {
+            critHtml = Object.entries(s.criteria).map(([k, val]) => `<span style="font-size: 0.72rem; padding: 2px 6px; background: rgba(255,255,255,0.05); border-radius: 4px; border: 1px solid var(--border-subtle); color: var(--text-muted); margin-right: 4px; font-family: monospace;">${k}: <strong>${val}</strong></span>`).join('');
+          } else {
+            critHtml = '<span style="font-size: 0.74rem; color: var(--text-dim);">Policy criteria satisfied</span>';
+          }
+
+          const awardedTime = new Date(s.awarded_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+          tr.innerHTML = `
+            <td style="font-weight: 600; font-family: monospace; font-size: 0.82rem; color: var(--text-main);">${s.date}</td>
+            <td>
+              <span class="role-pill employee" style="background: rgba(245,158,11,0.15); color: var(--accent-amber); border-color: rgba(245,158,11,0.3); font-size: 0.75rem; font-weight: 700;">
+                ${starIcons}
+              </span>
+            </td>
+            <td style="font-weight: 600; color: var(--text-main); font-size: 0.82rem;">${s.reason}</td>
+            <td>${critHtml}</td>
+            <td style="font-size: 0.74rem; color: var(--text-dim);">${s.date} ${awardedTime}</td>
+          `;
+          sTbody.appendChild(tr);
+        });
+      }
+    }
+
+  } catch (err) {
+    console.error('Error loading personal scorecard:', err);
+  }
+}
+
+// Reusable renderer for admin inspector container
+function renderScorecardHTMLInto(container, data) {
+  let violationsRows = '';
+  if (data.violations_ledger.length === 0) {
+    violationsRows = `
+      <tr>
+        <td colspan="6" style="text-align: center; color: var(--accent-emerald); padding: 18px; font-size: 0.82rem;">
+          ✨ <strong>Zero Policy Violations!</strong> Employee has complied with all workplace and shift policies.
+        </td>
+      </tr>
+    `;
+  } else {
+    violationsRows = data.violations_ledger.map(v => {
+      const typeBadge = v.violation_type === 'LATE_ARRIVAL'
+        ? '<span class="badge late">Late Arrival</span>'
+        : (v.violation_type === 'HOURS_SHORTFALL' ? '<span class="badge absent">Hours Shortfall</span>' : `<span class="badge offline">${v.violation_type}</span>`);
+      
+      const sevBadge = v.severity === 'WARNING'
+        ? '<span class="role-pill manager" style="font-size: 0.65rem;">Warning</span>'
+        : `<span class="role-pill admin" style="background: rgba(244,63,94,0.15); color: #f43f5e; border-color: rgba(244,63,94,0.3); font-size: 0.65rem;">${v.severity}</span>`;
+
+      return `
+        <tr>
+          <td style="font-weight: 600; font-family: monospace; font-size: 0.8rem; color: var(--text-main);">${v.date}</td>
+          <td>${typeBadge}</td>
+          <td style="font-weight: 500; color: var(--text-main); font-size: 0.8rem;">${v.policy_name}</td>
+          <td>${sevBadge}</td>
+          <td style="font-size: 0.76rem; color: var(--text-muted); line-height: 1.4;">${v.details}</td>
+          <td>
+            <span style="color: var(--accent-rose); font-weight: 600; font-size: 0.76rem;">🔻 ${v.star_impact}</span>
+          </td>
+        </tr>
+      `;
+    }).join('');
+  }
+
+  let starsRows = '';
+  if (data.stars_ledger.length === 0) {
+    starsRows = `
+      <tr>
+        <td colspan="5" style="text-align: center; color: var(--text-dim); padding: 18px; font-size: 0.82rem;">
+          ⭐ No stars awarded yet.
+        </td>
+      </tr>
+    `;
+  } else {
+    starsRows = data.stars_ledger.map(s => {
+      const starIcons = '⭐'.repeat(Math.max(1, s.star_count)) + ` +${s.star_count}`;
+      let critHtml = '';
+      if (s.criteria && Object.keys(s.criteria).length > 0) {
+        critHtml = Object.entries(s.criteria).map(([k, val]) => `<span style="font-size: 0.7rem; padding: 2px 5px; background: rgba(255,255,255,0.05); border-radius: 4px; border: 1px solid var(--border-subtle); color: var(--text-muted); margin-right: 4px; font-family: monospace;">${k}: <strong>${val}</strong></span>`).join('');
+      } else {
+        critHtml = '<span style="font-size: 0.72rem; color: var(--text-dim);">Criteria met</span>';
+      }
+      const awardedTime = new Date(s.awarded_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+      return `
+        <tr>
+          <td style="font-weight: 600; font-family: monospace; font-size: 0.8rem; color: var(--text-main);">${s.date}</td>
+          <td>
+            <span class="role-pill employee" style="background: rgba(245,158,11,0.15); color: var(--accent-amber); border-color: rgba(245,158,11,0.3); font-size: 0.72rem; font-weight: 700;">
+              ${starIcons}
+            </span>
+          </td>
+          <td style="font-weight: 600; color: var(--text-main); font-size: 0.8rem;">${s.reason}</td>
+          <td>${critHtml}</td>
+          <td style="font-size: 0.72rem; color: var(--text-dim);">${s.date} ${awardedTime}</td>
+        </tr>
+      `;
+    }).join('');
+  }
+
+  container.innerHTML = `
+    <div style="background: var(--bg-card); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: 18px; margin-top: 10px;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 10px;">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <div style="font-weight: 700; color: var(--text-main); font-size: 1.05rem;">${data.employee_name}</div>
+          <span class="role-pill ${data.role.toLowerCase()}" style="font-size: 0.7rem;">${data.role}</span>
+          <span class="badge" style="font-size: 0.7rem;">${data.employee_code}</span>
+          <span style="font-size: 0.8rem; color: var(--text-muted);">${data.department}</span>
+        </div>
+      </div>
+
+      <div class="stat-grid" style="grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); margin-bottom: 20px;">
+        <div class="stat-card" style="border-left: 3px solid var(--accent-amber); padding: 14px;">
+          <div class="stat-label">Total Stars</div>
+          <div class="stat-value" style="color: var(--accent-amber); font-size: 1.4rem;">${data.total_stars} ⭐</div>
+          <div class="stat-sub">${data.stars_ledger.length} awards earned</div>
+        </div>
+        <div class="stat-card emerald" style="padding: 14px;">
+          <div class="stat-label">Punctuality Rate</div>
+          <div class="stat-value" style="font-size: 1.4rem;">${data.punctuality_rate_pct}%</div>
+          <div class="stat-sub">${data.on_time_days} On-Time / ${data.late_days} Late</div>
+        </div>
+        <div class="stat-card cyan" style="padding: 14px;">
+          <div class="stat-label">Active Time</div>
+          <div class="stat-value" style="font-size: 1.4rem;">${data.total_active_hours} hrs</div>
+          <div class="stat-sub">Avg ${data.avg_daily_active_hours} hrs/day</div>
+        </div>
+        <div class="stat-card" style="border-left: 3px solid var(--accent-rose); padding: 14px;">
+          <div class="stat-label">Policy Violations</div>
+          <div class="stat-value" style="color: var(--accent-rose); font-size: 1.4rem;">${data.total_violations_count}</div>
+          <div class="stat-sub">Infractions logged</div>
+        </div>
+      </div>
+
+      <div style="display: flex; flex-direction: column; gap: 20px;">
+        <div>
+          <div style="font-weight: 700; color: var(--text-main); font-size: 0.88rem; margin-bottom: 8px; display: flex; align-items: center; gap: 6px;">
+            <span style="color: var(--accent-rose);">⚠️</span> Policy Violations & Star Impact Ledger
+          </div>
+          <div class="table-responsive">
+            <table class="data-table" style="width: 100%;">
+              <thead>
+                <tr>
+                  <th style="width: 100px;">Date</th>
+                  <th style="width: 120px;">Violation</th>
+                  <th>Policy Violated</th>
+                  <th style="width: 80px;">Severity</th>
+                  <th>Details</th>
+                  <th style="width: 200px;">Star Impact</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${violationsRows}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div>
+          <div style="font-weight: 700; color: var(--text-main); font-size: 0.88rem; margin-bottom: 8px; display: flex; align-items: center; gap: 6px;">
+            <span style="color: var(--accent-amber);">⭐</span> Stars Earned History
+          </div>
+          <div class="table-responsive">
+            <table class="data-table" style="width: 100%;">
+              <thead>
+                <tr>
+                  <th style="width: 100px;">Award Date</th>
+                  <th style="width: 90px;">Stars</th>
+                  <th>Reason</th>
+                  <th>Criteria Snapshot</th>
+                  <th style="width: 140px;">Awarded At</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${starsRows}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
 }
 
 async function handleToggleRuleStatus(ruleId, newStatus) {
@@ -1318,7 +1749,7 @@ async function handleSaveRules(e) {
       }
       await loadRulesAndStars();
     } else {
-      alert('Failed to save rules. Please ensure you are logged in as Admin or Manager.');
+      alert('Failed to save rules. Please ensure you are logged in as Admin.');
     }
   } catch (err) {
     console.error('Failed to save rules:', err);
@@ -1360,7 +1791,24 @@ async function purgeRetentionNow() {
   }
 }
 
+// Modal helper for viewing finance & notification messages
+function showFinanceNoticeModal(title, body, meta, recipient) {
+  const finModal = document.getElementById('financeDetailModal');
+  if (!finModal) return;
+  const subjEl = document.getElementById('financeModalSubject');
+  const bodyEl = document.getElementById('financeModalBody');
+  const recipEl = document.getElementById('financeModalRecipient');
+  const metaEl = document.getElementById('financeModalMeta');
+  const dateEl = document.getElementById('financeModalDate');
 
+  if (subjEl) subjEl.textContent = title || 'Finance Notice';
+  if (bodyEl) bodyEl.textContent = body || 'No message content provided.';
+  if (recipEl) recipEl.textContent = recipient || (state.currentUser ? state.currentUser.name : 'Staff Member');
+  if (metaEl) metaEl.textContent = meta || 'OFFICIAL NOTICE';
+  if (dateEl) dateEl.textContent = `Received on ${new Date().toLocaleDateString()}`;
+
+  finModal.classList.add('active');
+}
 
 // ============================================
 // Notification Center Controller
@@ -1410,7 +1858,12 @@ async function checkNotifications() {
               });
               checkNotifications();
             }
-            switchTab('tab-finance');
+            const role = (state.currentUser?.role || localStorage.getItem('wp-role') || 'admin').toUpperCase();
+            if (role === 'ADMIN') {
+              switchTab('tab-finance');
+            } else {
+              showFinanceNoticeModal(n.title, n.body, n.notification_type, state.currentUser?.name);
+            }
             document.getElementById('notifDrawer').style.display = 'none';
           });
           listContainer.appendChild(item);

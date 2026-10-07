@@ -7,6 +7,7 @@ from app.models.screenshot import Screenshot
 from app.models.rules import SettingRule, EmployeeStar
 from app.models.audit import AuditLog
 from app.models.finance import FinanceMessage, FinanceNotification
+from app.models.task_sheet import TaskSheet, TaskItem, TaskSheetStatusEnum, TaskPriorityEnum, TaskStatusEnum
 
 __all__ = [
     "Department",
@@ -24,5 +25,10 @@ __all__ = [
     "AuditLog",
     "FinanceMessage",
     "FinanceNotification",
+    "TaskSheet",
+    "TaskItem",
+    "TaskSheetStatusEnum",
+    "TaskPriorityEnum",
+    "TaskStatusEnum",
 ]
 

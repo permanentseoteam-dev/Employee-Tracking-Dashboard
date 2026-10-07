@@ -11,6 +11,7 @@ from app.api.v1.employees import router as employees_router
 from app.api.v1.rules import router as rules_router
 from app.api.v1.screenshots import router as screenshots_router
 from app.api.v1.finance import router as finance_router
+from app.api.v1.task_sheets import router as task_sheets_router
 
 api_v1_router = APIRouter()
 
@@ -26,4 +27,5 @@ api_v1_router.include_router(rules_router)
 api_v1_router.include_router(dashboard_router)
 api_v1_router.include_router(audit_router)
 api_v1_router.include_router(finance_router)
+api_v1_router.include_router(task_sheets_router)
 

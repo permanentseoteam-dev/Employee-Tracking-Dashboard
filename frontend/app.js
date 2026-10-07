@@ -3491,6 +3491,53 @@ function renderSheetsTableView(sheets) {
 // Employee View: Personal Daily Task Sheet
 // ==========================================================================
 
+// Excel Workbook State & Multi-Sheet Architecture
+const excelWorkbook = {
+  title: 'Daily Task Sheet',
+  activeSheetId: 'sheet-1',
+  selectedCell: { col: 'A', row: 1 },
+  sheets: [
+    {
+      id: 'sheet-1',
+      name: 'Sheet1',
+      rowCount: 35,
+      colCount: 14,
+      cells: {} // Empty excel sheet by default!
+    }
+  ],
+  initialized: false
+};
+
+// Helper: Convert column index (0-based) to Excel Column Letter (A, B... Z, AA...)
+function indexToColLetter(idx) {
+  let letter = '';
+  let temp = idx;
+  while (temp >= 0) {
+    letter = String.fromCharCode((temp % 26) + 65) + letter;
+    temp = Math.floor(temp / 26) - 1;
+  }
+  return letter;
+}
+
+// Helper: Convert Excel Column Letter to 0-based index
+function colLetterToIndex(colStr) {
+  let idx = 0;
+  for (let i = 0; i < colStr.length; i++) {
+    idx = idx * 26 + (colStr.charCodeAt(i) - 64);
+  }
+  return idx - 1;
+}
+
+// Get the currently active sheet object
+function getActiveExcelSheet() {
+  let s = excelWorkbook.sheets.find(x => x.id === excelWorkbook.activeSheetId);
+  if (!s && excelWorkbook.sheets.length > 0) {
+    s = excelWorkbook.sheets[0];
+    excelWorkbook.activeSheetId = s.id;
+  }
+  return s;
+}
+
 async function loadEmployeeTodaySheet() {
   let sheet = null;
   try {
@@ -3502,15 +3549,14 @@ async function loadEmployeeTodaySheet() {
     // Offline or network error
   }
 
-  // Fallback to dummy data if fetch failed or returned empty tasks
-  if (!sheet || !sheet.tasks || sheet.tasks.length === 0) {
+  if (!sheet) {
     const cached = localStorage.getItem('wp_emp_today_sheet');
     sheet = cached ? JSON.parse(cached) : getDummyEmployeeTodaySheet();
   }
 
   state.currentTodaySheet = sheet;
 
-  // Header updates
+  // Header status pill
   const badge = document.getElementById('empSheetStatusBadge');
   if (badge) {
     const st = (sheet.status || 'DRAFT').toUpperCase();
@@ -3518,39 +3564,547 @@ async function loadEmployeeTodaySheet() {
     badge.className = `sheet-status-pill ${st.toLowerCase()}`;
   }
 
-  const hoursBadge = document.getElementById('empSheetTotalHoursBadge');
-  if (hoursBadge) hoursBadge.textContent = `${(sheet.total_hours || 0).toFixed(1)} hrs`;
+  // Initialize interactive empty Excel Workbook
+  initExcelWorkbook(sheet);
+}
 
-  const ratioBadge = document.getElementById('empSheetTasksRatioBadge');
-  if (ratioBadge) {
-    const completed = sheet.completed_tasks || 0;
-    const total = sheet.total_tasks || (sheet.tasks ? sheet.tasks.length : 0);
-    const pct = sheet.progress_percent || (total > 0 ? Math.round((completed / total) * 100) : 0);
-    ratioBadge.textContent = `${completed} / ${total} (${pct}%)`;
-  }
-
-  // Populate Google Sheets Projects Table
-  const projectRows = extractProjectRowsFromSheet(sheet);
-  sheet.project_rows = projectRows;
-  renderProjectsSpreadsheet('empProjectsSheetTbody', projectRows, true);
-
-  // Manager Feedback Banner
-  const fbCard = document.getElementById('empManagerFeedbackCard');
-  if (fbCard) {
-    if (sheet.manager_feedback) {
-      fbCard.style.display = 'block';
-      const revNameEl = document.getElementById('empFeedbackReviewerName');
-      if (revNameEl) revNameEl.textContent = sheet.reviewed_by_name ? `Reviewed by ${sheet.reviewed_by_name}` : 'Supervisor Review Feedback';
-      const dateEl = document.getElementById('empFeedbackDate');
-      if (dateEl) dateEl.textContent = sheet.reviewed_at ? new Date(sheet.reviewed_at).toLocaleString() : '';
-      const textEl = document.getElementById('empFeedbackContentText');
-      if (textEl) textEl.textContent = `"${sheet.manager_feedback}"`;
-    } else {
-      fbCard.style.display = 'none';
+function initExcelWorkbook(sheet) {
+  // Try loading workbook from serialized summary_notes or local storage
+  let loaded = false;
+  if (sheet && sheet.summary_notes) {
+    try {
+      const parsed = JSON.parse(sheet.summary_notes);
+      if (parsed && Array.isArray(parsed.sheets) && parsed.sheets.length > 0) {
+        excelWorkbook.title = parsed.title || 'Daily Task Sheet';
+        excelWorkbook.sheets = parsed.sheets;
+        excelWorkbook.activeSheetId = parsed.activeSheetId || parsed.sheets[0].id;
+        loaded = true;
+      }
+    } catch (e) {
+      // not JSON workbook
     }
   }
 
-  renderEmployeeTasks(sheet.tasks || []);
+  if (!loaded) {
+    const cachedWb = localStorage.getItem('wp_emp_workbook');
+    if (cachedWb) {
+      try {
+        const parsed = JSON.parse(cachedWb);
+        if (parsed && Array.isArray(parsed.sheets) && parsed.sheets.length > 0) {
+          excelWorkbook.title = parsed.title || 'Daily Task Sheet';
+          excelWorkbook.sheets = parsed.sheets;
+          excelWorkbook.activeSheetId = parsed.activeSheetId || parsed.sheets[0].id;
+          loaded = true;
+        }
+      } catch (e) {}
+    }
+  }
+
+  // If still not loaded, ensure clean empty Sheet1
+  if (!loaded) {
+    excelWorkbook.title = 'Daily Task Sheet';
+    excelWorkbook.sheets = [
+      {
+        id: 'sheet-1',
+        name: 'Sheet1',
+        rowCount: 35,
+        colCount: 14,
+        cells: {} // completely empty
+      }
+    ];
+    excelWorkbook.activeSheetId = 'sheet-1';
+  }
+
+  // Sync title input
+  const titleInput = document.getElementById('excelWorkbookTitle');
+  if (titleInput) {
+    titleInput.value = excelWorkbook.title;
+    titleInput.oninput = () => {
+      excelWorkbook.title = titleInput.value;
+      saveExcelWorkbookToStorage();
+    };
+  }
+
+  // Setup toolbar events once
+  if (!excelWorkbook.initialized) {
+    setupExcelEventListeners();
+    excelWorkbook.initialized = true;
+  }
+
+  // Render both grid and sheet tabs
+  renderExcelGrid();
+  renderExcelSheetTabs();
+}
+
+function renderExcelGrid() {
+  const table = document.getElementById('excelGridTable');
+  const thead = document.getElementById('excelGridThead');
+  const tbody = document.getElementById('excelGridTbody');
+  if (!table || !thead || !tbody) return;
+
+  const sheet = getActiveExcelSheet();
+  if (!sheet) return;
+
+  const rowCount = sheet.rowCount || 35;
+  const colCount = sheet.colCount || 14;
+  sheet.cells = sheet.cells || {};
+
+  const selCol = excelWorkbook.selectedCell.col;
+  const selRow = excelWorkbook.selectedCell.row;
+  const selCoord = `${selCol}${selRow}`;
+
+  // 1. Build Header Row (Corner + Columns A, B, C...)
+  let theadHtml = '<tr><th class="excel-corner-th" onclick="focusExcelCell(\'A\', 1)"></th>';
+  for (let c = 0; c < colCount; c++) {
+    const colLetter = indexToColLetter(c);
+    const isActiveCol = colLetter === selCol;
+    theadHtml += `<th class="excel-col-th ${isActiveCol ? 'active-header' : ''}" data-col="${colLetter}" onclick="focusExcelCell('${colLetter}', 1)">${colLetter}</th>`;
+  }
+  theadHtml += '</tr>';
+  thead.innerHTML = theadHtml;
+
+  // 2. Build Data Rows (1 to rowCount)
+  let tbodyHtml = '';
+  for (let r = 1; r <= rowCount; r++) {
+    const isActiveRow = r === selRow;
+    tbodyHtml += `<tr data-row="${r}"><th class="excel-row-th ${isActiveRow ? 'active-header' : ''}" data-row="${r}" onclick="focusExcelCell('A', ${r})">${r}</th>`;
+
+    for (let c = 0; c < colCount; c++) {
+      const colLetter = indexToColLetter(c);
+      const coord = `${colLetter}${r}`;
+      const cellData = sheet.cells[coord] || { v: '' };
+      const isSelected = coord === selCoord;
+
+      let cellStyle = '';
+      if (cellData.b) cellStyle += 'font-weight: 700; ';
+      if (cellData.i) cellStyle += 'font-style: italic; ';
+      if (cellData.u && cellData.s) cellStyle += 'text-decoration: underline line-through; ';
+      else if (cellData.u) cellStyle += 'text-decoration: underline; ';
+      else if (cellData.s) cellStyle += 'text-decoration: line-through; ';
+      if (cellData.color) cellStyle += `color: ${cellData.color}; `;
+      if (cellData.align) cellStyle += `text-align: ${cellData.align}; `;
+      if (cellData.font) cellStyle += `font-family: ${cellData.font}; `;
+      if (cellData.size) cellStyle += `font-size: ${cellData.size}; `;
+
+      const tdBgStyle = cellData.bg ? `background-color: ${cellData.bg};` : '';
+
+      tbodyHtml += `
+        <td class="excel-grid-cell ${isSelected ? 'selected' : ''}" data-col="${colLetter}" data-row="${r}" data-coord="${coord}" style="${tdBgStyle}">
+          <input type="text" class="excel-cell-input-el" data-coord="${coord}" data-col="${colLetter}" data-row="${r}" value="${escapeHtml(cellData.v || '')}" style="${cellStyle}">
+        </td>
+      `;
+    }
+    tbodyHtml += '</tr>';
+  }
+  tbody.innerHTML = tbodyHtml;
+
+  // 3. Attach interactive events to all cell inputs
+  const inputs = tbody.querySelectorAll('.excel-cell-input-el');
+  inputs.forEach(inp => {
+    inp.addEventListener('focus', () => {
+      const col = inp.dataset.col;
+      const row = parseInt(inp.dataset.row, 10);
+      handleExcelCellSelect(col, row, inp.value);
+    });
+
+    inp.addEventListener('input', (e) => {
+      const coord = inp.dataset.coord;
+      handleExcelCellInput(coord, e.target.value);
+    });
+
+    inp.addEventListener('keydown', (e) => {
+      handleExcelCellKeydown(e, inp);
+    });
+  });
+
+  // Update formula bar, address box and counter
+  updateExcelFormulaBar();
+  updateExcelCellCountInfo();
+  updateToolbarActiveStates();
+}
+
+function handleExcelCellSelect(col, row, val) {
+  excelWorkbook.selectedCell = { col, row };
+  const coord = `${col}${row}`;
+
+  // Update active coordinates in formula bar
+  const coordsBox = document.getElementById('excelActiveCellCoords');
+  if (coordsBox) coordsBox.textContent = coord;
+
+  const formulaInput = document.getElementById('excelFormulaInput');
+  if (formulaInput) formulaInput.value = val !== undefined ? val : '';
+
+  // Update visual selection highlights
+  document.querySelectorAll('.excel-grid-cell.selected').forEach(el => el.classList.remove('selected'));
+  const targetTd = document.querySelector(`.excel-grid-cell[data-coord="${coord}"]`);
+  if (targetTd) targetTd.classList.add('selected');
+
+  // Update active header column & row indicators
+  document.querySelectorAll('.excel-col-th.active-header').forEach(el => el.classList.remove('active-header'));
+  document.querySelectorAll('.excel-row-th.active-header').forEach(el => el.classList.remove('active-header'));
+  const colTh = document.querySelector(`.excel-col-th[data-col="${col}"]`);
+  const rowTh = document.querySelector(`.excel-row-th[data-row="${row}"]`);
+  if (colTh) colTh.classList.add('active-header');
+  if (rowTh) rowTh.classList.add('active-header');
+
+  updateToolbarActiveStates();
+}
+
+function handleExcelCellInput(coord, val) {
+  const sheet = getActiveExcelSheet();
+  if (!sheet) return;
+
+  sheet.cells[coord] = sheet.cells[coord] || {};
+  sheet.cells[coord].v = val;
+
+  // Sync to formula bar
+  const formulaInput = document.getElementById('excelFormulaInput');
+  if (formulaInput && excelWorkbook.selectedCell.col + excelWorkbook.selectedCell.row === coord) {
+    formulaInput.value = val;
+  }
+
+  updateExcelCellCountInfo();
+  markExcelUnsaved();
+  debounceSaveExcelWorkbook();
+}
+
+function handleExcelCellKeydown(e, inp) {
+  const col = inp.dataset.col;
+  const row = parseInt(inp.dataset.row, 10);
+  const colIdx = colLetterToIndex(col);
+  const sheet = getActiveExcelSheet();
+  const maxRow = sheet.rowCount || 35;
+  const maxCol = sheet.colCount || 14;
+
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    if (row < maxRow) focusExcelCell(col, row + 1);
+  } else if (e.key === 'Tab') {
+    e.preventDefault();
+    if (e.shiftKey) {
+      if (colIdx > 0) focusExcelCell(indexToColLetter(colIdx - 1), row);
+    } else {
+      if (colIdx < maxCol - 1) focusExcelCell(indexToColLetter(colIdx + 1), row);
+    }
+  } else if (e.key === 'ArrowUp' && inp.selectionStart === 0 && inp.selectionEnd === 0) {
+    if (row > 1) {
+      e.preventDefault();
+      focusExcelCell(col, row - 1);
+    }
+  } else if (e.key === 'ArrowDown' && inp.selectionStart === inp.value.length) {
+    if (row < maxRow) {
+      e.preventDefault();
+      focusExcelCell(col, row + 1);
+    }
+  }
+}
+
+function focusExcelCell(col, row) {
+  excelWorkbook.selectedCell = { col, row };
+  const coord = `${col}${row}`;
+  const inp = document.querySelector(`.excel-cell-input-el[data-coord="${coord}"]`);
+  if (inp) {
+    inp.focus();
+    handleExcelCellSelect(col, row, inp.value);
+  }
+}
+
+function updateExcelFormulaBar() {
+  const coord = `${excelWorkbook.selectedCell.col}${excelWorkbook.selectedCell.row}`;
+  const coordsBox = document.getElementById('excelActiveCellCoords');
+  if (coordsBox) coordsBox.textContent = coord;
+
+  const sheet = getActiveExcelSheet();
+  const formulaInput = document.getElementById('excelFormulaInput');
+  if (formulaInput && sheet) {
+    const cellVal = sheet.cells[coord]?.v || '';
+    formulaInput.value = cellVal;
+  }
+}
+
+function updateExcelCellCountInfo() {
+  const countLabel = document.getElementById('excelGridCellCountInfo');
+  const sheetInfo = document.getElementById('excelActiveSheetInfo');
+  const sheet = getActiveExcelSheet();
+  if (!sheet) return;
+
+  if (sheetInfo) sheetInfo.textContent = sheet.name;
+  if (countLabel) {
+    const filledCount = Object.values(sheet.cells || {}).filter(c => c && c.v && c.v.trim().length > 0).length;
+    countLabel.textContent = `${filledCount} cell${filledCount === 1 ? '' : 's'} filled`;
+  }
+}
+
+function updateToolbarActiveStates() {
+  const sheet = getActiveExcelSheet();
+  if (!sheet) return;
+  const coord = `${excelWorkbook.selectedCell.col}${excelWorkbook.selectedCell.row}`;
+  const cd = sheet.cells[coord] || {};
+
+  const boldBtn = document.getElementById('excelBoldBtn');
+  const italicBtn = document.getElementById('excelItalicBtn');
+  const underlineBtn = document.getElementById('excelUnderlineBtn');
+  const strikeBtn = document.getElementById('excelStrikeBtn');
+
+  if (boldBtn) boldBtn.classList.toggle('active', !!cd.b);
+  if (italicBtn) italicBtn.classList.toggle('active', !!cd.i);
+  if (underlineBtn) underlineBtn.classList.toggle('active', !!cd.u);
+  if (strikeBtn) strikeBtn.classList.toggle('active', !!cd.s);
+
+  const fontSelect = document.getElementById('excelFontFamily');
+  if (fontSelect && cd.font) fontSelect.value = cd.font;
+
+  const sizeSelect = document.getElementById('excelFontSize');
+  if (sizeSelect && cd.size) sizeSelect.value = cd.size;
+}
+
+// Multi-Sheet Tabs Controller
+function renderExcelSheetTabs() {
+  const container = document.getElementById('excelSheetTabsList');
+  if (!container) return;
+  container.innerHTML = '';
+
+  excelWorkbook.sheets.forEach(sheet => {
+    const isActive = sheet.id === excelWorkbook.activeSheetId;
+    const tabItem = document.createElement('div');
+    tabItem.className = `excel-sheet-tab-item ${isActive ? 'active' : ''}`;
+    tabItem.dataset.sheetId = sheet.id;
+
+    const delBtnHtml = excelWorkbook.sheets.length > 1
+      ? `<button type="button" class="excel-sheet-tab-del" title="Delete sheet">&times;</button>`
+      : '';
+
+    tabItem.innerHTML = `
+      <span class="excel-sheet-tab-name" title="Double click to rename">${escapeHtml(sheet.name)}</span>
+      ${delBtnHtml}
+    `;
+
+    // Click tab to switch active sheet
+    tabItem.addEventListener('click', (e) => {
+      if (e.target.classList.contains('excel-sheet-tab-del')) return;
+      switchExcelSheet(sheet.id);
+    });
+
+    // Delete button
+    const delBtn = tabItem.querySelector('.excel-sheet-tab-del');
+    if (delBtn) {
+      delBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        deleteExcelSheet(sheet.id);
+      });
+    }
+
+    // Double click to rename sheet
+    const nameSpan = tabItem.querySelector('.excel-sheet-tab-name');
+    if (nameSpan) {
+      nameSpan.addEventListener('dblclick', (e) => {
+        e.stopPropagation();
+        const newName = prompt('Rename Sheet:', sheet.name);
+        if (newName && newName.trim()) {
+          sheet.name = newName.trim();
+          renderExcelSheetTabs();
+          updateExcelCellCountInfo();
+          saveExcelWorkbookToStorage();
+        }
+      });
+    }
+
+    container.appendChild(tabItem);
+  });
+}
+
+window.addNewExcelSheet = function() {
+  const count = excelWorkbook.sheets.length + 1;
+  const newSheet = {
+    id: `sheet-${Date.now()}`,
+    name: `Sheet${count}`,
+    rowCount: 35,
+    colCount: 14,
+    cells: {} // Empty excel sheet
+  };
+  excelWorkbook.sheets.push(newSheet);
+  excelWorkbook.activeSheetId = newSheet.id;
+  excelWorkbook.selectedCell = { col: 'A', row: 1 };
+
+  renderExcelGrid();
+  renderExcelSheetTabs();
+  saveExcelWorkbookToStorage();
+
+  // Scroll tab list to right
+  const tabList = document.getElementById('excelSheetTabsList');
+  if (tabList) tabList.scrollLeft = tabList.scrollWidth;
+};
+
+window.switchExcelSheet = function(sheetId) {
+  if (excelWorkbook.activeSheetId === sheetId) return;
+  excelWorkbook.activeSheetId = sheetId;
+  excelWorkbook.selectedCell = { col: 'A', row: 1 };
+  renderExcelGrid();
+  renderExcelSheetTabs();
+  saveExcelWorkbookToStorage();
+};
+
+window.deleteExcelSheet = function(sheetId) {
+  if (excelWorkbook.sheets.length <= 1) {
+    alert('Workbook must have at least one sheet.');
+    return;
+  }
+  const target = excelWorkbook.sheets.find(s => s.id === sheetId);
+  if (!confirm(`Delete "${target?.name || 'this sheet'}"? All contents will be lost.`)) return;
+
+  excelWorkbook.sheets = excelWorkbook.sheets.filter(s => s.id !== sheetId);
+  if (excelWorkbook.activeSheetId === sheetId) {
+    excelWorkbook.activeSheetId = excelWorkbook.sheets[0].id;
+    excelWorkbook.selectedCell = { col: 'A', row: 1 };
+  }
+  renderExcelGrid();
+  renderExcelSheetTabs();
+  saveExcelWorkbookToStorage();
+};
+
+window.clearActiveExcelSheet = function() {
+  const sheet = getActiveExcelSheet();
+  if (!sheet) return;
+  if (!confirm(`Clear all cells in "${sheet.name}"?`)) return;
+  sheet.cells = {};
+  renderExcelGrid();
+  saveExcelWorkbookToStorage();
+};
+
+function applyExcelFormat(prop, value) {
+  const sheet = getActiveExcelSheet();
+  if (!sheet) return;
+  const coord = `${excelWorkbook.selectedCell.col}${excelWorkbook.selectedCell.row}`;
+  sheet.cells[coord] = sheet.cells[coord] || { v: '' };
+
+  if (prop === 'toggle_b') sheet.cells[coord].b = !sheet.cells[coord].b;
+  else if (prop === 'toggle_i') sheet.cells[coord].i = !sheet.cells[coord].i;
+  else if (prop === 'toggle_u') sheet.cells[coord].u = !sheet.cells[coord].u;
+  else if (prop === 'toggle_s') sheet.cells[coord].s = !sheet.cells[coord].s;
+  else sheet.cells[coord][prop] = value;
+
+  // Re-apply style to current DOM element directly
+  const inputEl = document.querySelector(`.excel-cell-input-el[data-coord="${coord}"]`);
+  const cellTd = document.querySelector(`.excel-grid-cell[data-coord="${coord}"]`);
+  if (inputEl) {
+    const cd = sheet.cells[coord];
+    inputEl.style.fontWeight = cd.b ? '700' : 'normal';
+    inputEl.style.fontStyle = cd.i ? 'italic' : 'normal';
+    if (cd.u && cd.s) inputEl.style.textDecoration = 'underline line-through';
+    else if (cd.u) inputEl.style.textDecoration = 'underline';
+    else if (cd.s) inputEl.style.textDecoration = 'line-through';
+    else inputEl.style.textDecoration = 'none';
+
+    if (cd.color) inputEl.style.color = cd.color;
+    if (cd.align) inputEl.style.textAlign = cd.align;
+    if (cd.font) inputEl.style.fontFamily = cd.font;
+    if (cd.size) inputEl.style.fontSize = cd.size;
+  }
+  if (cellTd && sheet.cells[coord].bg) {
+    cellTd.style.backgroundColor = sheet.cells[coord].bg;
+  }
+
+  updateToolbarActiveStates();
+  markExcelUnsaved();
+  debounceSaveExcelWorkbook();
+}
+
+function setupExcelEventListeners() {
+  // Toolbar Buttons
+  safeListen('excelBoldBtn', 'click', () => applyExcelFormat('toggle_b'));
+  safeListen('excelItalicBtn', 'click', () => applyExcelFormat('toggle_i'));
+  safeListen('excelUnderlineBtn', 'click', () => applyExcelFormat('toggle_u'));
+  safeListen('excelStrikeBtn', 'click', () => applyExcelFormat('toggle_s'));
+
+  safeListen('excelFontFamily', 'change', (e) => applyExcelFormat('font', e.target.value));
+  safeListen('excelFontSize', 'change', (e) => applyExcelFormat('size', e.target.value));
+
+  // Color Pickers
+  safeListen('excelFillColorInput', 'input', (e) => applyExcelFormat('bg', e.target.value));
+  safeListen('excelTextColorInput', 'input', (e) => applyExcelFormat('color', e.target.value));
+
+  // Alignment buttons
+  document.querySelectorAll('.excel-tool-btn[data-align]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      applyExcelFormat('align', btn.dataset.align);
+    });
+  });
+
+  // Add Row & Col
+  safeListen('excelAddRowBtn', 'click', () => {
+    const sheet = getActiveExcelSheet();
+    if (sheet) {
+      sheet.rowCount = (sheet.rowCount || 35) + 5;
+      renderExcelGrid();
+      saveExcelWorkbookToStorage();
+    }
+  });
+
+  safeListen('excelAddColBtn', 'click', () => {
+    const sheet = getActiveExcelSheet();
+    if (sheet) {
+      sheet.colCount = (sheet.colCount || 14) + 1;
+      renderExcelGrid();
+      saveExcelWorkbookToStorage();
+    }
+  });
+
+  // Formula input synchronization
+  const formulaInput = document.getElementById('excelFormulaInput');
+  if (formulaInput) {
+    formulaInput.addEventListener('input', (e) => {
+      const coord = `${excelWorkbook.selectedCell.col}${excelWorkbook.selectedCell.row}`;
+      const inp = document.querySelector(`.excel-cell-input-el[data-coord="${coord}"]`);
+      if (inp) inp.value = e.target.value;
+      handleExcelCellInput(coord, e.target.value);
+    });
+  }
+
+  // Clear sheet
+  safeListen('excelClearSheetBtn', 'click', clearActiveExcelSheet);
+
+  // Add sheet (+)
+  safeListen('excelAddSheetBtn', 'click', addNewExcelSheet);
+
+  // Scroll tabs
+  safeListen('excelScrollTabsLeft', 'click', () => {
+    const list = document.getElementById('excelSheetTabsList');
+    if (list) list.scrollLeft -= 150;
+  });
+  safeListen('excelScrollTabsRight', 'click', () => {
+    const list = document.getElementById('excelSheetTabsList');
+    if (list) list.scrollLeft += 150;
+  });
+
+  // Print
+  safeListen('excelPrintBtn', 'click', () => window.print());
+}
+
+let _saveExcelTimeout = null;
+function debounceSaveExcelWorkbook() {
+  clearTimeout(_saveExcelTimeout);
+  _saveExcelTimeout = setTimeout(() => {
+    saveExcelWorkbookToStorage();
+  }, 400);
+}
+
+function markExcelUnsaved() {
+  const badge = document.getElementById('excelSaveStatusBadge');
+  if (badge) {
+    badge.textContent = '● Saving...';
+    badge.style.color = '#f59e0b';
+  }
+}
+
+function saveExcelWorkbookToStorage() {
+  try {
+    localStorage.setItem('wp_emp_workbook', JSON.stringify(excelWorkbook));
+    const badge = document.getElementById('excelSaveStatusBadge');
+    if (badge) {
+      badge.textContent = '● Auto-saved locally';
+      badge.style.color = '#10b981';
+    }
+  } catch (e) {}
 }
 
 function renderEmployeeTasks(tasks) {
@@ -3735,21 +4289,32 @@ async function handleSaveEmployeeSheet(isSubmit) {
   if (!state.currentTodaySheet) return;
   const sheet = state.currentTodaySheet;
 
-  const rows = getEmployeeSpreadsheetRows();
-  sheet.project_rows = rows;
+  // Extract workbook title from input if available
+  const titleInput = document.getElementById('excelWorkbookTitle');
+  if (titleInput && titleInput.value.trim()) {
+    excelWorkbook.title = titleInput.value.trim();
+  }
+
   const nextStatus = isSubmit ? 'SUBMITTED' : 'DRAFT';
   sheet.status = nextStatus;
 
-  // Serialize rows for summary_notes so it seamlessly persists to backend DB
+  // Calculate cell statistics across all sheets
+  let totalFilledCells = 0;
+  excelWorkbook.sheets.forEach(s => {
+    totalFilledCells += Object.values(s.cells || {}).filter(c => c && c.v && c.v.trim().length > 0).length;
+  });
+
+  // Serialize entire multi-sheet workbook into summary_notes
   const serializedNotes = JSON.stringify({
-    project_rows: rows,
+    title: excelWorkbook.title,
+    activeSheetId: excelWorkbook.activeSheetId,
+    sheets: excelWorkbook.sheets,
+    total_sheets: excelWorkbook.sheets.length,
+    filled_cells: totalFilledCells,
     submitted_at: new Date().toISOString()
   });
   sheet.summary_notes = serializedNotes;
-
-  // Extract first blocker if any
-  const firstBlocker = rows.find(r => r.bugs || (r.status === 'Blocked' && r.note))?.bugs || '';
-  sheet.blockers_summary = firstBlocker;
+  sheet.total_tasks = totalFilledCells;
 
   try {
     await fetch(`${API_BASE}/sheets/${sheet.id}`, {
@@ -3757,7 +4322,6 @@ async function handleSaveEmployeeSheet(isSubmit) {
       headers: authHeaders(),
       body: JSON.stringify({
         summary_notes: serializedNotes,
-        blockers_summary: firstBlocker,
         status: nextStatus,
       })
     });
@@ -3765,10 +4329,27 @@ async function handleSaveEmployeeSheet(isSubmit) {
     // Save to local cache
   }
 
+  saveExcelWorkbookToStorage();
   localStorage.setItem('wp_emp_today_sheet', JSON.stringify(sheet));
-  await loadEmployeeTodaySheet();
-  alert(isSubmit ? '🚀 Daily task sheet submitted successfully for supervisor review!' : '💾 Draft saved successfully.');
+
+  // Update header status badge
+  const badge = document.getElementById('empSheetStatusBadge');
+  if (badge) {
+    badge.textContent = nextStatus;
+    badge.className = `sheet-status-pill ${nextStatus.toLowerCase()}`;
+  }
+
+  const saveStatus = document.getElementById('excelSaveStatusBadge');
+  if (saveStatus) {
+    saveStatus.textContent = '● Saved to server';
+    saveStatus.style.color = '#10b981';
+  }
+
+  alert(isSubmit 
+    ? `🚀 Daily Task Sheet submitted successfully (${excelWorkbook.sheets.length} sheet${excelWorkbook.sheets.length === 1 ? '' : 's'}, ${totalFilledCells} cells) for supervisor review!` 
+    : '💾 Draft saved successfully.');
 }
+
 
 
 window.toggleTaskStatus = async function(taskId, isChecked) {

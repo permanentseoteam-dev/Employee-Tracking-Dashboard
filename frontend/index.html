@@ -550,227 +550,150 @@
 
       <!-- 2. EMPLOYEE WORKSPACE (Personal Daily Task Sheet Creation, Editing & Submission) -->
       <div id="sheetsEmployeeWorkspace" style="display: none;">
-        <!-- Employee Sheet Active Status & Header Card -->
-        <div class="panel-card" style="margin-bottom: 20px; background: linear-gradient(135deg, rgba(22, 28, 45, 0.9), rgba(15, 23, 42, 0.95)); border: 1px solid var(--border-accent);">
-          <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 14px;">
-            <div>
-              <div style="display: flex; align-items: center; gap: 10px;">
-                <h3 style="font-size: 1.15rem; font-weight: 700; color: #fff; margin: 0;">Today's Daily Task Sheet</h3>
-                <span id="empSheetStatusBadge" class="sheet-status-pill draft">DRAFT</span>
+        <!-- Interactive Excel Workbook with Multi-Sheet Add-on -->
+        <div class="excel-app-container" id="employeeExcelWorkbook">
+          <!-- Top Title & Action Bar -->
+          <div class="excel-title-bar">
+            <div class="excel-title-left">
+              <div class="excel-logo-badge" title="Excel Task Sheet">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+                  <rect x="2" y="2" width="20" height="20" rx="4" fill="#107c41"/>
+                  <path d="M7 6.5L12 12M12 12L17 17.5M12 12L7 17.5M12 12L17 6.5" stroke="#ffffff" stroke-width="2.6" stroke-linecap="round"/>
+                </svg>
               </div>
-              <p style="font-size: 0.8rem; color: var(--text-muted); margin: 4px 0 0 0;">
-                Log your daily accomplishments, progress, and working hours. Submit when completed for manager review.
-              </p>
+              <div class="excel-doc-info">
+                <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+                  <input type="text" id="excelWorkbookTitle" class="excel-doc-title-input" value="Daily Task Sheet" title="Click to rename workbook">
+                  <span id="empSheetStatusBadge" class="sheet-status-pill draft">DRAFT</span>
+                  <span id="excelSaveStatusBadge" class="excel-save-status">● Auto-saved locally</span>
+                </div>
+                <div class="excel-doc-sub">
+                  <span>Excel Task Sheet &bull; Multi-Sheet Daily Log &bull; Type directly into cells</span>
+                </div>
+              </div>
             </div>
 
-            <!-- Header Quick Stats & Actions -->
-            <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
-              <div style="display: flex; align-items: center; gap: 8px; background: rgba(0,0,0,0.25); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: 6px 12px;">
-                <span style="font-size: 0.75rem; color: var(--text-dim);">Logged Today:</span>
-                <strong id="empSheetTotalHoursBadge" style="color: var(--accent-cyan); font-size: 0.9rem;">0.0 hrs</strong>
-              </div>
-              <div style="display: flex; align-items: center; gap: 8px; background: rgba(0,0,0,0.25); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: 6px 12px;">
-                <span style="font-size: 0.75rem; color: var(--text-dim);">Tasks Progress:</span>
-                <strong id="empSheetTasksRatioBadge" style="color: var(--accent-emerald); font-size: 0.9rem;">0 / 0</strong>
-              </div>
-              <button id="empOpenAddTaskBtn" class="btn btn-primary btn-sm" style="display: flex; align-items: center; gap: 6px; padding: 7px 14px;">
-                <span>+</span>
-                <span>Add Task</span>
+            <div class="excel-title-right">
+              <button type="button" class="btn btn-secondary btn-sm" id="excelClearSheetBtn" title="Clear contents of current sheet" style="padding: 6px 12px; font-size: 0.8rem;">
+                <span>🧹</span> <span>Clear Sheet</span>
+              </button>
+              <button type="button" class="btn btn-secondary btn-sm" id="empSaveDraftBtn" style="padding: 6px 14px; font-size: 0.8rem;">
+                <span>💾</span> <span>Save Draft</span>
+              </button>
+              <button type="button" class="btn btn-primary btn-sm" id="empSubmitSheetBtn" style="padding: 6px 18px; font-size: 0.8rem; font-weight: 700; background: linear-gradient(135deg, #107c41, #15803d); border-color: #107c41; box-shadow: 0 2px 10px rgba(16, 124, 65, 0.35);">
+                <span>🚀</span> <span>Submit for Review</span>
               </button>
             </div>
           </div>
-        </div>
 
-        <!-- Manager Review Feedback Banner (Displayed if manager reviewed this sheet) -->
-        <div id="empManagerFeedbackCard" class="panel-card" style="display: none; margin-bottom: 20px; background: linear-gradient(135deg, rgba(139, 92, 246, 0.12), rgba(6, 182, 212, 0.08)); border: 1px solid rgba(139, 92, 246, 0.35);">
-          <div style="display: flex; align-items: flex-start; gap: 12px;">
-            <div style="width: 36px; height: 36px; border-radius: 50%; background: rgba(139, 92, 246, 0.2); display: flex; align-items: center; justify-content: center; font-size: 1.2rem; flex-shrink: 0;">
-              ⭐
+          <!-- Excel Ribbon / Toolbar -->
+          <div class="excel-ribbon-toolbar">
+            <div class="excel-tool-group">
+              <button type="button" class="excel-tool-btn" id="excelUndoBtn" title="Undo (Ctrl+Z)">↶</button>
+              <button type="button" class="excel-tool-btn" id="excelRedoBtn" title="Redo (Ctrl+Y)">↷</button>
+              <button type="button" class="excel-tool-btn" id="excelPrintBtn" title="Print Sheet">🖨️</button>
             </div>
-            <div style="flex: 1;">
-              <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
-                <div style="font-weight: 700; color: #fff; font-size: 0.9rem;" id="empFeedbackReviewerName">Manager Review Feedback</div>
-                <span style="font-size: 0.75rem; color: var(--text-dim);" id="empFeedbackDate">Just now</span>
-              </div>
-              <p style="margin: 6px 0 0 0; font-size: 0.84rem; color: var(--text-main); line-height: 1.5; font-style: italic;" id="empFeedbackContentText">
-                "Great work on resolving the core platform issues today!"
-              </p>
-            </div>
-          </div>
-        </div>
 
-        <!-- Quick Inline Task Creation Card -->
-        <div class="panel-card" style="margin-bottom: 20px;">
-          <div class="panel-header" style="margin-bottom: 12px;">
-            <div class="panel-title" style="font-size: 0.95rem;">
-              <span>📝</span>
-              <span>Quick Task Entry</span>
-            </div>
-          </div>
-          <form id="quickTaskAddForm" style="display: grid; grid-template-columns: 2fr 1.2fr 1fr 1fr auto; gap: 12px; align-items: flex-end;">
-            <div>
-              <label style="font-size: 0.75rem; color: var(--text-muted); font-weight: 600; display: block; margin-bottom: 4px;">Task Title *</label>
-              <input type="text" id="quickTaskTitle" class="input-control" placeholder="e.g. Implement user auth flow..." required style="width: 100%;">
-            </div>
-            <div>
-              <label style="font-size: 0.75rem; color: var(--text-muted); font-weight: 600; display: block; margin-bottom: 4px;">Category</label>
-              <select id="quickTaskCategory" class="input-control" style="width: 100%;">
-                <option value="Frontend Development">Frontend Development</option>
-                <option value="Backend API">Backend API</option>
-                <option value="Core Platform">Core Platform</option>
-                <option value="UI/UX Design">UI/UX Design</option>
-                <option value="Testing & QA">Testing & QA</option>
-                <option value="DevOps & Cloud">DevOps & Cloud</option>
-                <option value="Security & Auth">Security & Auth</option>
-                <option value="Client Meeting">Client Meeting</option>
-                <option value="Documentation">Documentation</option>
-                <option value="General">General</option>
+            <div class="excel-tool-divider"></div>
+
+            <div class="excel-tool-group">
+              <select class="excel-tool-select" id="excelFontFamily" title="Font Family" style="width: 105px;">
+                <option value="'Segoe UI', sans-serif">Segoe UI</option>
+                <option value="'Calibri', sans-serif">Calibri</option>
+                <option value="'Arial', sans-serif">Arial</option>
+                <option value="'Poppins', sans-serif">Poppins</option>
+                <option value="'Consolas', monospace">Consolas</option>
+              </select>
+              <select class="excel-tool-select" id="excelFontSize" title="Font Size" style="width: 52px;">
+                <option value="11px">11</option>
+                <option value="12px">12</option>
+                <option value="13px">13</option>
+                <option value="14px">14</option>
+                <option value="16px">16</option>
+                <option value="18px">18</option>
               </select>
             </div>
-            <div>
-              <label style="font-size: 0.75rem; color: var(--text-muted); font-weight: 600; display: block; margin-bottom: 4px;">Priority</label>
-              <select id="quickTaskPriority" class="input-control" style="width: 100%;">
-                <option value="MEDIUM">Medium</option>
-                <option value="HIGH">High</option>
-                <option value="URGENT">Urgent</option>
-                <option value="LOW">Low</option>
-              </select>
-            </div>
-            <div>
-              <label style="font-size: 0.75rem; color: var(--text-muted); font-weight: 600; display: block; margin-bottom: 4px;">Hours</label>
-              <input type="number" id="quickTaskHours" class="input-control" min="0.1" max="24" step="0.25" placeholder="1.5" value="1.0" required style="width: 100%;">
-            </div>
-            <div>
-              <button type="submit" class="btn btn-primary" style="padding: 8px 18px; font-weight: 600; white-space: nowrap;">+ Add Task</button>
-            </div>
-          </form>
-        </div>
 
-        <!-- Today's Task Items Interactive List -->
-        <div class="panel-card" style="margin-bottom: 20px;">
-          <div class="panel-header">
-            <div class="panel-title" style="font-size: 0.95rem;">
-              <span>📋</span>
-              <span>Today's Task Items & Deliverables</span>
-            </div>
-            <span id="empTasksCountLabel" style="font-size: 0.78rem; color: var(--text-muted);">0 Tasks Listed</span>
-          </div>
+            <div class="excel-tool-divider"></div>
 
-          <div id="empTasksListContainer" style="display: flex; flex-direction: column; gap: 10px;">
-            <div style="text-align: center; color: var(--text-dim); padding: 30px;">
-              No tasks added yet for today. Use the form above to add your first task!
+            <div class="excel-tool-group">
+              <button type="button" class="excel-tool-btn" id="excelBoldBtn" title="Bold (Ctrl+B)"><strong>B</strong></button>
+              <button type="button" class="excel-tool-btn" id="excelItalicBtn" title="Italic (Ctrl+I)"><em>I</em></button>
+              <button type="button" class="excel-tool-btn" id="excelUnderlineBtn" title="Underline (Ctrl+U)"><u>U</u></button>
+              <button type="button" class="excel-tool-btn" id="excelStrikeBtn" title="Strikethrough"><s>S</s></button>
             </div>
-          </div>
-        </div>
 
-        <!-- Google Sheets "Projects" Daily Deliverables Spreadsheet -->
-        <div class="gsheet-wrapper" id="empProjectsSheetWrapper">
-          <!-- Toolbar -->
-          <div class="gsheet-toolbar">
-            <button type="button" class="gsheet-tool-btn" title="Search">🔍</button>
-            <button type="button" class="gsheet-tool-btn" title="Undo">↶</button>
-            <button type="button" class="gsheet-tool-btn" title="Redo">↷</button>
-            <button type="button" class="gsheet-tool-btn" title="Print">🖨️</button>
-            <div class="gsheet-tool-separator"></div>
-            <span style="font-size: 0.76rem; font-weight: 600; padding: 2px 6px;">100% ▾</span>
-            <div class="gsheet-tool-separator"></div>
-            <button type="button" class="gsheet-tool-btn" title="Currency">$</button>
-            <button type="button" class="gsheet-tool-btn" title="Percent">%</button>
-            <button type="button" class="gsheet-tool-btn" title="Decimal">.0 .00</button>
-            <button type="button" class="gsheet-tool-btn" title="Format">123</button>
-            <div class="gsheet-tool-separator"></div>
-            <span style="font-size: 0.76rem; font-weight: 600; padding: 2px 6px;">Poppins ▾</span>
-            <span style="font-size: 0.76rem; font-weight: 600; padding: 2px 6px;">14 ▾</span>
-            <div class="gsheet-tool-separator"></div>
-            <button type="button" class="gsheet-tool-btn active" title="Bold"><strong>B</strong></button>
-            <button type="button" class="gsheet-tool-btn" title="Italic"><em>I</em></button>
-            <button type="button" class="gsheet-tool-btn" title="Strikethrough"><s>S</s></button>
-            <button type="button" class="gsheet-tool-btn" title="Text Color" style="border-bottom: 2px solid #000;">A</button>
-            <button type="button" class="gsheet-tool-btn" title="Fill Color" style="border-bottom: 2px solid #ff9800;">🪣</button>
-            <button type="button" class="gsheet-tool-btn" title="Borders">⊞</button>
-            <div class="gsheet-tool-separator"></div>
-            <button type="button" class="gsheet-tool-btn" title="Align">≡</button>
-            <button type="button" class="gsheet-tool-btn" title="Filter">▼</button>
-            <button type="button" class="gsheet-tool-btn" title="Functions">Σ</button>
+            <div class="excel-tool-divider"></div>
+
+            <div class="excel-tool-group">
+              <label class="excel-color-btn-wrapper" title="Fill Color (Cell Background)">
+                <span class="excel-tool-btn">🪣</span>
+                <input type="color" id="excelFillColorInput" value="#ffff00" class="excel-hidden-color-picker">
+              </label>
+              <label class="excel-color-btn-wrapper" title="Text Color">
+                <span class="excel-tool-btn" style="font-weight: 700; border-bottom: 3px solid #ff0000; padding-bottom: 2px;">A</span>
+                <input type="color" id="excelTextColorInput" value="#000000" class="excel-hidden-color-picker">
+              </label>
+            </div>
+
+            <div class="excel-tool-divider"></div>
+
+            <div class="excel-tool-group">
+              <button type="button" class="excel-tool-btn" data-align="left" title="Align Left">⇤</button>
+              <button type="button" class="excel-tool-btn" data-align="center" title="Align Center">≡</button>
+              <button type="button" class="excel-tool-btn" data-align="right" title="Align Right">⇥</button>
+            </div>
+
+            <div class="excel-tool-divider"></div>
+
+            <div class="excel-tool-group">
+              <button type="button" class="excel-tool-btn" id="excelAddRowBtn" title="Add Row">+ Row</button>
+              <button type="button" class="excel-tool-btn" id="excelAddColBtn" title="Add Column">+ Col</button>
+            </div>
           </div>
 
           <!-- Formula Bar -->
-          <div class="gsheet-formulabar">
-            <span class="gsheet-cell-name" id="empGsheetCellName">A1</span>
-            <span class="gsheet-fx-symbol">fx</span>
-            <input type="text" class="gsheet-formula-input" id="empGsheetFormulaInput" readonly value="Projects">
+          <div class="excel-formula-bar">
+            <div class="excel-name-box" id="excelActiveCellCoords">A1</div>
+            <div class="excel-fx-icon" title="Formula">fx</div>
+            <input type="text" class="excel-formula-input" id="excelFormulaInput" placeholder="Enter text or formula (e.g. =SUM, text)..." spellcheck="false" autocomplete="off">
           </div>
 
-          <!-- Spreadsheet Table -->
-          <div class="gsheet-table-container">
-            <table class="gsheet-table" id="empProjectsSheetTable">
-              <thead>
-                <!-- Column letters A-F -->
-                <tr>
-                  <th class="gsheet-th-corner"></th>
-                  <th class="gsheet-col-letter" style="width: 110px;">A</th>
-                  <th class="gsheet-col-letter" style="width: 250px;">B</th>
-                  <th class="gsheet-col-letter" style="width: 130px;">C</th>
-                  <th class="gsheet-col-letter" style="width: 240px;">D</th>
-                  <th class="gsheet-col-letter" style="width: 160px;">E</th>
-                  <th class="gsheet-col-letter" style="width: 200px;">F</th>
-                  <th class="gsheet-col-letter" style="width: 44px;"></th>
-                </tr>
-                <!-- Row 1: Banner "Projects" spanning across columns A-F -->
-                <tr>
-                  <td class="gsheet-row-num">1</td>
-                  <td colspan="6" class="gsheet-banner-cell">Projects</td>
-                  <td class="gsheet-banner-cell" style="padding: 0;"></td>
-                </tr>
-                <!-- Row 2: Peach headers: Date | Name | Status | Note | Bugs | next plan for that -->
-                <tr>
-                  <td class="gsheet-row-num">2</td>
-                  <th class="gsheet-header-cell">Date</th>
-                  <th class="gsheet-header-cell">Name</th>
-                  <th class="gsheet-header-cell">Status</th>
-                  <th class="gsheet-header-cell">Note</th>
-                  <th class="gsheet-header-cell">Bugs</th>
-                  <th class="gsheet-header-cell">next plan for that</th>
-                  <th class="gsheet-header-cell" style="text-align: center;"></th>
-                </tr>
+          <!-- Interactive Spreadsheet Grid Viewport -->
+          <div class="excel-grid-viewport" id="excelGridViewport">
+            <table class="excel-grid-table" id="excelGridTable">
+              <thead id="excelGridThead">
+                <!-- Column Header Letters (A, B, C...) -->
               </thead>
-              <tbody id="empProjectsSheetTbody">
-                <!-- Dynamically generated rows -->
+              <tbody id="excelGridTbody">
+                <!-- Rows with Numbers and Cells -->
               </tbody>
             </table>
           </div>
 
-          <!-- Footer / Actions Bar -->
-          <div class="gsheet-footer-bar">
-            <div style="display: flex; align-items: center; gap: 10px;">
-              <button type="button" class="btn btn-secondary btn-sm" id="empAddProjectRowBtn" style="padding: 6px 14px; font-weight: 600; display: flex; align-items: center; gap: 6px;">
-                <span>➕</span>
-                <span>Add Row</span>
-              </button>
-              <span id="empProjectsRowCountLabel" style="font-size: 0.74rem; color: var(--text-muted);">0 project entries</span>
+          <!-- Bottom Sheet Tabs Bar (Multi-Sheet Add-on) -->
+          <div class="excel-sheets-bottom-bar">
+            <div class="excel-sheets-tabs-nav">
+              <button type="button" class="excel-nav-btn" id="excelScrollTabsLeft" title="Scroll sheets left">◀</button>
+              <button type="button" class="excel-nav-btn" id="excelScrollTabsRight" title="Scroll sheets right">▶</button>
             </div>
 
-            <div style="display: flex; align-items: center; gap: 10px;">
-              <button id="empSaveDraftBtn" class="btn btn-secondary btn-sm" style="padding: 8px 16px;">💾 Save Draft</button>
-              <button id="empSubmitSheetBtn" class="btn btn-primary btn-sm" style="padding: 8px 20px; font-weight: 700; background: linear-gradient(135deg, var(--accent-primary), var(--accent-hover));">
-                🚀 Submit Daily Sheet for Review
-              </button>
-            </div>
-          </div>
-        </div>
+            <!-- Add Sheet (+) Button -->
+            <button type="button" class="excel-add-sheet-btn" id="excelAddSheetBtn" title="Add new sheet">
+              <span>+</span>
+            </button>
 
-
-        <!-- My Past Sheets History Grid -->
-        <div class="panel-card">
-          <div class="panel-header">
-            <div class="panel-title" style="font-size: 0.95rem;">
-              <span>📅</span>
-              <span>My Past Daily Sheets History</span>
+            <!-- Sheet Tabs Container -->
+            <div class="excel-sheet-tabs-list" id="excelSheetTabsList">
+              <!-- Dynamically populated sheet tabs (Sheet1, Sheet2...) -->
             </div>
-          </div>
-          <div id="empPastSheetsGrid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px;">
-            <div style="text-align: center; color: var(--text-dim); padding: 20px; grid-column: 1 / -1;">
-              Loading your previous daily sheets...
+
+            <!-- Bottom Status info -->
+            <div class="excel-bottom-status-info">
+              <span id="excelGridCellCountInfo">0 cells filled</span>
+              <span class="excel-status-divider">&bull;</span>
+              <span id="excelActiveSheetInfo">Sheet1</span>
+              <span class="excel-status-ready">Ready</span>
             </div>
           </div>
         </div>

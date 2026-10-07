@@ -13,6 +13,7 @@ const state = {
 
 // Initial setup on DOM ready
 document.addEventListener('DOMContentLoaded', async () => {
+  initTheme();
   setupTabs();
   setupEventListeners();
   await loginAs('admin');
@@ -20,6 +21,37 @@ document.addEventListener('DOMContentLoaded', async () => {
     weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
   });
 });
+
+// Theme Management
+function initTheme() {
+  const saved = localStorage.getItem('wp-theme') || 'dark';
+  applyTheme(saved);
+}
+
+function toggleTheme() {
+  const current = document.documentElement.getAttribute('data-theme') || 'dark';
+  const next = current === 'dark' ? 'light' : 'dark';
+  applyTheme(next);
+  localStorage.setItem('wp-theme', next);
+  if (state.activeTab === 'tab-activity') {
+    renderHeatmapForSelected();
+  }
+}
+
+function applyTheme(theme) {
+  document.documentElement.setAttribute('data-theme', theme);
+  const icon = document.getElementById('themeIcon');
+  const label = document.getElementById('themeLabel');
+  if (icon && label) {
+    if (theme === 'light') {
+      icon.textContent = '☀️';
+      label.textContent = 'Light';
+    } else {
+      icon.textContent = '🌙';
+      label.textContent = 'Dark';
+    }
+  }
+}
 
 // Setup tab switches
 function setupTabs() {
@@ -93,6 +125,8 @@ function setupEventListeners() {
   document.getElementById('refreshDataBtn').addEventListener('click', () => {
     refreshAll();
   });
+
+  document.getElementById('themeToggleBtn').addEventListener('click', toggleTheme);
 
   // Simulator Buttons
   document.getElementById('simulateOnTimeBtn').addEventListener('click', () => simulateCheckIn('ontime'));
@@ -280,8 +314,10 @@ function drawHeatmapCanvas(matrix, cols = 20, rows = 12) {
 
   ctx.clearRect(0, 0, width, height);
 
+  const isLight = document.documentElement.getAttribute('data-theme') === 'light';
+
   // Background desktop mockup grid
-  ctx.fillStyle = '#090c15';
+  ctx.fillStyle = isLight ? '#f8fafc' : '#090c15';
   ctx.fillRect(0, 0, width, height);
 
   const cellW = width / cols;
@@ -308,14 +344,14 @@ function drawHeatmapCanvas(matrix, cols = 20, rows = 12) {
 
         // Text count
         if (cellW > 25 && cellH > 20) {
-          ctx.fillStyle = ratio > 0.6 ? '#ffffff' : '#94a3b8';
+          ctx.fillStyle = ratio > 0.6 ? '#ffffff' : (isLight ? '#334155' : '#94a3b8');
           ctx.font = '10px Inter, sans-serif';
           ctx.textAlign = 'center';
           ctx.textBaseline = 'middle';
           ctx.fillText(count.toString(), x + cellW / 2, y + cellH / 2);
         }
       } else {
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.04)';
+        ctx.strokeStyle = isLight ? 'rgba(0, 0, 0, 0.06)' : 'rgba(255, 255, 255, 0.04)';
         ctx.strokeRect(x, y, cellW, cellH);
       }
     }

@@ -74,6 +74,7 @@ function switchTab(tabId) {
   });
 
   if (tabId === 'tab-overview') loadOverviewData();
+  else if (tabId === 'tab-employees') loadEmployeesDirectory();
   else if (tabId === 'tab-attendance') loadAttendanceRollCall();
   else if (tabId === 'tab-activity') loadActivityTab();
   else if (tabId === 'tab-screenshots') loadScreenshotsGallery();
@@ -137,6 +138,12 @@ function setupEventListeners() {
   document.getElementById('applyAttFilterBtn').addEventListener('click', loadAttendanceRollCall);
   document.getElementById('loadHeatmapBtn').addEventListener('click', renderHeatmapForSelected);
 
+  // Employee Directory Filters
+  const empSearch = document.getElementById('employeeSearchInput');
+  const empRoleFilter = document.getElementById('empRoleFilter');
+  if (empSearch) empSearch.addEventListener('input', () => loadEmployeesDirectory());
+  if (empRoleFilter) empRoleFilter.addEventListener('change', () => loadEmployeesDirectory());
+
   // Evaluate Stars
   document.getElementById('evaluateStarsBtn').addEventListener('click', evaluateStarsNow);
   document.getElementById('purgeRetentionBtn').addEventListener('click', purgeRetentionNow);
@@ -190,6 +197,86 @@ function refreshAll() {
 }
 
 // 1. Overview Tab Data
+// Employees Directory
+async function loadEmployeesDirectory() {
+  try {
+    const res = await fetch(`${API_BASE}/employees`, { headers: authHeaders() });
+    if (!res.ok) return;
+    const allEmps = await res.json();
+    state.employees = allEmps;
+
+    // Fetch departments for clean labeling
+    const deptRes = await fetch(`${API_BASE}/departments`, { headers: authHeaders() });
+    let deptMap = {};
+    if (deptRes.ok) {
+      const depts = await deptRes.json();
+      depts.forEach(d => { deptMap[d.id] = d.name; });
+    }
+
+    const searchVal = (document.getElementById('employeeSearchInput')?.value || '').toLowerCase().trim();
+    const roleVal = document.getElementById('empRoleFilter')?.value || '';
+
+    const filtered = allEmps.filter(e => {
+      const matchesSearch = !searchVal || 
+        e.name.toLowerCase().includes(searchVal) ||
+        e.employee_code.toLowerCase().includes(searchVal) ||
+        e.email.toLowerCase().includes(searchVal);
+      const matchesRole = !roleVal || e.role === roleVal;
+      return matchesSearch && matchesRole;
+    });
+
+    const badge = document.getElementById('employeeCountBadge');
+    if (badge) badge.textContent = `${filtered.length} of ${allEmps.length} Members`;
+
+    const tbody = document.getElementById('employeesTbody');
+    if (!tbody) return;
+    tbody.innerHTML = '';
+
+    if (filtered.length === 0) {
+      tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: var(--text-dim); padding: 30px;">No matching employees found.</td></tr>`;
+      return;
+    }
+
+    filtered.forEach(emp => {
+      const tr = document.createElement('tr');
+      const deptName = deptMap[emp.department_id] || 'General';
+      const roleClass = emp.role.toLowerCase();
+      const statusClass = emp.status.toLowerCase();
+
+      tr.innerHTML = `
+        <td><code style="color: var(--accent-cyan); font-weight: 700;">${emp.employee_code}</code></td>
+        <td style="font-weight: 600;">
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <div style="width: 28px; height: 28px; border-radius: 50%; background: linear-gradient(135deg, var(--accent-primary), var(--accent-violet)); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 0.75rem; font-weight: 700;">
+              ${emp.name.split(' ').map(n=>n[0]).join('').slice(0,2)}
+            </div>
+            <span>${emp.name}</span>
+          </div>
+        </td>
+        <td><span class="role-pill ${roleClass}">${emp.role}</span></td>
+        <td style="color: var(--text-muted);">${emp.email}</td>
+        <td><span class="badge ${statusClass}">${emp.status}</span></td>
+        <td>${deptName}</td>
+        <td>
+          <button class="btn btn-secondary btn-sm" onclick="viewEmployeeHeatmap('${emp.id}')" style="padding: 3px 8px; font-size: 0.72rem;">
+            Heatmap
+          </button>
+        </td>
+      `;
+      tbody.appendChild(tr);
+    });
+  } catch (err) {
+    console.error('Error loading employees directory:', err);
+  }
+}
+
+window.viewEmployeeHeatmap = function(empId) {
+  state.selectedEmpId = empId;
+  const select = document.getElementById('heatmapEmpSelect');
+  if (select) select.value = empId;
+  switchTab('tab-activity');
+};
+
 async function loadOverviewData() {
   try {
     // Load KPI metrics

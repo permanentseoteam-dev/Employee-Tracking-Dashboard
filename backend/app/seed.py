@@ -2,7 +2,7 @@ import asyncio
 import io
 import uuid
 from datetime import date, datetime, timedelta, timezone
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw
 from sqlalchemy import select
 from app.database import Base, async_session_factory, engine
 from app.models.activity import ActivityLog, MouseHeatmap
@@ -17,7 +17,6 @@ from app.services.screenshot_service import screenshot_service
 
 
 def create_mock_desktop_image(title: str, subtitle: str, color_scheme: str = "blue") -> bytes:
-    """Generates a realistic 1280x720 desktop mockup in WebP format."""
     width, height = 1280, 720
     bg_color = (15, 23, 42)
     accent_color = (99, 102, 241) if color_scheme == "blue" else (16, 185, 129)
@@ -25,38 +24,34 @@ def create_mock_desktop_image(title: str, subtitle: str, color_scheme: str = "bl
     img = Image.new("RGB", (width, height), bg_color)
     draw = ImageDraw.Draw(img)
 
-    # Draw Top OS bar
+    # Top OS bar
     draw.rectangle([0, 0, width, 32], fill=(30, 41, 59))
     draw.rectangle([0, height - 42, width, height], fill=(15, 23, 42))
 
-    # Taskbar icons
     for i in range(5):
         draw.rounded_rectangle([width // 2 - 100 + i * 40, height - 36, width // 2 - 70 + i * 40, height - 6], radius=6, fill=(51, 65, 85))
 
-    # Main Application Window
+    # Window
     draw.rounded_rectangle([60, 50, width - 60, height - 60], radius=12, fill=(30, 41, 59), outline=(71, 85, 105), width=1)
     draw.rectangle([60, 50, width - 60, 90], fill=(51, 65, 85))
 
-    # Window buttons
     draw.ellipse([80, 66, 92, 78], fill=(239, 68, 68))
     draw.ellipse([100, 66, 112, 78], fill=(245, 158, 11))
     draw.ellipse([120, 66, 132, 78], fill=(16, 185, 129))
 
-    # Code / UI Mockup content
     draw.text((150, 64), f"WorkPulse Desktop Agent — {title}", fill=(241, 245, 249))
 
-    # Left sidebar
+    # Sidebar
     draw.rectangle([60, 90, 260, height - 60], fill=(15, 23, 42))
     for i in range(8):
         draw.rounded_rectangle([80, 110 + i * 36, 240, 134 + i * 36], radius=4, fill=(30, 41, 59))
 
-    # Main content code lines
+    # Code lines
     for i in range(14):
         line_w = 300 + (i * 73 % 550)
         col = accent_color if i % 3 == 0 else (148, 163, 184)
         draw.rounded_rectangle([290, 120 + i * 32, 290 + line_w, 134 + i * 32], radius=3, fill=col)
 
-    # Info footer
     draw.text((290, height - 100), f"Session: {subtitle} | Time: {datetime.now(timezone.utc).strftime('%H:%M:%S UTC')}", fill=(100, 116, 139))
 
     output = io.BytesIO()
@@ -64,30 +59,34 @@ def create_mock_desktop_image(title: str, subtitle: str, color_scheme: str = "bl
     return output.getvalue()
 
 
-async def seed(force: bool = False):
+async def seed():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
     async with async_session_factory() as db:
-        today = date.today()
+        print("Seeding full enterprise team dataset...")
 
-        # Check existing
-        existing_emp = (await db.execute(select(Employee).where(Employee.email == "admin@tracking.local"))).scalars().first()
-        if existing_emp and not force:
-            print("Base data exists. Populating rich sample data (attendance, activity, heatmaps, screenshots, stars)...")
-        else:
-            print("Creating core org structure...")
-            # 1. Departments
-            depts = {
-                "ENG": Department(name="Core Platform Engineering", code="ENG"),
-                "DSN": Department(name="Product & UX Design", code="DSN"),
-                "MKT": Department(name="Growth & Marketing", code="MKT"),
-                "OPS": Department(name="DevOps & Infrastructure", code="OPS"),
-            }
-            db.add_all(depts.values())
-            await db.flush()
+        # 1. Departments
+        depts_data = [
+            ("ENG", "Core Platform Engineering"),
+            ("DSN", "Product & UX Design"),
+            ("QA", "Quality Assurance & Testing"),
+            ("OPS", "DevOps & Cloud Infrastructure"),
+            ("MKT", "Marketing & Growth"),
+            ("HR", "People Operations & HR"),
+        ]
+        dept_map = {}
+        for code, name in depts_data:
+            d = (await db.execute(select(Department).where(Department.code == code))).scalars().first()
+            if not d:
+                d = Department(code=code, name=name)
+                db.add(d)
+                await db.flush()
+            dept_map[code] = d
 
-            # 2. Admin & Manager
+        # 2. Managers and Admin
+        admin = (await db.execute(select(Employee).where(Employee.email == "admin@tracking.local"))).scalars().first()
+        if not admin:
             admin = Employee(
                 employee_code="ADM001",
                 name="System Administrator",
@@ -95,66 +94,59 @@ async def seed(force: bool = False):
                 password_hash=hash_password("admin123"),
                 role=RoleEnum.ADMIN.value,
                 status=StatusEnum.ACTIVE.value,
-                department_id=depts["ENG"].id,
+                department_id=dept_map["ENG"].id,
             )
-            manager = Employee(
-                employee_code="MGR001",
-                name="Sarah Connor (Tech Lead)",
-                email="manager@tracking.local",
-                password_hash=hash_password("manager123"),
-                role=RoleEnum.MANAGER.value,
-                status=StatusEnum.ACTIVE.value,
-                department_id=depts["ENG"].id,
-            )
-            db.add_all([admin, manager])
+            db.add(admin)
             await db.flush()
 
-            # 3. Rules
-            db.add_all([
-                SettingRule(
-                    rule_type="ATTENDANCE",
-                    name="Standard Working Hours (09:00 - 18:00)",
-                    is_active=True,
-                    config_payload={"shift_start": "09:00:00", "shift_end": "18:00:00", "grace_period_minutes": 10, "minimum_active_hours_full_day": 7.0},
-                ),
-                SettingRule(
-                    rule_type="STAR",
-                    name="Performance & Punctuality Star Rules",
-                    is_active=True,
-                    config_payload={"punctuality_star_enabled": True, "min_active_seconds_for_star": 18000},
-                ),
-                SettingRule(
-                    rule_type="MONITORING",
-                    name="Screenshot Interval Schedule",
-                    is_active=True,
-                    config_payload={"interval_minutes": 10, "start_time": "09:00:00", "end_time": "18:00:00", "quality": 65, "max_width": 1280, "max_height": 720},
-                ),
-                SettingRule(
-                    rule_type="RETENTION",
-                    name="Screenshot & Log Retention Policy",
-                    is_active=True,
-                    config_payload={"screenshot_retention_days": 30, "activity_retention_days": 90, "attendance_retention_days": 730},
+        managers_data = [
+            ("MGR001", "Sarah Connor", "manager@tracking.local", "manager123", "ENG"),
+            ("MGR002", "David Kim", "david.kim@tracking.local", "david123", "DSN"),
+            ("MGR003", "Priya Sharma", "priya.sharma@tracking.local", "priya123", "OPS"),
+        ]
+        mgr_map = {}
+        for code, name, email, pwd, dept_code in managers_data:
+            m = (await db.execute(select(Employee).where(Employee.email == email))).scalars().first()
+            if not m:
+                m = Employee(
+                    employee_code=code,
+                    name=name,
+                    email=email,
+                    password_hash=hash_password(pwd),
+                    role=RoleEnum.MANAGER.value,
+                    status=StatusEnum.ACTIVE.value,
+                    department_id=dept_map[dept_code].id,
                 )
-            ])
-            await db.flush()
+                db.add(m)
+                await db.flush()
+            mgr_map[code] = m
 
-        # Fetch Manager and Departments
-        mgr = (await db.execute(select(Employee).where(Employee.email == "manager@tracking.local"))).scalars().first()
-        eng = (await db.execute(select(Department).where(Department.code == "ENG"))).scalars().first()
-
-        # Seed 6 diverse employees if not present
-        team_members = [
-            ("EMP001", "Alex Rivera", "alex@tracking.local", "alex123", eng.id, mgr.id),
-            ("EMP002", "Elena Rostova", "elena@tracking.local", "elena123", eng.id, mgr.id),
-            ("EMP003", "Marcus Vance", "marcus@tracking.local", "marcus123", eng.id, mgr.id),
-            ("EMP004", "Maya Lin", "maya@tracking.local", "maya123", eng.id, mgr.id),
-            ("EMP005", "Liam Chen", "liam@tracking.local", "liam123", eng.id, None),
-            ("EMP006", "Sophie Martin", "sophie@tracking.local", "sophie123", eng.id, None),
+        # 3. Comprehensive Employees List
+        staff_data = [
+            ("EMP001", "Alex Rivera", "alex@tracking.local", "alex123", "ENG", "MGR001", "alex-thinkpad", AttendanceStatusEnum.PRESENT, "08:52:00", 20400, 1800),
+            ("EMP002", "Elena Rostova", "elena@tracking.local", "elena123", "ENG", "MGR001", "elena-macbook", AttendanceStatusEnum.PRESENT, "08:58:00", 18800, 1600),
+            ("EMP003", "Marcus Vance", "marcus@tracking.local", "marcus123", "DSN", "MGR002", "marcus-desktop", AttendanceStatusEnum.LATE, "09:24:00", 15200, 2400),
+            ("EMP004", "Maya Lin", "maya@tracking.local", "maya123", "MKT", None, "maya-workstation", AttendanceStatusEnum.PRESENT, "08:44:00", 22600, 1100),
+            ("EMP005", "Liam Chen", "liam@tracking.local", "liam123", "OPS", "MGR003", "liam-dell", AttendanceStatusEnum.LATE, "09:18:00", 16200, 2200),
+            ("EMP006", "Sophie Martin", "sophie@tracking.local", "sophie123", "QA", "MGR001", "sophie-laptop", AttendanceStatusEnum.OFFLINE, None, 0, 0),
+            ("EMP007", "James Wilson", "james.w@tracking.local", "james123", "ENG", "MGR001", "james-dev-box", AttendanceStatusEnum.PRESENT, "08:55:00", 19500, 1400),
+            ("EMP008", "Aisha Patel", "aisha.p@tracking.local", "aisha123", "ENG", "MGR001", "aisha-blade", AttendanceStatusEnum.PRESENT, "08:49:00", 21000, 1200),
+            ("EMP009", "Carlos Mendez", "carlos.m@tracking.local", "carlos123", "ENG", "MGR001", "carlos-macmini", AttendanceStatusEnum.LATE, "09:15:00", 16800, 1900),
+            ("EMP010", "Chloe Dubois", "chloe.d@tracking.local", "chloe123", "DSN", "MGR002", "chloe-surface", AttendanceStatusEnum.PRESENT, "08:51:00", 18200, 1500),
+            ("EMP011", "Daniel Brooks", "daniel.b@tracking.local", "daniel123", "OPS", "MGR003", "daniel-rig", AttendanceStatusEnum.PRESENT, "08:46:00", 22100, 900),
+            ("EMP012", "Fatima Mansoor", "fatima.m@tracking.local", "fatima123", "HR", None, "fatima-elitebook", AttendanceStatusEnum.PRESENT, "08:57:00", 17900, 1300),
+            ("EMP013", "Ryan Gallagher", "ryan.g@tracking.local", "ryan123", "QA", "MGR001", "ryan-test-pc", AttendanceStatusEnum.LATE, "09:22:00", 14800, 2600),
+            ("EMP014", "Zoe Takahashi", "zoe.t@tracking.local", "zoe123", "MKT", None, "zoe-macbook-air", AttendanceStatusEnum.PRESENT, "08:50:00", 19100, 1400),
         ]
 
-        employee_records = []
-        for code, name, email, pwd, dept_id, manager_id in team_members:
+        now = datetime.now(timezone.utc)
+        today_date = date.today()
+
+        for code, name, email, pwd, dept_code, mgr_code, hostname, status_enum, checkin_str, active_sec, idle_sec in staff_data:
             emp = (await db.execute(select(Employee).where(Employee.email == email))).scalars().first()
+            mgr_id = mgr_map[mgr_code].id if mgr_code else None
+            dept_id = dept_map[dept_code].id
+
             if not emp:
                 emp = Employee(
                     employee_code=code,
@@ -164,34 +156,23 @@ async def seed(force: bool = False):
                     role=RoleEnum.EMPLOYEE.value,
                     status=StatusEnum.ACTIVE.value,
                     department_id=dept_id,
-                    manager_id=manager_id,
+                    manager_id=mgr_id,
                 )
                 db.add(emp)
                 await db.flush()
-            employee_records.append(emp)
+            else:
+                emp.name = name
+                emp.department_id = dept_id
+                emp.manager_id = mgr_id
 
-        # Register devices & attendance for today
-        now = datetime.now(timezone.utc)
-        today_date = date.today()
-
-        attendance_scenarios = [
-            (employee_records[0], AttendanceStatusEnum.PRESENT, "08:52:00", 19800, 2400, "alex-thinkpad"), # Alex
-            (employee_records[1], AttendanceStatusEnum.PRESENT, "08:58:00", 18200, 1900, "elena-macbook"), # Elena
-            (employee_records[2], AttendanceStatusEnum.LATE, "09:24:00", 14500, 3100, "marcus-desktop"),  # Marcus
-            (employee_records[3], AttendanceStatusEnum.PRESENT, "08:44:00", 22400, 1200, "maya-workstation"), # Maya
-            (employee_records[4], AttendanceStatusEnum.LATE, "09:18:00", 15800, 2600, "liam-dell"),       # Liam
-            (employee_records[5], AttendanceStatusEnum.OFFLINE, None, 0, 0, "sophie-laptop"),              # Sophie
-        ]
-
-        for emp, status_val, checkin_time_str, active_sec, idle_sec, host in attendance_scenarios:
             # Device
             dev = (await db.execute(select(Device).where(Device.employee_id == emp.id))).scalars().first()
             if not dev:
                 _, token_hash = generate_device_token()
                 dev = Device(
                     employee_id=emp.id,
-                    device_identifier=f"DEV-{emp.employee_code}",
-                    hostname=f"{host.upper()}.CORP",
+                    device_identifier=f"DEV-{code}",
+                    hostname=f"{hostname.upper()}.CORP",
                     os_version="Windows 11 Pro 23H2",
                     agent_version="1.2.0-rust",
                     api_token_hash=token_hash,
@@ -201,11 +182,11 @@ async def seed(force: bool = False):
                 db.add(dev)
                 await db.flush()
 
-            # Daily Attendance
-            att = (await db.execute(select(Attendance).where(Attendance.employee_id == emp.id, Attendance.work_date == today_date))).scalars().first()
-            first_act = datetime.fromisoformat(f"{today_date.isoformat()}T{checkin_time_str}Z") if checkin_time_str else None
+            # Attendance for today
+            first_act = datetime.fromisoformat(f"{today_date.isoformat()}T{checkin_str}Z") if checkin_str else None
             last_act = now if first_act else None
 
+            att = (await db.execute(select(Attendance).where(Attendance.employee_id == emp.id, Attendance.work_date == today_date))).scalars().first()
             if not att:
                 att = Attendance(
                     employee_id=emp.id,
@@ -216,7 +197,7 @@ async def seed(force: bool = False):
                     last_activity=last_act,
                     active_seconds=active_sec,
                     idle_seconds=idle_sec,
-                    status=status_val.value,
+                    status=status_enum.value,
                     rule_eval_context={"shift_start": "09:00:00", "grace_period_minutes": 10},
                 )
                 db.add(att)
@@ -225,80 +206,83 @@ async def seed(force: bool = False):
                 att.last_activity = last_act
                 att.active_seconds = active_sec
                 att.idle_seconds = idle_sec
-                att.status = status_val.value
+                att.status = status_enum.value
 
-            # If active, create sample activity batches & mouse heatmap
+            # If active, generate activity logs, heatmaps & mock screenshots
             if active_sec > 0:
                 # Activity log
-                act_log = ActivityLog(
-                    employee_id=emp.id,
-                    device_id=dev.id,
-                    start_time=now - timedelta(minutes=30),
-                    end_time=now,
-                    key_press_count=320 + (emp.employee_code.__hash__() % 400),
-                    mouse_click_count=64 + (emp.employee_code.__hash__() % 80),
-                    mouse_move_count=1850 + (emp.employee_code.__hash__() % 900),
-                    active_seconds=1600,
-                    idle_seconds=200,
-                )
-                db.add(act_log)
+                act = (await db.execute(select(ActivityLog).where(ActivityLog.employee_id == emp.id))).scalars().first()
+                if not act:
+                    act_log = ActivityLog(
+                        employee_id=emp.id,
+                        device_id=dev.id,
+                        start_time=now - timedelta(minutes=45),
+                        end_time=now,
+                        key_press_count=450 + (code.__hash__() % 300),
+                        mouse_click_count=85 + (code.__hash__() % 60),
+                        mouse_move_count=2100 + (code.__hash__() % 800),
+                        active_seconds=2400,
+                        idle_seconds=300,
+                    )
+                    db.add(act_log)
 
-                # Mouse Heatmap (20x12 grid)
-                heatmap_matrix = {
-                    "1,2": 14, "2,2": 28, "2,3": 35, "3,5": 19,
-                    "5,8": 48, "6,8": 54, "6,9": 31, "4,10": 22,
-                    "7,14": 41, "8,15": 63, "9,15": 27, "0,0": 9,
-                }
-                hm = MouseHeatmap(
-                    employee_id=emp.id,
-                    device_id=dev.id,
-                    window_start=now - timedelta(minutes=30),
-                    window_end=now,
-                    screen_width=1920,
-                    screen_height=1080,
-                    grid_cols=20,
-                    grid_rows=12,
-                    grid_matrix=heatmap_matrix,
-                )
-                db.add(hm)
+                # Heatmap
+                hm = (await db.execute(select(MouseHeatmap).where(MouseHeatmap.employee_id == emp.id))).scalars().first()
+                if not hm:
+                    heatmap_matrix = {
+                        "1,2": 18, "2,2": 32, "2,3": 41, "3,5": 22,
+                        "5,8": 55, "6,8": 62, "6,9": 38, "4,10": 26,
+                        "7,14": 49, "8,15": 71, "9,15": 30, "0,0": 11,
+                    }
+                    hm_rec = MouseHeatmap(
+                        employee_id=emp.id,
+                        device_id=dev.id,
+                        window_start=now - timedelta(minutes=45),
+                        window_end=now,
+                        screen_width=1920,
+                        screen_height=1080,
+                        grid_cols=20,
+                        grid_rows=12,
+                        grid_matrix=heatmap_matrix,
+                    )
+                    db.add(hm_rec)
 
-                # Star reward if present
-                if status_val == AttendanceStatusEnum.PRESENT:
-                    star_exists = (await db.execute(select(EmployeeStar).where(EmployeeStar.employee_id == emp.id, EmployeeStar.award_date == today_date))).scalars().first()
-                    if not star_exists:
-                        star = EmployeeStar(
-                            id=str(uuid.uuid4()),
-                            employee_id=emp.id,
-                            award_date=today_date,
-                            star_count=1,
-                            reason="On-Time Arrival (Punctuality)",
-                            criteria_snapshot={"status": "PRESENT", "first_activity": checkin_time_str},
-                            awarded_at=now,
-                        )
-                        db.add(star)
-
-                # Create Mock Screenshot in storage
-                existing_ss = (await db.execute(select(Screenshot).where(Screenshot.employee_id == emp.id))).scalars().first()
-                if not existing_ss:
+                # Screenshot
+                ss = (await db.execute(select(Screenshot).where(Screenshot.employee_id == emp.id))).scalars().first()
+                if not ss:
                     img_bytes = create_mock_desktop_image(
-                        title=f"{emp.name} — IDE Workspace",
-                        subtitle=f"VS Code & Chromium on {dev.hostname}",
-                        color_scheme="green" if status_val == AttendanceStatusEnum.PRESENT else "blue"
+                        title=f"{name} — {dept_code} Workstation",
+                        subtitle=f"Application session on {dev.hostname}",
+                        color_scheme="green" if status_enum == AttendanceStatusEnum.PRESENT else "blue"
                     )
                     await screenshot_service.save_screenshot(
                         db=db,
                         employee_id=emp.id,
                         device_id=dev.id,
                         file_bytes=img_bytes,
-                        captured_at=now - timedelta(minutes=10),
+                        captured_at=now - timedelta(minutes=15),
                         format="webp",
                         width=1280,
                         height=720,
                     )
 
+                # Star award for on-time
+                if status_enum == AttendanceStatusEnum.PRESENT:
+                    star = (await db.execute(select(EmployeeStar).where(EmployeeStar.employee_id == emp.id, EmployeeStar.award_date == today_date))).scalars().first()
+                    if not star:
+                        db.add(EmployeeStar(
+                            id=str(uuid.uuid4()),
+                            employee_id=emp.id,
+                            award_date=today_date,
+                            star_count=1,
+                            reason="On-Time Arrival (Punctuality)",
+                            criteria_snapshot={"status": "PRESENT", "first_activity": checkin_str},
+                            awarded_at=now,
+                        ))
+
         await db.commit()
-        print("Successfully seeded rich dummy data: 6 staff members, active attendance, activity batches, 20x12 heatmaps, screenshots, and stars!")
+        print("Successfully seeded 14 employees, 3 managers, 1 admin across 6 departments with live attendance, activity, heatmaps, and screenshots!")
 
 
 if __name__ == "__main__":
-    asyncio.run(seed(force=False))
+    asyncio.run(seed())

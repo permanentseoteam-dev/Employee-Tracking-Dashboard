@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WorkPulse — Employee Activity & Attendance Tracking Dashboard</title>
+  <meta name="description" content="Next-generation privacy-first employee attendance, activity aggregation, and screenshot tracking platform.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="index.css">
+</head>
+<body>
+
+  <!-- App Header -->
+  <header class="app-header">
+    <div class="brand-section">
+      <div class="brand-icon">WP</div>
+      <h1 class="brand-title">WorkPulse</h1>
+      <span class="brand-badge">V1 Live</span>
+    </div>
+
+    <div class="header-actions">
+      <!-- Role Switcher -->
+      <div class="user-switcher" id="userSwitcher">
+        <span class="role-pill admin" id="activeRoleBadge">ADMIN</span>
+        <span class="user-name-label" id="activeUserName">System Administrator</span>
+        <select id="switchUserSelect" class="input-control" style="padding: 2px 6px; font-size: 0.75rem;">
+          <option value="admin">Switch to Admin</option>
+          <option value="manager">Switch to Manager</option>
+          <option value="employee">Switch to Employee (Alex)</option>
+        </select>
+      </div>
+
+      <button id="refreshDataBtn" class="btn btn-secondary btn-sm" title="Reload all data">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+        Refresh
+      </button>
+    </div>
+  </header>
+
+  <!-- Navigation Bar -->
+  <nav class="nav-tabs" id="navTabs">
+    <button class="tab-btn active" data-tab="tab-overview" id="btn-tab-overview">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/></svg>
+      Overview
+    </button>
+    <button class="tab-btn" data-tab="tab-attendance" id="btn-tab-attendance">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+      Attendance Roll Call
+    </button>
+    <button class="tab-btn" data-tab="tab-activity" id="btn-tab-activity">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+      Activity & Mouse Heatmap
+    </button>
+    <button class="tab-btn" data-tab="tab-screenshots" id="btn-tab-screenshots">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>
+      Screenshot Gallery
+    </button>
+    <button class="tab-btn" data-tab="tab-rules" id="btn-tab-rules">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+      Rules & Star Rewards
+    </button>
+  </nav>
+
+  <!-- Main Workspace Content -->
+  <main class="main-content">
+
+    <!-- Interactive Desktop Agent Simulator Box -->
+    <section class="sim-box" id="simulatorBanner">
+      <div class="sim-text">
+        <h4>⚡ Windows Agent Test Simulator</h4>
+        <p>Trigger instant desktop check-in: simulates PC boot, 5-min activity aggregation, 20x12 heatmap points, and WebP capture.</p>
+      </div>
+      <div style="display: flex; gap: 8px;">
+        <button id="simulateOnTimeBtn" class="btn btn-primary btn-sm">Simulate On-Time Arrival</button>
+        <button id="simulateLateBtn" class="btn btn-secondary btn-sm">Simulate Late Arrival</button>
+        <button id="simulateScreenshotBtn" class="btn btn-secondary btn-sm">Capture Screenshot</button>
+      </div>
+    </section>
+
+    <!-- Tab 1: Overview -->
+    <section class="tab-pane active" id="tab-overview">
+      <div class="stat-grid">
+        <div class="stat-card">
+          <div class="stat-label">Total Staff</div>
+          <div class="stat-value" id="kpiTotalEmp">-</div>
+          <div class="stat-sub">Active registered team</div>
+        </div>
+        <div class="stat-card emerald">
+          <div class="stat-label">Present Today</div>
+          <div class="stat-value" id="kpiPresent">-</div>
+          <div class="stat-sub">On-time check-ins</div>
+        </div>
+        <div class="stat-card amber">
+          <div class="stat-label">Late Arrivals</div>
+          <div class="stat-value" id="kpiLate">-</div>
+          <div class="stat-sub">Beyond grace window</div>
+        </div>
+        <div class="stat-card rose">
+          <div class="stat-label">Offline / Absent</div>
+          <div class="stat-value" id="kpiOffline">-</div>
+          <div class="stat-sub">No activity reported</div>
+        </div>
+        <div class="stat-card violet">
+          <div class="stat-label">Total Stars</div>
+          <div class="stat-value" id="kpiStars">-</div>
+          <div class="stat-sub">Awarded for punctuality</div>
+        </div>
+      </div>
+
+      <!-- Quick Roll Call Section -->
+      <div class="panel-card">
+        <div class="panel-header">
+          <div class="panel-title">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
+            Today's Attendance Status
+          </div>
+          <span style="font-size: 0.8rem; color: var(--text-dim);" id="todayDateLabel"></span>
+        </div>
+        <div class="table-wrapper">
+          <table class="data-table" id="overviewAttendanceTable">
+            <thead>
+              <tr>
+                <th>Code</th>
+                <th>Employee</th>
+                <th>Department</th>
+                <th>First Active</th>
+                <th>Active Time</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody id="overviewAttendanceTbody">
+              <tr><td colspan="6" style="text-align:center; color: var(--text-dim);">Loading attendance...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- Tab 2: Attendance Roll Call -->
+    <section class="tab-pane" id="tab-attendance">
+      <div class="panel-card">
+        <div class="panel-header">
+          <div class="panel-title">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/></svg>
+            Detailed Attendance Roll Call
+          </div>
+        </div>
+        <div class="filter-bar">
+          <input type="date" id="attDateFilter" class="input-control">
+          <button id="applyAttFilterBtn" class="btn btn-secondary btn-sm">Filter</button>
+        </div>
+        <div class="table-wrapper">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Employee</th>
+                <th>Department</th>
+                <th>Date</th>
+                <th>First Activity</th>
+                <th>Last Activity</th>
+                <th>Active Hours</th>
+                <th>Idle Hours</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody id="fullAttendanceTbody">
+              <tr><td colspan="8" style="text-align:center; color: var(--text-dim);">Loading records...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- Tab 3: Activity & Mouse Heatmap -->
+    <section class="tab-pane" id="tab-activity">
+      <div class="panel-card">
+        <div class="panel-header">
+          <div class="panel-title">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></svg>
+            Aggregated Input & Mouse Grid Heatmap
+          </div>
+        </div>
+
+        <div class="filter-bar">
+          <label style="font-size: 0.8rem; color: var(--text-muted);">Employee:</label>
+          <select id="heatmapEmpSelect" class="input-control">
+            <option value="">Loading employees...</option>
+          </select>
+          <button id="loadHeatmapBtn" class="btn btn-primary btn-sm">Render Heatmap</button>
+        </div>
+
+        <!-- Metric counter pills -->
+        <div class="stat-grid" style="margin-bottom: 20px;">
+          <div class="stat-card">
+            <div class="stat-label">Keypresses</div>
+            <div class="stat-value" id="statKeys">0</div>
+            <div class="stat-sub">Atomic count (no raw text)</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Mouse Clicks</div>
+            <div class="stat-value" id="statClicks">0</div>
+            <div class="stat-sub">Aggregated clicks</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Mouse Moves</div>
+            <div class="stat-value" id="statMoves">0</div>
+            <div class="stat-sub">Movement distance vectors</div>
+          </div>
+          <div class="stat-card emerald">
+            <div class="stat-label">Active Time</div>
+            <div class="stat-value" id="statActive">0m</div>
+            <div class="stat-sub">Meaningful interaction</div>
+          </div>
+        </div>
+
+        <!-- 20x12 Screen Heatmap Display -->
+        <div class="screen-canvas-wrapper">
+          <div class="screen-mockup-bar">
+            <span>Desktop Workspace Display (20 &times; 12 Interaction Grid)</span>
+            <span id="canvasStatsMeta">Hover cell for coordinates</span>
+          </div>
+          <canvas id="heatmapCanvas" width="960" height="576"></canvas>
+          <div class="heatmap-legend">
+            <span>Low Intensity</span>
+            <div class="legend-bar"></div>
+            <span>High Density Interaction</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Tab 4: Screenshot Gallery -->
+    <section class="tab-pane" id="tab-screenshots">
+      <div class="panel-card">
+        <div class="panel-header">
+          <div class="panel-title">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+            Periodic Compressed Screenshots (WebP)
+          </div>
+          <div class="panel-actions">
+            <button id="purgeRetentionBtn" class="btn btn-secondary btn-sm" title="Purge screenshots older than retention policy">Purge Expired</button>
+          </div>
+        </div>
+
+        <div class="gallery-grid" id="screenshotsGalleryGrid">
+          <div style="grid-column: 1/-1; text-align: center; color: var(--text-dim); padding: 40px;">
+            No screenshots captured yet. Click "Capture Screenshot" on top to test.
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Tab 5: Rules & Star Rewards -->
+    <section class="tab-pane" id="tab-rules">
+      <div class="panel-card">
+        <div class="panel-header">
+          <div class="panel-title">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+            Configured Policies & Star Ledger
+          </div>
+          <button id="evaluateStarsBtn" class="btn btn-primary btn-sm">Evaluate Stars Today</button>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+          <!-- Rules Card -->
+          <div style="background: rgba(255,255,255,0.02); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: 18px;">
+            <h4 style="color: #fff; margin-bottom: 12px; font-size: 0.95rem;">Active Rules Configuration</h4>
+            <div id="rulesListContainer" style="font-size: 0.85rem; color: var(--text-muted); line-height: 1.8;">
+              Loading policy rules...
+            </div>
+          </div>
+
+          <!-- Stars Awarded List -->
+          <div style="background: rgba(255,255,255,0.02); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: 18px;">
+            <h4 style="color: #fff; margin-bottom: 12px; font-size: 0.95rem;">Recent Star Awards</h4>
+            <div id="starsListContainer" style="font-size: 0.85rem; color: var(--text-muted); line-height: 1.8;">
+              Loading awarded stars...
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Screenshot Modal Lightbox -->
+  <div class="modal-overlay" id="screenshotModal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h4 id="modalTitle" style="color: #fff; font-size: 1rem;">Screenshot Preview</h4>
+        <button id="closeModalBtn" class="btn btn-secondary btn-sm" style="padding: 4px 10px;">&times;</button>
+      </div>
+      <div class="modal-body">
+        <img id="modalImage" src="" alt="Full preview">
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

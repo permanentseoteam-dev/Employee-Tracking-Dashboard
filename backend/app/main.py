@@ -31,9 +31,18 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+from pathlib import Path
+from starlette.staticfiles import StaticFiles
+
 app.include_router(api_v1_router, prefix=settings.API_V1_STR)
 
 
 @app.get("/health")
 async def health_check():
     return {"status": "healthy", "service": settings.PROJECT_NAME}
+
+
+# Mount frontend static directory for full SPA delivery
+frontend_path = Path(__file__).resolve().parent.parent.parent / "frontend"
+if frontend_path.exists():
+    app.mount("/", StaticFiles(directory=str(frontend_path), html=True), name="frontend")

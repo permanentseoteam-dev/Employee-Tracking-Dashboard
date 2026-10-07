@@ -3,10 +3,11 @@ from pydantic import BaseModel, ConfigDict
 
 
 class SettingRuleBase(BaseModel):
-    rule_type: str  # "ATTENDANCE", "STAR", "MONITORING", "RETENTION"
+    rule_type: str  # "ATTENDANCE", "STAR", "MONITORING", "RETENTION", "CUSTOM"
     name: str
+    description: str | None = None
     is_active: bool = True
-    config_payload: dict
+    config_payload: dict = {}
 
 
 class SettingRuleCreate(SettingRuleBase):
@@ -15,6 +16,7 @@ class SettingRuleCreate(SettingRuleBase):
 
 class SettingRuleUpdate(BaseModel):
     name: str | None = None
+    description: str | None = None
     is_active: bool | None = None
     config_payload: dict | None = None
 

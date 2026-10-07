@@ -159,6 +159,17 @@ function setupEventListeners() {
   const rulesForm = document.getElementById('rulesEditForm');
   if (rulesForm) rulesForm.addEventListener('submit', handleSaveRules);
 
+  // Custom Policy Creation Form
+  const customRuleForm = document.getElementById('customRuleCreateForm');
+  if (customRuleForm) customRuleForm.addEventListener('submit', handleCreateCustomRule);
+  const newRuleActive = document.getElementById('newRuleActive');
+  if (newRuleActive) {
+    newRuleActive.addEventListener('change', (e) => {
+      const txt = document.getElementById('newRuleActiveText');
+      if (txt) txt.textContent = e.target.checked ? 'Enabled (Active)' : 'Disabled (Inactive)';
+    });
+  }
+
   // Employee Directory Filters
   const empSearch = document.getElementById('employeeSearchInput');
   const empRoleFilter = document.getElementById('empRoleFilter');
@@ -590,14 +601,76 @@ async function loadRulesAndStars() {
         if (starInput) starInput.value = starHours;
       }
 
+      const badge = document.getElementById('rulesCountBadge');
+      if (badge) badge.textContent = `${rules.length} Policies`;
+
       rules.forEach(r => {
-        const div = document.createElement('div');
-        div.style.marginBottom = '12px';
-        div.innerHTML = `
-          <div style="font-weight: 600; color: var(--text-main); font-size: 0.85rem;">${r.name} <span class="role-pill ${r.is_active ? 'active' : 'offline'}" style="font-size: 0.65rem; margin-left: 6px;">${r.is_active ? 'Active' : 'Disabled'}</span></div>
-          <pre style="background: rgba(0,0,0,0.25); padding: 8px 10px; border-radius: 6px; font-size: 0.75rem; margin-top: 4px; overflow-x: auto; color: var(--text-muted); border: 1px solid var(--border-subtle);">${JSON.stringify(r.config_payload, null, 2)}</pre>
+        const card = document.createElement('div');
+        card.className = `policy-card ${r.is_active ? 'active' : 'inactive'}`;
+        card.id = `policy-card-${r.id}`;
+
+        const typeColor = r.rule_type === 'ATTENDANCE' ? 'employee' : (r.rule_type === 'STAR' ? 'manager' : 'admin');
+        const descText = r.description ? `<div class="policy-desc">${r.description}</div>` : '';
+
+        // Formatted parameters preview
+        const payloadKeys = Object.keys(r.config_payload || {});
+        let paramsHtml = '';
+        if (payloadKeys.length > 0) {
+          paramsHtml = `<div style="display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0;">`;
+          payloadKeys.forEach(k => {
+            const val = typeof r.config_payload[k] === 'object' ? JSON.stringify(r.config_payload[k]) : r.config_payload[k];
+            paramsHtml += `<span style="font-size: 0.72rem; padding: 2px 7px; background: rgba(255,255,255,0.05); border-radius: 4px; border: 1px solid var(--border-subtle); color: var(--text-muted); font-family: monospace;">${k}: <strong style="color: var(--text-main);">${val}</strong></span>`;
+          });
+          paramsHtml += `</div>`;
+        }
+
+        card.innerHTML = `
+          <div class="policy-header">
+            <div style="flex: 1;">
+              <div class="policy-title">
+                ${r.name}
+                <span class="role-pill ${typeColor}" style="font-size: 0.65rem;">${r.rule_type}</span>
+              </div>
+              ${descText}
+            </div>
+          </div>
+          ${paramsHtml}
+          <div class="policy-actions">
+            <!-- Active / Inactive Toggle Switch -->
+            <label class="switch-label" title="Click to toggle active/inactive status">
+              <input type="checkbox" class="switch-input policy-toggle-input" data-id="${r.id}" ${r.is_active ? 'checked' : ''}>
+              <span class="toggle-switch"></span>
+              <span class="policy-status-text" style="color: ${r.is_active ? 'var(--accent-emerald)' : 'var(--text-dim)'};">${r.is_active ? 'Active' : 'Inactive'}</span>
+            </label>
+            
+            <div style="display: flex; gap: 8px; align-items: center;">
+              <span id="sync-indicator-${r.id}" style="font-size: 0.7rem; color: var(--accent-emerald); display: none; font-weight: 600;">Saved!</span>
+              <button class="btn btn-danger btn-sm delete-rule-btn" data-id="${r.id}" data-name="${r.name}" style="padding: 3px 9px; font-size: 0.72rem;">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                Delete
+              </button>
+            </div>
+          </div>
         `;
-        container.appendChild(div);
+        container.appendChild(card);
+      });
+
+      // Attach Toggle Listeners
+      container.querySelectorAll('.policy-toggle-input').forEach(input => {
+        input.addEventListener('change', async (e) => {
+          const ruleId = e.target.getAttribute('data-id');
+          const newStatus = e.target.checked;
+          await handleToggleRuleStatus(ruleId, newStatus);
+        });
+      });
+
+      // Attach Delete Listeners
+      container.querySelectorAll('.delete-rule-btn').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const ruleId = btn.getAttribute('data-id');
+          const ruleName = btn.getAttribute('data-name');
+          await handleDeleteRule(ruleId, ruleName);
+        });
       });
     }
 
@@ -636,6 +709,117 @@ async function loadRulesAndStars() {
     }
   } catch (err) {
     console.error('Error loading rules & stars:', err);
+  }
+}
+
+async function handleToggleRuleStatus(ruleId, newStatus) {
+  try {
+    const res = await fetch(`${API_BASE}/rules/${ruleId}`, {
+      method: 'PUT',
+      headers: authHeaders(),
+      body: JSON.stringify({ is_active: newStatus })
+    });
+    if (res.ok) {
+      const card = document.getElementById(`policy-card-${ruleId}`);
+      if (card) {
+        card.classList.toggle('active', newStatus);
+        card.classList.toggle('inactive', !newStatus);
+        const statusText = card.querySelector('.policy-status-text');
+        if (statusText) {
+          statusText.textContent = newStatus ? 'Active' : 'Inactive';
+          statusText.style.color = newStatus ? 'var(--accent-emerald)' : 'var(--text-dim)';
+        }
+        const syncInd = document.getElementById(`sync-indicator-${ruleId}`);
+        if (syncInd) {
+          syncInd.style.display = 'inline';
+          setTimeout(() => { syncInd.style.display = 'none'; }, 2000);
+        }
+      }
+    } else {
+      alert('Failed to update rule status on server.');
+      await loadRulesAndStars();
+    }
+  } catch (err) {
+    console.error('Error toggling rule status:', err);
+    alert('Network error updating rule status.');
+    await loadRulesAndStars();
+  }
+}
+
+async function handleDeleteRule(ruleId, ruleName) {
+  if (!confirm(`Are you sure you want to delete policy rule "${ruleName}"? This action cannot be undone.`)) {
+    return;
+  }
+  try {
+    const res = await fetch(`${API_BASE}/rules/${ruleId}`, {
+      method: 'DELETE',
+      headers: authHeaders()
+    });
+    if (res.ok) {
+      const card = document.getElementById(`policy-card-${ruleId}`);
+      if (card) {
+        card.style.opacity = '0';
+        card.style.transform = 'scale(0.95)';
+        setTimeout(() => { card.remove(); }, 200);
+      }
+      await loadRulesAndStars();
+    } else {
+      alert('Failed to delete rule from server.');
+    }
+  } catch (err) {
+    console.error('Error deleting rule:', err);
+    alert('Network error deleting rule.');
+  }
+}
+
+async function handleCreateCustomRule(e) {
+  e.preventDefault();
+  const name = document.getElementById('newRuleTitle').value.trim();
+  const description = document.getElementById('newRuleDesc').value.trim();
+  const ruleType = document.getElementById('newRuleType').value;
+  const isActive = document.getElementById('newRuleActive').checked;
+  const payloadStr = document.getElementById('newRulePayload').value.trim();
+
+  let configPayload = {};
+  if (payloadStr) {
+    try {
+      configPayload = JSON.parse(payloadStr);
+    } catch (parseErr) {
+      alert('Invalid JSON in Configuration Parameters. Please provide valid JSON, e.g. {"threshold": 10}');
+      return;
+    }
+  }
+
+  try {
+    const res = await fetch(`${API_BASE}/rules`, {
+      method: 'POST',
+      headers: authHeaders(),
+      body: JSON.stringify({
+        name,
+        description,
+        rule_type: ruleType,
+        is_active: isActive,
+        config_payload: configPayload
+      })
+    });
+
+    if (res.ok) {
+      const fb = document.getElementById('customRuleSaveFeedback');
+      if (fb) {
+        fb.style.display = 'inline';
+        setTimeout(() => { fb.style.display = 'none'; }, 3000);
+      }
+      document.getElementById('customRuleCreateForm').reset();
+      document.getElementById('newRuleActive').checked = true;
+      document.getElementById('newRuleActiveText').textContent = 'Enabled (Active)';
+      await loadRulesAndStars();
+    } else {
+      const errData = await res.json().catch(() => ({}));
+      alert(`Failed to create rule: ${errData.detail || 'Server error'}`);
+    }
+  } catch (err) {
+    console.error('Error creating custom rule:', err);
+    alert('Network error creating rule.');
   }
 }
 

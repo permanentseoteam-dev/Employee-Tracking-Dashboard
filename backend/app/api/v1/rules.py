@@ -34,13 +34,14 @@ async def list_rules(
 async def create_rule(
     payload: SettingRuleCreate,
     db: AsyncSession = Depends(get_db),
-    _admin: Employee = Depends(require_role([RoleEnum.ADMIN])),
+    _user: Employee = Depends(require_role([RoleEnum.ADMIN, RoleEnum.MANAGER])),
 ):
     rule = SettingRule(
         rule_type=payload.rule_type,
         name=payload.name,
+        description=payload.description or "",
         is_active=payload.is_active,
-        config_payload=payload.config_payload,
+        config_payload=payload.config_payload or {},
     )
     db.add(rule)
     await db.flush()
@@ -61,12 +62,29 @@ async def update_rule(
 
     if payload.name is not None:
         rule.name = payload.name
+    if payload.description is not None:
+        rule.description = payload.description
     if payload.is_active is not None:
         rule.is_active = payload.is_active
     if payload.config_payload is not None:
         rule.config_payload = payload.config_payload
 
     return rule
+
+
+@router.delete("/{rule_id}")
+async def delete_rule(
+    rule_id: str,
+    db: AsyncSession = Depends(get_db),
+    _user: Employee = Depends(require_role([RoleEnum.ADMIN, RoleEnum.MANAGER])),
+):
+    stmt = select(SettingRule).where(SettingRule.id == rule_id)
+    rule = (await db.execute(stmt)).scalars().first()
+    if not rule:
+        raise HTTPException(status_code=404, detail="Rule not found")
+
+    await db.delete(rule)
+    return {"message": "Policy rule successfully deleted", "id": rule_id}
 
 
 @router.post("/evaluate-stars/{employee_id}", response_model=list[EmployeeStarOut])

@@ -12,6 +12,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # Initialize tables
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        try:
+            from sqlalchemy import text
+            await conn.execute(text("ALTER TABLE setting_rules ADD COLUMN description VARCHAR(255)"))
+        except Exception:
+            pass
     yield
 
 

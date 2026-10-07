@@ -115,62 +115,206 @@
 
     <!-- Tab 1: Overview -->
     <section class="tab-pane active" id="tab-overview">
-      <div class="stat-grid">
-        <div class="stat-card">
-          <div class="stat-label">Total Staff</div>
-          <div class="stat-value" id="kpiTotalEmp">-</div>
-          <div class="stat-sub">Active registered team</div>
+      <!-- 1. ADMIN & MANAGER WORKSPACE: Team-Wide Overview & Staff Roll Call -->
+      <div id="overviewTeamWorkspace">
+        <div class="stat-grid">
+          <div class="stat-card">
+            <div class="stat-label">Total Staff</div>
+            <div class="stat-value" id="kpiTotalEmp">-</div>
+            <div class="stat-sub">Active registered team</div>
+          </div>
+          <div class="stat-card emerald">
+            <div class="stat-label">Present Today</div>
+            <div class="stat-value" id="kpiPresent">-</div>
+            <div class="stat-sub">On-time check-ins</div>
+          </div>
+          <div class="stat-card amber">
+            <div class="stat-label">Late Arrivals</div>
+            <div class="stat-value" id="kpiLate">-</div>
+            <div class="stat-sub">Beyond grace window</div>
+          </div>
+          <div class="stat-card rose">
+            <div class="stat-label">Offline / Absent</div>
+            <div class="stat-value" id="kpiOffline">-</div>
+            <div class="stat-sub">No activity reported</div>
+          </div>
+          <div class="stat-card violet">
+            <div class="stat-label">Total Stars</div>
+            <div class="stat-value" id="kpiStars">-</div>
+            <div class="stat-sub">Awarded for punctuality</div>
+          </div>
         </div>
-        <div class="stat-card emerald">
-          <div class="stat-label">Present Today</div>
-          <div class="stat-value" id="kpiPresent">-</div>
-          <div class="stat-sub">On-time check-ins</div>
-        </div>
-        <div class="stat-card amber">
-          <div class="stat-label">Late Arrivals</div>
-          <div class="stat-value" id="kpiLate">-</div>
-          <div class="stat-sub">Beyond grace window</div>
-        </div>
-        <div class="stat-card rose">
-          <div class="stat-label">Offline / Absent</div>
-          <div class="stat-value" id="kpiOffline">-</div>
-          <div class="stat-sub">No activity reported</div>
-        </div>
-        <div class="stat-card violet">
-          <div class="stat-label">Total Stars</div>
-          <div class="stat-value" id="kpiStars">-</div>
-          <div class="stat-sub">Awarded for punctuality</div>
+
+        <!-- Team Roll Call Section -->
+        <div class="panel-card">
+          <div class="panel-header">
+            <div class="panel-title">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
+              Today's Attendance Status
+            </div>
+            <span style="font-size: 0.8rem; color: var(--text-dim);" id="todayDateLabel"></span>
+          </div>
+          <div class="table-wrapper">
+            <table class="data-table" id="overviewAttendanceTable">
+              <thead>
+                <tr>
+                  <th>Code</th>
+                  <th>Employee</th>
+                  <th>Department</th>
+                  <th>First Active</th>
+                  <th>Active Time</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody id="overviewAttendanceTbody">
+                <tr><td colspan="6" style="text-align:center; color: var(--text-dim);">Loading attendance...</td></tr>
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
 
-      <!-- Quick Roll Call Section -->
-      <div class="panel-card">
-        <div class="panel-header">
-          <div class="panel-title">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
-            Today's Attendance Status
+      <!-- 2. EMPLOYEE WORKSPACE: Personal Overall View (Individual Metrics & Activity Only) -->
+      <div id="overviewEmployeeWorkspace" style="display: none;">
+        <!-- Personal KPI Stat Grid -->
+        <div class="stat-grid">
+          <div class="stat-card emerald">
+            <div class="stat-label">My Status Today</div>
+            <div class="stat-value" id="empKpiStatus">
+              <span class="badge present" style="font-size: 1rem; padding: 4px 12px;">PRESENT</span>
+            </div>
+            <div class="stat-sub" id="empKpiStatusSub">Checked in on schedule</div>
           </div>
-          <span style="font-size: 0.8rem; color: var(--text-dim);" id="todayDateLabel"></span>
+
+          <div class="stat-card cyan">
+            <div class="stat-label">First Active / Check-In</div>
+            <div class="stat-value" id="empKpiFirstActive" style="color: var(--accent-cyan); font-size: 1.5rem;">08:52 AM</div>
+            <div class="stat-sub" id="empKpiFirstActiveSub">Shift: 09:00 AM (Punctual)</div>
+          </div>
+
+          <div class="stat-card">
+            <div class="stat-label">Tracked Active Hours</div>
+            <div class="stat-value" id="empKpiActiveHours" style="color: var(--accent-primary); font-size: 1.5rem;">5.7 hrs</div>
+            <div class="stat-sub" id="empKpiActiveHoursSub">Today's productive time</div>
+          </div>
+
+          <div class="stat-card violet">
+            <div class="stat-label">Punctuality Stars</div>
+            <div class="stat-value" id="empKpiStars" style="color: var(--accent-violet); font-size: 1.5rem;">⭐ 12</div>
+            <div class="stat-sub">Awarded for on-time arrivals</div>
+          </div>
+
+          <div class="stat-card amber">
+            <div class="stat-label">Daily Deliverables</div>
+            <div class="stat-value" id="empKpiTasksRatio" style="color: var(--accent-amber); font-size: 1.5rem;">3 / 4 Done</div>
+            <div class="stat-sub" id="empKpiTasksPct">75% completed</div>
+          </div>
         </div>
-        <div class="table-wrapper">
-          <table class="data-table" id="overviewAttendanceTable">
-            <thead>
-              <tr>
-                <th>Code</th>
-                <th>Employee</th>
-                <th>Department</th>
-                <th>First Active</th>
-                <th>Active Time</th>
-                <th>Status</th>
-              </tr>
-            </thead>
-            <tbody id="overviewAttendanceTbody">
-              <tr><td colspan="6" style="text-align:center; color: var(--text-dim);">Loading attendance...</td></tr>
-            </tbody>
-          </table>
+
+        <!-- Personal Daily Performance & Shift Overview Card -->
+        <div class="panel-card" style="margin-bottom: 20px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 14px; margin-bottom: 16px; border-bottom: 1px solid var(--border-subtle); padding-bottom: 14px;">
+            <div style="display: flex; align-items: center; gap: 12px;">
+              <div style="width: 44px; height: 44px; border-radius: 50%; background: linear-gradient(135deg, var(--accent-primary), var(--accent-cyan)); color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 1.1rem;" id="empOverviewAvatar">
+                AR
+              </div>
+              <div>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                  <h3 style="font-size: 1.1rem; font-weight: 700; margin: 0; color: #fff;" id="empOverviewName">Alex Rivera</h3>
+                  <span class="role-pill employee" id="empOverviewRoleBadge">EMPLOYEE</span>
+                </div>
+                <div style="font-size: 0.78rem; color: var(--text-dim); margin-top: 2px;" id="empOverviewMeta">
+                  EMP001 &bull; Engineering &bull; Standard Shift: 09:00 AM – 06:00 PM
+                </div>
+              </div>
+            </div>
+
+            <button type="button" class="btn btn-primary btn-sm" onclick="switchTab('tab-sheets')" style="display: flex; align-items: center; gap: 6px; padding: 7px 16px; font-weight: 600;">
+              <span>📋</span>
+              <span>Open Daily Task Sheet</span>
+              <span>➔</span>
+            </button>
+          </div>
+
+          <!-- Shift & Daily Progress Breakdown -->
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px;">
+            <div style="background: rgba(255, 255, 255, 0.02); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: 14px 16px;">
+              <div style="font-size: 0.8rem; font-weight: 700; color: var(--text-main); margin-bottom: 10px;">⏱️ Today's Shift Breakdown</div>
+              <div style="display: flex; flex-direction: column; gap: 8px; font-size: 0.78rem;">
+                <div style="display: flex; justify-content: space-between;">
+                  <span style="color: var(--text-dim);">Scheduled Window:</span>
+                  <span style="font-weight: 600; color: var(--text-main);">09:00 AM – 06:00 PM</span>
+                </div>
+                <div style="display: flex; justify-content: space-between;">
+                  <span style="color: var(--text-dim);">First Check-in Recorded:</span>
+                  <span style="font-weight: 600; color: var(--accent-emerald);" id="empOverviewFirstCheckinDetail">08:52 AM (8 min Early)</span>
+                </div>
+                <div style="display: flex; justify-content: space-between;">
+                  <span style="color: var(--text-dim);">Grace Period Status:</span>
+                  <span style="font-weight: 600; color: var(--accent-emerald);">On-Time (No deductions)</span>
+                </div>
+                <div style="display: flex; justify-content: space-between;">
+                  <span style="color: var(--text-dim);">Idle / Inactive Time:</span>
+                  <span style="font-weight: 600; color: var(--text-muted);" id="empOverviewIdleHours">0.5 hrs</span>
+                </div>
+              </div>
+            </div>
+
+            <div style="background: rgba(255, 255, 255, 0.02); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: 14px 16px;">
+              <div style="font-size: 0.8rem; font-weight: 700; color: var(--text-main); margin-bottom: 10px;">🎯 Daily Work Target Progress</div>
+              <div style="margin-bottom: 12px;">
+                <div style="display: flex; justify-content: space-between; font-size: 0.76rem; margin-bottom: 4px;">
+                  <span style="color: var(--text-dim);">8-Hour Target Completion:</span>
+                  <span style="font-weight: 700; color: var(--accent-primary);" id="empOverviewTargetPct">71% (5.7 / 8.0 hrs)</span>
+                </div>
+                <div style="width: 100%; height: 8px; background: rgba(255,255,255,0.06); border-radius: 4px; overflow: hidden;">
+                  <div id="empOverviewTargetProgressBar" style="height: 100%; background: linear-gradient(90deg, var(--accent-primary), var(--accent-cyan)); width: 71%; border-radius: 4px; transition: width 0.3s ease;"></div>
+                </div>
+              </div>
+
+              <div>
+                <div style="display: flex; justify-content: space-between; font-size: 0.76rem; margin-bottom: 4px;">
+                  <span style="color: var(--text-dim);">Deliverables Completed:</span>
+                  <span style="font-weight: 700; color: var(--accent-emerald);" id="empOverviewDeliverablesPct">75% (3 of 4)</span>
+                </div>
+                <div style="width: 100%; height: 8px; background: rgba(255,255,255,0.06); border-radius: 4px; overflow: hidden;">
+                  <div id="empOverviewDeliverablesProgressBar" style="height: 100%; background: linear-gradient(90deg, var(--accent-emerald), #34d399); width: 75%; border-radius: 4px; transition: width 0.3s ease;"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Personal Attendance History (No other staff shown) -->
+        <div class="panel-card">
+          <div class="panel-header">
+            <div class="panel-title">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+              My Attendance & Punctuality Records
+            </div>
+            <span style="font-size: 0.78rem; color: var(--text-dim);">Personal Work History</span>
+          </div>
+          <div class="table-wrapper">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>First Active</th>
+                  <th>Active Working Time</th>
+                  <th>Idle Time</th>
+                  <th>Attendance Status</th>
+                  <th>Stars Earned</th>
+                </tr>
+              </thead>
+              <tbody id="empPersonalAttendanceTbody">
+                <tr><td colspan="6" style="text-align: center; color: var(--text-dim); padding: 20px;">Loading your attendance history...</td></tr>
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
     </section>
+
 
     <!-- Tab: Employees Directory -->
     <section class="tab-pane" id="tab-employees">
@@ -519,33 +663,102 @@
           </div>
         </div>
 
-        <!-- Daily Accomplishments Summary & Submission Block -->
-        <div class="panel-card" style="margin-bottom: 24px;">
-          <div class="panel-header" style="margin-bottom: 14px;">
-            <div class="panel-title" style="font-size: 0.95rem;">
-              <span>🚀</span>
-              <span>Daily Summary, Blockers & Submission</span>
-            </div>
+        <!-- Google Sheets "Projects" Daily Deliverables Spreadsheet -->
+        <div class="gsheet-wrapper" id="empProjectsSheetWrapper">
+          <!-- Toolbar -->
+          <div class="gsheet-toolbar">
+            <button type="button" class="gsheet-tool-btn" title="Search">🔍</button>
+            <button type="button" class="gsheet-tool-btn" title="Undo">↶</button>
+            <button type="button" class="gsheet-tool-btn" title="Redo">↷</button>
+            <button type="button" class="gsheet-tool-btn" title="Print">🖨️</button>
+            <div class="gsheet-tool-separator"></div>
+            <span style="font-size: 0.76rem; font-weight: 600; padding: 2px 6px;">100% ▾</span>
+            <div class="gsheet-tool-separator"></div>
+            <button type="button" class="gsheet-tool-btn" title="Currency">$</button>
+            <button type="button" class="gsheet-tool-btn" title="Percent">%</button>
+            <button type="button" class="gsheet-tool-btn" title="Decimal">.0 .00</button>
+            <button type="button" class="gsheet-tool-btn" title="Format">123</button>
+            <div class="gsheet-tool-separator"></div>
+            <span style="font-size: 0.76rem; font-weight: 600; padding: 2px 6px;">Poppins ▾</span>
+            <span style="font-size: 0.76rem; font-weight: 600; padding: 2px 6px;">14 ▾</span>
+            <div class="gsheet-tool-separator"></div>
+            <button type="button" class="gsheet-tool-btn active" title="Bold"><strong>B</strong></button>
+            <button type="button" class="gsheet-tool-btn" title="Italic"><em>I</em></button>
+            <button type="button" class="gsheet-tool-btn" title="Strikethrough"><s>S</s></button>
+            <button type="button" class="gsheet-tool-btn" title="Text Color" style="border-bottom: 2px solid #000;">A</button>
+            <button type="button" class="gsheet-tool-btn" title="Fill Color" style="border-bottom: 2px solid #ff9800;">🪣</button>
+            <button type="button" class="gsheet-tool-btn" title="Borders">⊞</button>
+            <div class="gsheet-tool-separator"></div>
+            <button type="button" class="gsheet-tool-btn" title="Align">≡</button>
+            <button type="button" class="gsheet-tool-btn" title="Filter">▼</button>
+            <button type="button" class="gsheet-tool-btn" title="Functions">Σ</button>
           </div>
 
-          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;">
-            <div>
-              <label style="font-size: 0.78rem; color: var(--text-muted); font-weight: 600; display: block; margin-bottom: 6px;">Daily Accomplishments & Summary:</label>
-              <textarea id="empSheetSummaryNotes" class="input-control" rows="3" placeholder="Briefly describe what you completed and achieved today..." style="width: 100%; resize: vertical;"></textarea>
-            </div>
-            <div>
-              <label style="font-size: 0.78rem; color: var(--text-muted); font-weight: 600; display: block; margin-bottom: 6px;">Blockers or Assistance Needed (Optional):</label>
-              <textarea id="empSheetBlockersSummary" class="input-control" rows="3" placeholder="Note any blockers, missing assets, or questions for manager..." style="width: 100%; resize: vertical;"></textarea>
-            </div>
+          <!-- Formula Bar -->
+          <div class="gsheet-formulabar">
+            <span class="gsheet-cell-name" id="empGsheetCellName">A1</span>
+            <span class="gsheet-fx-symbol">fx</span>
+            <input type="text" class="gsheet-formula-input" id="empGsheetFormulaInput" readonly value="Projects">
           </div>
 
-          <div style="display: flex; justify-content: flex-end; align-items: center; gap: 12px; border-top: 1px solid var(--border-subtle); padding-top: 14px;">
-            <button id="empSaveDraftBtn" class="btn btn-secondary btn-sm" style="padding: 8px 16px;">💾 Save Draft</button>
-            <button id="empSubmitSheetBtn" class="btn btn-primary btn-sm" style="padding: 8px 20px; font-weight: 700; background: linear-gradient(135deg, var(--accent-primary), var(--accent-hover));">
-              🚀 Submit Daily Sheet for Review
-            </button>
+          <!-- Spreadsheet Table -->
+          <div class="gsheet-table-container">
+            <table class="gsheet-table" id="empProjectsSheetTable">
+              <thead>
+                <!-- Column letters A-F -->
+                <tr>
+                  <th class="gsheet-th-corner"></th>
+                  <th class="gsheet-col-letter" style="width: 110px;">A</th>
+                  <th class="gsheet-col-letter" style="width: 250px;">B</th>
+                  <th class="gsheet-col-letter" style="width: 130px;">C</th>
+                  <th class="gsheet-col-letter" style="width: 240px;">D</th>
+                  <th class="gsheet-col-letter" style="width: 160px;">E</th>
+                  <th class="gsheet-col-letter" style="width: 200px;">F</th>
+                  <th class="gsheet-col-letter" style="width: 44px;"></th>
+                </tr>
+                <!-- Row 1: Banner "Projects" spanning across columns A-F -->
+                <tr>
+                  <td class="gsheet-row-num">1</td>
+                  <td colspan="6" class="gsheet-banner-cell">Projects</td>
+                  <td class="gsheet-banner-cell" style="padding: 0;"></td>
+                </tr>
+                <!-- Row 2: Peach headers: Date | Name | Status | Note | Bugs | next plan for that -->
+                <tr>
+                  <td class="gsheet-row-num">2</td>
+                  <th class="gsheet-header-cell">Date</th>
+                  <th class="gsheet-header-cell">Name</th>
+                  <th class="gsheet-header-cell">Status</th>
+                  <th class="gsheet-header-cell">Note</th>
+                  <th class="gsheet-header-cell">Bugs</th>
+                  <th class="gsheet-header-cell">next plan for that</th>
+                  <th class="gsheet-header-cell" style="text-align: center;"></th>
+                </tr>
+              </thead>
+              <tbody id="empProjectsSheetTbody">
+                <!-- Dynamically generated rows -->
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Footer / Actions Bar -->
+          <div class="gsheet-footer-bar">
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <button type="button" class="btn btn-secondary btn-sm" id="empAddProjectRowBtn" style="padding: 6px 14px; font-weight: 600; display: flex; align-items: center; gap: 6px;">
+                <span>➕</span>
+                <span>Add Row</span>
+              </button>
+              <span id="empProjectsRowCountLabel" style="font-size: 0.74rem; color: var(--text-muted);">0 project entries</span>
+            </div>
+
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <button id="empSaveDraftBtn" class="btn btn-secondary btn-sm" style="padding: 8px 16px;">💾 Save Draft</button>
+              <button id="empSubmitSheetBtn" class="btn btn-primary btn-sm" style="padding: 8px 20px; font-weight: 700; background: linear-gradient(135deg, var(--accent-primary), var(--accent-hover));">
+                🚀 Submit Daily Sheet for Review
+              </button>
+            </div>
           </div>
         </div>
+
 
         <!-- My Past Sheets History Grid -->
         <div class="panel-card">
@@ -1372,17 +1585,48 @@
           </div>
         </div>
 
-        <!-- Employee Summary & Blockers -->
-        <div style="display: grid; grid-template-columns: 1fr; gap: 12px; margin-bottom: 20px;">
-          <div style="background: rgba(255,255,255,0.02); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: 12px 14px;">
-            <div style="font-size: 0.72rem; color: var(--text-dim); margin-bottom: 4px; font-weight: 600;">Employee Daily Accomplishments Summary:</div>
-            <div id="modalSheetSummaryText" style="font-size: 0.84rem; color: var(--text-main); line-height: 1.5; white-space: pre-wrap;">-</div>
+        <!-- Google Sheets "Projects" Deliverables Table (Supervisor Review Mode) -->
+        <div style="margin-bottom: 20px;">
+          <div style="font-size: 0.8rem; font-weight: 700; color: var(--text-main); margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center;">
+            <span>📋 Project Deliverables Sheet</span>
+            <span style="font-size: 0.72rem; color: var(--text-dim);" id="modalProjectsCountLabel">Google Sheet Record</span>
           </div>
-          <div id="modalSheetBlockersContainer" style="background: rgba(244, 63, 94, 0.05); border: 1px solid rgba(244, 63, 94, 0.2); border-radius: var(--radius-sm); padding: 12px 14px; display: none;">
-            <div style="font-size: 0.72rem; color: var(--accent-rose); margin-bottom: 4px; font-weight: 600;">Reported Blockers / Needs Assistance:</div>
-            <div id="modalSheetBlockersText" style="font-size: 0.84rem; color: var(--text-main); line-height: 1.5; white-space: pre-wrap;">-</div>
+
+          <div class="gsheet-wrapper" style="margin-bottom: 0;">
+            <div class="gsheet-table-container">
+              <table class="gsheet-table">
+                <thead>
+                  <tr>
+                    <th class="gsheet-th-corner"></th>
+                    <th class="gsheet-col-letter" style="width: 100px;">A</th>
+                    <th class="gsheet-col-letter" style="width: 220px;">B</th>
+                    <th class="gsheet-col-letter" style="width: 120px;">C</th>
+                    <th class="gsheet-col-letter" style="width: 200px;">D</th>
+                    <th class="gsheet-col-letter" style="width: 140px;">E</th>
+                    <th class="gsheet-col-letter" style="width: 160px;">F</th>
+                  </tr>
+                  <tr>
+                    <td class="gsheet-row-num">1</td>
+                    <td colspan="6" class="gsheet-banner-cell">Projects</td>
+                  </tr>
+                  <tr>
+                    <td class="gsheet-row-num">2</td>
+                    <th class="gsheet-header-cell">Date</th>
+                    <th class="gsheet-header-cell">Name</th>
+                    <th class="gsheet-header-cell">Status</th>
+                    <th class="gsheet-header-cell">Note</th>
+                    <th class="gsheet-header-cell">Bugs</th>
+                    <th class="gsheet-header-cell">next plan for that</th>
+                  </tr>
+                </thead>
+                <tbody id="modalProjectsSheetTbody">
+                  <!-- Populated via JS -->
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
+
 
         <!-- Manager Feedback Section -->
         <div id="modalSheetFeedbackContainer" style="background: rgba(139, 92, 246, 0.08); border: 1px solid rgba(139, 92, 246, 0.3); border-radius: var(--radius-sm); padding: 14px; margin-bottom: 10px;">

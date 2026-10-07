@@ -116,6 +116,30 @@ function applyRolePermissions() {
     if (adminWs) adminWs.style.display = 'none';
     if (personalWs) personalWs.style.display = 'block';
   }
+
+  // 5. Overview Tab Workspaces: Team View (Admin/Manager) vs Employee Overall View (Employee)
+  const teamOverviewWs = document.getElementById('overviewTeamWorkspace');
+  const empOverviewWs = document.getElementById('overviewEmployeeWorkspace');
+  if (role === 'EMPLOYEE') {
+    if (teamOverviewWs) teamOverviewWs.style.display = 'none';
+    if (empOverviewWs) empOverviewWs.style.display = 'block';
+  } else {
+    if (teamOverviewWs) teamOverviewWs.style.display = 'block';
+    if (empOverviewWs) empOverviewWs.style.display = 'none';
+  }
+
+  // 6. Staff Directory Tab: Hide for Employee (Individual overview only)
+  const staffDirBtn = document.getElementById('btn-tab-employees');
+  if (staffDirBtn) {
+    if (role === 'EMPLOYEE') {
+      staffDirBtn.style.display = 'none';
+      if (state.activeTab === 'tab-employees') {
+        state.activeTab = 'tab-overview';
+      }
+    } else {
+      staffDirBtn.style.display = 'inline-flex';
+    }
+  }
 }
 
 // Global switchTab callable from inline HTML onclick, listeners, and scripts
@@ -126,6 +150,9 @@ window.switchTab = function switchTab(tabId) {
     tabId = 'tab-overview';
   }
   if (tabId === 'tab-screenshots' && role === 'EMPLOYEE') {
+    tabId = 'tab-overview';
+  }
+  if (tabId === 'tab-employees' && role === 'EMPLOYEE') {
     tabId = 'tab-overview';
   }
   if (tabId === 'tab-activity' && role === 'EMPLOYEE') {
@@ -535,6 +562,7 @@ function setupEventListeners() {
   });
   safeListen('empSaveDraftBtn', 'click', () => handleSaveEmployeeSheet(false));
   safeListen('empSubmitSheetBtn', 'click', () => handleSaveEmployeeSheet(true));
+  safeListen('empAddProjectRowBtn', 'click', () => window.addNewProjectRow?.());
 
   // Task Sheet Modals
   safeListen('closeSheetDetailsModalBtn', 'click', () => {
@@ -728,6 +756,15 @@ window.viewEmployeeHeatmap = function(empId) {
 
 async function loadOverviewData() {
   await ensureAuthenticated();
+  const role = (state.currentUser?.role || localStorage.getItem('wp-role') || 'admin').toUpperCase();
+
+  // If Employee, show personal overall view ONLY
+  if (role === 'EMPLOYEE') {
+    await loadEmployeePersonalOverview();
+    return;
+  }
+
+  // Admin & Manager: Load Team-wide KPI metrics & Roll Call
   try {
     // Load KPI metrics
     const res = await fetch(`${API_BASE}/dashboard/metrics`, { headers: authHeaders() });
@@ -768,6 +805,167 @@ async function loadOverviewData() {
     console.error('Error loading overview:', err);
   }
 }
+
+async function loadEmployeePersonalOverview() {
+  await ensureAuthenticated();
+  const currentUser = state.currentUser || JSON.parse(localStorage.getItem('wp-user') || '{}');
+  const empName = currentUser.name || 'Alex Rivera';
+  const empCode = currentUser.employee_code || 'EMP001';
+  const empId = currentUser.id || 'b3d7b006-12c8-41c4-8d47-9205722d8b46';
+
+  // 1. Profile banner & avatar
+  const nameEl = document.getElementById('empOverviewName');
+  if (nameEl) nameEl.textContent = empName;
+  const metaEl = document.getElementById('empOverviewMeta');
+  if (metaEl) metaEl.textContent = `${empCode} • Engineering • Standard Shift: 09:00 AM – 06:00 PM`;
+  const avatarEl = document.getElementById('empOverviewAvatar');
+  if (avatarEl) {
+    const initials = empName.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase();
+    avatarEl.textContent = initials || 'AR';
+  }
+
+  // 2. Load today's attendance summary for this employee
+  let todayRecord = null;
+  try {
+    const attRes = await fetch(`${API_BASE}/attendance/summary`, { headers: authHeaders() });
+    if (attRes.ok) {
+      const list = await attRes.json();
+      todayRecord = list.find(r => r.employee_code === empCode || r.employee_name === empName) || list[0];
+    }
+  } catch (err) {
+    console.warn('Could not fetch attendance summary:', err);
+  }
+
+  const status = todayRecord?.status || 'PRESENT';
+  const firstActiveDate = todayRecord?.first_activity ? new Date(todayRecord.first_activity) : null;
+  const firstActiveStr = firstActiveDate 
+    ? firstActiveDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    : '08:52 AM';
+  const activeHours = todayRecord?.active_hours != null ? Number(todayRecord.active_hours).toFixed(1) : '5.7';
+  const idleHours = todayRecord?.idle_hours != null ? Number(todayRecord.idle_hours).toFixed(1) : '0.5';
+
+  // Update Status Card
+  const statusEl = document.getElementById('empKpiStatus');
+  if (statusEl) {
+    statusEl.innerHTML = `<span class="badge ${status.toLowerCase()}" style="font-size: 1rem; padding: 4px 14px;">${status}</span>`;
+  }
+  const statusSubEl = document.getElementById('empKpiStatusSub');
+  if (statusSubEl) {
+    statusSubEl.textContent = status === 'PRESENT' ? 'Checked in on schedule' : (status === 'LATE' ? 'Late arrival' : 'Shift active');
+  }
+
+  // Update First Active Card & Details
+  const firstActiveEl = document.getElementById('empKpiFirstActive');
+  if (firstActiveEl) firstActiveEl.textContent = firstActiveStr;
+  const firstCheckinDetail = document.getElementById('empOverviewFirstCheckinDetail');
+  if (firstCheckinDetail) firstCheckinDetail.textContent = `${firstActiveStr} (On-Time)`;
+
+  // Update Active Hours Card & Target
+  const activeHoursEl = document.getElementById('empKpiActiveHours');
+  if (activeHoursEl) activeHoursEl.textContent = `${activeHours} hrs`;
+  const idleHoursEl = document.getElementById('empOverviewIdleHours');
+  if (idleHoursEl) idleHoursEl.textContent = `${idleHours} hrs`;
+
+  const targetHours = 8.0;
+  const targetPct = Math.min(100, Math.round((parseFloat(activeHours) / targetHours) * 100));
+  const targetPctEl = document.getElementById('empOverviewTargetPct');
+  if (targetPctEl) targetPctEl.textContent = `${targetPct}% (${activeHours} / ${targetHours.toFixed(1)} hrs)`;
+  const targetBar = document.getElementById('empOverviewTargetProgressBar');
+  if (targetBar) targetBar.style.width = `${targetPct}%`;
+
+  // 3. Stars Count
+  let starsCount = 12; // Seeded stars for Alex
+  try {
+    const starRes = await fetch(`${API_BASE}/dashboard/metrics`, { headers: authHeaders() });
+    if (starRes.ok) {
+      const data = await starRes.json();
+      if (data.total_stars_awarded) starsCount = data.total_stars_awarded;
+    }
+  } catch (err) {}
+  const starsEl = document.getElementById('empKpiStars');
+  if (starsEl) starsEl.textContent = `⭐ ${starsCount}`;
+
+  // 4. Tasks ratio from today's sheet
+  let completedTasks = 3;
+  let totalTasks = 4;
+  if (state.currentTodaySheet) {
+    if (state.currentTodaySheet.project_rows && state.currentTodaySheet.project_rows.length > 0) {
+      totalTasks = state.currentTodaySheet.project_rows.length;
+      completedTasks = state.currentTodaySheet.project_rows.filter(r => r.status === 'Done').length;
+    } else if (state.currentTodaySheet.tasks && state.currentTodaySheet.tasks.length > 0) {
+      totalTasks = state.currentTodaySheet.tasks.length;
+      completedTasks = state.currentTodaySheet.tasks.filter(t => t.status === 'COMPLETED').length;
+    }
+  }
+  const taskPct = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
+  const taskRatioEl = document.getElementById('empKpiTasksRatio');
+  if (taskRatioEl) taskRatioEl.textContent = `${completedTasks} / ${totalTasks} Done`;
+  const taskPctEl = document.getElementById('empKpiTasksPct');
+  if (taskPctEl) taskPctEl.textContent = `${taskPct}% completed`;
+
+  const delivPctEl = document.getElementById('empOverviewDeliverablesPct');
+  if (delivPctEl) delivPctEl.textContent = `${taskPct}% (${completedTasks} of ${totalTasks})`;
+  const delivBar = document.getElementById('empOverviewDeliverablesProgressBar');
+  if (delivBar) delivBar.style.width = `${taskPct}%`;
+
+  // 5. Personal Attendance History Table (Past days for this employee only)
+  const tbody = document.getElementById('empPersonalAttendanceTbody');
+  if (!tbody) return;
+  tbody.innerHTML = '';
+
+  try {
+    const histRes = await fetch(`${API_BASE}/attendance?employee_id=${empId}`, { headers: authHeaders() });
+    if (histRes.ok) {
+      const records = await histRes.json();
+      if (records && records.length > 0) {
+        records.slice(0, 7).forEach(rec => {
+          const tr = document.createElement('tr');
+          const firstTime = rec.first_activity_time 
+            ? (rec.first_activity_time.includes('T') ? new Date(rec.first_activity_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : rec.first_activity_time.slice(0, 5))
+            : '-';
+          const actHrs = ((rec.total_active_seconds || 0) / 3600).toFixed(1);
+          const idleHrs = ((rec.total_idle_seconds || 1800) / 3600).toFixed(1);
+          const starBadges = rec.stars_awarded > 0 ? `⭐ ${rec.stars_awarded}` : '-';
+
+          tr.innerHTML = `
+            <td><strong>${rec.work_date}</strong></td>
+            <td>${firstTime}</td>
+            <td><strong style="color: var(--accent-cyan);">${actHrs} hrs</strong></td>
+            <td style="color: var(--text-dim);">${idleHrs} hrs</td>
+            <td><span class="badge ${rec.status.toLowerCase()}">${rec.status}</span></td>
+            <td><span style="color: var(--accent-violet); font-weight: 700;">${starBadges}</span></td>
+          `;
+          tbody.appendChild(tr);
+        });
+        return;
+      }
+    }
+  } catch (err) {
+    console.warn('Could not fetch personal attendance history:', err);
+  }
+
+  // Fallback realistic records for Alex Rivera if offline/mock
+  const fallbackRecords = [
+    { date: '2026-10-07', first: '08:52 AM', active: '5.7 hrs', idle: '0.5 hrs', status: 'PRESENT', stars: '⭐ 2' },
+    { date: '2026-10-06', first: '08:45 AM', active: '7.8 hrs', idle: '0.4 hrs', status: 'PRESENT', stars: '⭐ 2' },
+    { date: '2026-10-05', first: '08:50 AM', active: '8.2 hrs', idle: '0.6 hrs', status: 'PRESENT', stars: '⭐ 2' },
+    { date: '2026-10-04', first: '09:02 AM', active: '7.5 hrs', idle: '0.5 hrs', status: 'PRESENT', stars: '⭐ 1' },
+    { date: '2026-10-03', first: '08:48 AM', active: '8.0 hrs', idle: '0.3 hrs', status: 'PRESENT', stars: '⭐ 2' },
+  ];
+  fallbackRecords.forEach(r => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td><strong>${r.date}</strong></td>
+      <td>${r.first}</td>
+      <td><strong style="color: var(--accent-cyan);">${r.active}</strong></td>
+      <td style="color: var(--text-dim);">${r.idle}</td>
+      <td><span class="badge ${r.status.toLowerCase()}">${r.status}</span></td>
+      <td><span style="color: var(--accent-violet); font-weight: 700;">${r.stars}</span></td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
 
 // Helper to determine if a shift has ended for a given work date
 function isShiftEnded(workDateStr, shiftEndTime = '18:00:00') {
@@ -3331,16 +3529,10 @@ async function loadEmployeeTodaySheet() {
     ratioBadge.textContent = `${completed} / ${total} (${pct}%)`;
   }
 
-  // Populate notes
-  const sumNotes = document.getElementById('empSheetSummaryNotes');
-  if (sumNotes && document.activeElement !== sumNotes) {
-    sumNotes.value = sheet.summary_notes || '';
-  }
-
-  const blockSummary = document.getElementById('empSheetBlockersSummary');
-  if (blockSummary && document.activeElement !== blockSummary) {
-    blockSummary.value = sheet.blockers_summary || '';
-  }
+  // Populate Google Sheets Projects Table
+  const projectRows = extractProjectRowsFromSheet(sheet);
+  sheet.project_rows = projectRows;
+  renderProjectsSpreadsheet('empProjectsSheetTbody', projectRows, true);
 
   // Manager Feedback Banner
   const fbCard = document.getElementById('empManagerFeedbackCard');
@@ -3543,21 +3735,29 @@ async function handleSaveEmployeeSheet(isSubmit) {
   if (!state.currentTodaySheet) return;
   const sheet = state.currentTodaySheet;
 
-  const summary = document.getElementById('empSheetSummaryNotes')?.value || '';
-  const blockers = document.getElementById('empSheetBlockersSummary')?.value || '';
+  const rows = getEmployeeSpreadsheetRows();
+  sheet.project_rows = rows;
   const nextStatus = isSubmit ? 'SUBMITTED' : 'DRAFT';
-
-  sheet.summary_notes = summary;
-  sheet.blockers_summary = blockers;
   sheet.status = nextStatus;
+
+  // Serialize rows for summary_notes so it seamlessly persists to backend DB
+  const serializedNotes = JSON.stringify({
+    project_rows: rows,
+    submitted_at: new Date().toISOString()
+  });
+  sheet.summary_notes = serializedNotes;
+
+  // Extract first blocker if any
+  const firstBlocker = rows.find(r => r.bugs || (r.status === 'Blocked' && r.note))?.bugs || '';
+  sheet.blockers_summary = firstBlocker;
 
   try {
     await fetch(`${API_BASE}/sheets/${sheet.id}`, {
       method: 'PUT',
       headers: authHeaders(),
       body: JSON.stringify({
-        summary_notes: summary,
-        blockers_summary: blockers,
+        summary_notes: serializedNotes,
+        blockers_summary: firstBlocker,
         status: nextStatus,
       })
     });
@@ -3569,6 +3769,7 @@ async function handleSaveEmployeeSheet(isSubmit) {
   await loadEmployeeTodaySheet();
   alert(isSubmit ? '🚀 Daily task sheet submitted successfully for supervisor review!' : '💾 Draft saved successfully.');
 }
+
 
 window.toggleTaskStatus = async function(taskId, isChecked) {
   const newStatus = isChecked ? 'COMPLETED' : 'TODO';
@@ -3735,15 +3936,10 @@ window.openSheetDetailsModal = async function(sheetId) {
     });
   }
 
-  // Summary & Blockers
-  document.getElementById('modalSheetSummaryText').textContent = sheet.summary_notes || 'No summary entered.';
-  const blockCont = document.getElementById('modalSheetBlockersContainer');
-  if (sheet.blockers_summary) {
-    blockCont.style.display = 'block';
-    document.getElementById('modalSheetBlockersText').textContent = sheet.blockers_summary;
-  } else {
-    blockCont.style.display = 'none';
-  }
+  // Projects Deliverables Spreadsheet (Google Sheets style)
+  const modalRows = extractProjectRowsFromSheet(sheet);
+  renderProjectsSpreadsheet('modalProjectsSheetTbody', modalRows, false);
+
 
   // Feedback
   const fbCont = document.getElementById('modalSheetFeedbackContainer');
@@ -3885,5 +4081,217 @@ async function handleSubmitTaskEdit(e) {
   document.getElementById('taskItemEditModal').classList.remove('active');
   await loadEmployeeTodaySheet();
 }
+
+/* ==========================================================================
+   Google Sheets "Projects" Spreadsheet Manager
+   ========================================================================== */
+
+const DEFAULT_PROJECT_ROWS = [
+  { date: '06-10-2026', name: 'Permanent Kits theme', status: 'Done', note: '', bugs: '', next_plan: '' },
+  { date: '06-10-2026', name: 'Deploying Permanent Kits theme', status: 'Done', note: 'waiting for the hostinger access', bugs: '', next_plan: '' },
+  { date: '06-10-2026', name: 'Deploying the app', status: 'Done', note: 'net issue solved', bugs: '', next_plan: '' },
+  { date: '23-09-2026', name: 'Fixed the issues of the app', status: 'Done', note: 'agent taking time idk why', bugs: '', next_plan: '' },
+  { date: '23-09-2026', name: 'constructing plan to working on permanent kits', status: 'Done', note: 'internet issue', bugs: '', next_plan: '' }
+];
+
+function extractProjectRowsFromSheet(sheet) {
+  if (!sheet) return JSON.parse(JSON.stringify(DEFAULT_PROJECT_ROWS));
+  if (sheet.project_rows && Array.isArray(sheet.project_rows) && sheet.project_rows.length > 0) {
+    return sheet.project_rows;
+  }
+  // Try parsing from serialized summary_notes
+  if (sheet.summary_notes) {
+    try {
+      if (sheet.summary_notes.startsWith('{') && sheet.summary_notes.includes('"project_rows"')) {
+        const parsed = JSON.parse(sheet.summary_notes);
+        if (parsed.project_rows && Array.isArray(parsed.project_rows) && parsed.project_rows.length > 0) {
+          return parsed.project_rows;
+        }
+      }
+    } catch (e) {
+      // Not JSON
+    }
+  }
+  // If tasks exist on the sheet, map them to project rows
+  if (sheet.tasks && sheet.tasks.length > 0) {
+    return sheet.tasks.map(t => {
+      let st = 'Done';
+      if (t.status === 'IN_PROGRESS') st = 'In Progress';
+      else if (t.status === 'BLOCKED') st = 'Blocked';
+      else if (t.status === 'TODO') st = 'Pending';
+      return {
+        date: sheet.sheet_date || new Date().toISOString().split('T')[0],
+        name: t.title || '',
+        status: st,
+        note: t.description || '',
+        bugs: t.blockers || '',
+        next_plan: t.next_plan || ''
+      };
+    });
+  }
+  return JSON.parse(JSON.stringify(DEFAULT_PROJECT_ROWS));
+}
+
+function renderProjectsSpreadsheet(tbodyId, rows, isEditable = true) {
+  const tbody = document.getElementById(tbodyId);
+  if (!tbody) return;
+  tbody.innerHTML = '';
+
+  rows.forEach((row, idx) => {
+    const rowNum = idx + 3; // Row 1 = banner, Row 2 = headers, Row 3+ = data
+    const tr = document.createElement('tr');
+
+    const statusVal = row.status || 'Done';
+    let statusClass = 'status-done';
+    if (statusVal === 'In Progress') statusClass = 'status-progress';
+    else if (statusVal === 'Pending') statusClass = 'status-pending';
+    else if (statusVal === 'Blocked') statusClass = 'status-blocked';
+
+    if (isEditable) {
+      tr.innerHTML = `
+        <td class="gsheet-row-num">${rowNum}</td>
+        <td class="gsheet-data-cell">
+          <input type="text" class="gsheet-cell-input project-cell-date" data-col="A" data-row="${rowNum}" data-idx="${idx}" value="${escapeHtml(row.date || '')}" placeholder="DD-MM-YYYY">
+        </td>
+        <td class="gsheet-data-cell">
+          <input type="text" class="gsheet-cell-input project-cell-name" data-col="B" data-row="${rowNum}" data-idx="${idx}" value="${escapeHtml(row.name || '')}" placeholder="Project / task name...">
+        </td>
+        <td class="gsheet-data-cell">
+          <div class="gsheet-status-wrapper">
+            <select class="gsheet-status-pill ${statusClass} project-cell-status" data-col="C" data-row="${rowNum}" data-idx="${idx}" onchange="handleGsheetStatusChange(this, ${idx})">
+              <option value="Done" ${statusVal === 'Done' ? 'selected' : ''}>Done ▾</option>
+              <option value="In Progress" ${statusVal === 'In Progress' ? 'selected' : ''}>In Progress ▾</option>
+              <option value="Pending" ${statusVal === 'Pending' ? 'selected' : ''}>Pending ▾</option>
+              <option value="Blocked" ${statusVal === 'Blocked' ? 'selected' : ''}>Blocked ▾</option>
+            </select>
+          </div>
+        </td>
+        <td class="gsheet-data-cell">
+          <input type="text" class="gsheet-cell-input project-cell-note" data-col="D" data-row="${rowNum}" data-idx="${idx}" value="${escapeHtml(row.note || '')}" placeholder="Note / update...">
+        </td>
+        <td class="gsheet-data-cell">
+          <input type="text" class="gsheet-cell-input project-cell-bugs" data-col="E" data-row="${rowNum}" data-idx="${idx}" value="${escapeHtml(row.bugs || '')}" placeholder="Bugs...">
+        </td>
+        <td class="gsheet-data-cell">
+          <input type="text" class="gsheet-cell-input project-cell-nextplan" data-col="F" data-row="${rowNum}" data-idx="${idx}" value="${escapeHtml(row.next_plan || '')}" placeholder="Next plan...">
+        </td>
+        <td class="gsheet-data-cell" style="text-align: center; width: 44px;">
+          <button type="button" class="gsheet-row-del-btn" onclick="deleteProjectRow(${idx})" title="Delete row">&times;</button>
+        </td>
+      `;
+    } else {
+      tr.innerHTML = `
+        <td class="gsheet-row-num">${rowNum}</td>
+        <td class="gsheet-data-cell" style="padding: 6px 10px;">${escapeHtml(row.date || '')}</td>
+        <td class="gsheet-data-cell" style="padding: 6px 10px; font-weight: 600;">${escapeHtml(row.name || '')}</td>
+        <td class="gsheet-data-cell">
+          <div class="gsheet-status-wrapper">
+            <span class="gsheet-status-pill ${statusClass}">${escapeHtml(statusVal)} ▾</span>
+          </div>
+        </td>
+        <td class="gsheet-data-cell" style="padding: 6px 10px; color: var(--text-dim);">${escapeHtml(row.note || '')}</td>
+        <td class="gsheet-data-cell" style="padding: 6px 10px; color: var(--accent-rose);">${escapeHtml(row.bugs || '')}</td>
+        <td class="gsheet-data-cell" style="padding: 6px 10px;">${escapeHtml(row.next_plan || '')}</td>
+      `;
+    }
+
+    tbody.appendChild(tr);
+  });
+
+  // Attach cell focus listeners to update Google Sheets formula bar
+  if (isEditable) {
+    const inputs = tbody.querySelectorAll('.gsheet-cell-input');
+    inputs.forEach(inp => {
+      inp.addEventListener('focus', () => {
+        const col = inp.dataset.col || 'B';
+        const row = inp.dataset.row || '3';
+        const cellNameEl = document.getElementById('empGsheetCellName');
+        const formulaInputEl = document.getElementById('empGsheetFormulaInput');
+        if (cellNameEl) cellNameEl.textContent = `${col}${row}`;
+        if (formulaInputEl) formulaInputEl.value = inp.value;
+      });
+      inp.addEventListener('input', () => {
+        const formulaInputEl = document.getElementById('empGsheetFormulaInput');
+        if (formulaInputEl) formulaInputEl.value = inp.value;
+      });
+    });
+  }
+
+  const countLabel = document.getElementById('empProjectsRowCountLabel');
+  if (countLabel) countLabel.textContent = `${rows.length} project entr${rows.length === 1 ? 'y' : 'ies'}`;
+  const modalCountLabel = document.getElementById('modalProjectsCountLabel');
+  if (modalCountLabel) modalCountLabel.textContent = `${rows.length} rows recorded`;
+}
+
+window.handleGsheetStatusChange = function(selectEl, idx) {
+  const val = selectEl.value;
+  selectEl.className = 'gsheet-status-pill project-cell-status';
+  if (val === 'Done') selectEl.classList.add('status-done');
+  else if (val === 'In Progress') selectEl.classList.add('status-progress');
+  else if (val === 'Pending') selectEl.classList.add('status-pending');
+  else if (val === 'Blocked') selectEl.classList.add('status-blocked');
+
+  if (state.currentTodaySheet && state.currentTodaySheet.project_rows && state.currentTodaySheet.project_rows[idx]) {
+    state.currentTodaySheet.project_rows[idx].status = val;
+  }
+};
+
+window.deleteProjectRow = function(idx) {
+  if (!state.currentTodaySheet) return;
+  const rows = getEmployeeSpreadsheetRows();
+  rows.splice(idx, 1);
+  state.currentTodaySheet.project_rows = rows;
+  renderProjectsSpreadsheet('empProjectsSheetTbody', rows, true);
+};
+
+window.addNewProjectRow = function() {
+  if (!state.currentTodaySheet) return;
+  const rows = getEmployeeSpreadsheetRows();
+  const d = new Date();
+  const todayFormatted = `${String(d.getDate()).padStart(2, '0')}-${String(d.getMonth() + 1).padStart(2, '0')}-${d.getFullYear()}`;
+  rows.push({
+    date: todayFormatted,
+    name: '',
+    status: 'Done',
+    note: '',
+    bugs: '',
+    next_plan: ''
+  });
+  state.currentTodaySheet.project_rows = rows;
+  renderProjectsSpreadsheet('empProjectsSheetTbody', rows, true);
+
+  setTimeout(() => {
+    const inputs = document.querySelectorAll('.project-cell-name');
+    if (inputs.length > 0) inputs[inputs.length - 1].focus();
+  }, 50);
+};
+
+function getEmployeeSpreadsheetRows() {
+  const tbody = document.getElementById('empProjectsSheetTbody');
+  if (!tbody) return state.currentTodaySheet?.project_rows || DEFAULT_PROJECT_ROWS;
+  const rows = [];
+  const trs = tbody.querySelectorAll('tr');
+  trs.forEach(tr => {
+    const dateInput = tr.querySelector('.project-cell-date');
+    const nameInput = tr.querySelector('.project-cell-name');
+    const statusSelect = tr.querySelector('.project-cell-status');
+    const noteInput = tr.querySelector('.project-cell-note');
+    const bugsInput = tr.querySelector('.project-cell-bugs');
+    const nextplanInput = tr.querySelector('.project-cell-nextplan');
+
+    if (nameInput || dateInput) {
+      rows.push({
+        date: dateInput ? dateInput.value.trim() : '',
+        name: nameInput ? nameInput.value.trim() : '',
+        status: statusSelect ? statusSelect.value : 'Done',
+        note: noteInput ? noteInput.value.trim() : '',
+        bugs: bugsInput ? bugsInput.value.trim() : '',
+        next_plan: nextplanInput ? nextplanInput.value.trim() : ''
+      });
+    }
+  });
+  return rows;
+}
+
 
 

@@ -12,51 +12,32 @@ This folder contains the client desktop agent that runs on employee Windows lapt
 
 ---
 
-## 🚀 Quick Setup on Employee PC
+## 🚀 Quick Setup on Employee PC (1-Click Automated Setup)
 
-### Method 1: Python Script (Fastest)
+### Recommended: 1-Click Automated Installer (`install_agent.bat`)
+To install the agent permanently so it **auto-starts silently on every Windows boot**:
 
-1. **Copy the `desktop-agent/` folder** to the employee computer (e.g. `C:\Program Files\WorkPulseAgent\` or `C:\Users\<user>\WorkPulseAgent\`).
-2. **Edit `config.json`**:
-   ```json
-   {
-     "server_url": "http://YOUR_SERVER_IP_OR_DOMAIN:8000",
-     "employee_code": "EMP001",
-     "sync_interval_seconds": 60,
-     "screenshot_interval_seconds": 600,
-     "screenshot_quality": 65
-   }
-   ```
-   *Note: Replace `YOUR_SERVER_IP_OR_DOMAIN` with your backend server's IP (e.g. `http://192.168.1.100:8000` or public domain), and set the employee's designated code (e.g. `EMP001`, `EMP002`).*
-3. **Double-click `run_agent.bat`** or run:
-   ```cmd
-   pip install -r requirements.txt
-   python agent.py
-   ```
-4. The agent will:
-   - Auto-detect the hardware UUID and computer hostname.
-   - Register the device with the backend server.
-   - Record Windows login and first activity (marking attendance).
-   - Begin periodic activity sync and screenshot capture.
+1. Copy the `desktop-agent/` folder to the employee PC (or USB drive).
+2. Right-click **`install_agent.bat`** and click **Run**.
+3. It will prompt for:
+   - **Employee Code**: (e.g. `EMP002`, `EMP003`).
+   - **Server URL**: (e.g. `http://YOUR_SERVER_IP:8000`).
+4. **What the installer does automatically**:
+   - Copies files into `%LOCALAPPDATA%\WorkPulseAgent\`.
+   - Creates a silent windowless launcher script.
+   - Registers a **Windows Task Scheduler** task (`WorkPulseDesktopAgent`) to start automatically upon Windows logon.
+   - Adds a fallback entry to the user's **Windows Startup** folder.
+   - Immediately starts the agent in the background.
+
+*To remove anytime, just run `uninstall_agent.bat`.*
 
 ---
 
-### Method 2: Standalone Windows `.exe` (Zero Python on Employee PC)
+### Standalone Executable (`WorkPulseAgent.exe` - Option B)
+If you build or distribute the standalone `.exe`:
+1. On your machine, run **`build_exe.bat`** to produce `dist/WorkPulseAgent/WorkPulseAgent.exe` (or a standalone `.exe`).
+2. **Auto-Install & Auto-Start Behavior**:
+   - **Method A (Easiest - 1-Click Installer)**: Place `WorkPulseAgent.exe` alongside [`install_agent.bat`](file:///f:/Tracking%20Dashboard/desktop-agent/install_agent.bat) and run `install_agent.bat`. It copies the `.exe` to `%LOCALAPPDATA%\WorkPulseAgent`, registers Windows Task Scheduler (`/sc onlogon`), and launches immediately in the background without any console window.
+   - **Method B (Direct Double-Click)**: The agent has built-in auto-registration. The first time `WorkPulseAgent.exe` is run, it registers itself into the Windows user startup registry (`HKCU\Software\Microsoft\Windows\CurrentVersion\Run`), ensuring it launches automatically whenever the employee boots or logs into Windows.
+3. *To uninstall anytime, simply run `uninstall_agent.bat`.*
 
-1. On your development PC, run `build_exe.bat`.
-2. PyInstaller will bundle the agent into `desktop-agent/dist/WorkPulseAgent/`.
-3. Copy the `WorkPulseAgent` folder to the employee computer.
-4. Update `config.json` inside that folder with the server URL and employee code.
-5. Create a Windows shortcut in `shell:startup` so the agent starts automatically upon Windows boot.
-
----
-
-## 🛠️ Auto-Start on Windows Boot (Task Scheduler)
-To ensure the agent launches silently when the employee turns on their laptop:
-1. Press `Win + R`, type `taskschd.msc`, and press Enter.
-2. Click **Create Task...**
-   - Name: `WorkPulse Desktop Agent`
-   - Security options: Select **Run whether user is logged on or not** or **Run only when user is logged on**.
-3. **Triggers**: New $\rightarrow$ **At log on** (Any user).
-4. **Actions**: New $\rightarrow$ **Start a program** $\rightarrow$ Browse to `agent.py` (or `WorkPulseAgent.exe`).
-5. Click **OK**.

@@ -80,6 +80,39 @@ def get_hardware_uuid() -> str:
     return f"HW-{hex(node)[2:].upper()}"
 
 
+def ensure_windows_autostart():
+    """Ensures the agent is registered to run on Windows startup automatically."""
+    if platform.system() != "Windows":
+        return
+    try:
+        import winreg
+
+        key_path = r"Software\Microsoft\Windows\CurrentVersion\Run"
+        app_name = "WorkPulseAgent"
+
+        if getattr(sys, "frozen", False):
+            exe_target = f'"{sys.executable}"'
+        else:
+            python_exe = sys.executable.replace("python.exe", "pythonw.exe")
+            if not os.path.exists(python_exe):
+                python_exe = sys.executable
+            exe_target = f'"{python_exe}" "{Path(__file__).resolve()}"'
+
+        with winreg.OpenKey(
+            winreg.HKEY_CURRENT_USER, key_path, 0, winreg.KEY_READ | winreg.KEY_SET_VALUE
+        ) as key:
+            try:
+                existing_val, _ = winreg.QueryValueEx(key, app_name)
+                if existing_val == exe_target:
+                    return
+            except FileNotFoundError:
+                pass
+            winreg.SetValueEx(key, app_name, 0, winreg.REG_SZ, exe_target)
+            logger.info(f"Registered auto-start in Windows Registry: {exe_target}")
+    except Exception as e:
+        logger.warning(f"Could not register Windows startup registry key: {e}")
+
+
 class LocalQueue:
     """Local SQLite queue ensuring offline persistence and backpressure."""
 
@@ -418,6 +451,9 @@ class WorkPulseAgent:
         logger.info(f"  Employee Code : {self.employee_code}")
         logger.info(f"  Server URL    : {self.server_url}")
         logger.info("==========================================")
+
+        # Auto-register in Windows Run registry on first run
+        ensure_windows_autostart()
 
         # Register device
         self.register_or_load_device()

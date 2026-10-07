@@ -1,11 +1,11 @@
 from datetime import datetime
-from pydantic import BaseModel, ConfigDict, EmailStr
+from pydantic import BaseModel, ConfigDict
 
 
 class EmployeeBase(BaseModel):
     employee_code: str
     name: str
-    email: EmailStr
+    email: str
     role: str = "EMPLOYEE"
     status: str = "ACTIVE"
     department_id: str | None = None
@@ -19,7 +19,7 @@ class EmployeeCreate(EmployeeBase):
 class EmployeeUpdate(BaseModel):
     employee_code: str | None = None
     name: str | None = None
-    email: EmailStr | None = None
+    email: str | None = None
     role: str | None = None
     status: str | None = None
     department_id: str | None = None

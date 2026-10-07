@@ -1,10 +1,18 @@
-from datetime import date, datetime, time, timedelta
+from datetime import date, datetime, time, timedelta, timezone
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 from app.models.attendance import Attendance, AttendanceStatusEnum
 from app.models.rules import SettingRule
 from app.schemas.activity import ActivityBatchItem, SystemEventItem
+
+
+def _to_naive_utc(dt: datetime | None) -> datetime | None:
+    if dt is None:
+        return None
+    if getattr(dt, "tzinfo", None) is not None:
+        return dt.astimezone(timezone.utc).replace(tzinfo=None)
+    return dt
 
 
 class AttendanceEngine:
@@ -57,13 +65,16 @@ class AttendanceEngine:
         for evt in events:
             event_date = evt.timestamp.date()
             attendance = await cls.get_or_create_daily_attendance(db, employee_id, event_date)
+            evt_ts = _to_naive_utc(evt.timestamp)
+            boot_ts = _to_naive_utc(attendance.boot_time)
+            login_ts = _to_naive_utc(attendance.login_time)
             
             if evt.event_type == "BOOT":
-                if not attendance.boot_time or evt.timestamp < attendance.boot_time:
-                    attendance.boot_time = evt.timestamp
+                if not boot_ts or evt_ts < boot_ts:
+                    attendance.boot_time = evt_ts
             elif evt.event_type in ("LOGIN", "UNLOCK"):
-                if not attendance.login_time or evt.timestamp < attendance.login_time:
-                    attendance.login_time = evt.timestamp
+                if not login_ts or evt_ts < login_ts:
+                    attendance.login_time = evt_ts
 
     @classmethod
     async def process_activity_for_attendance(
@@ -94,14 +105,19 @@ class AttendanceEngine:
                 batch.active_seconds > 0
             )
 
+            b_start = _to_naive_utc(batch.start_time)
+            b_end = _to_naive_utc(batch.end_time)
+            cur_first = _to_naive_utc(attendance.first_activity)
+            cur_last = _to_naive_utc(attendance.last_activity)
+
             if has_meaningful_activity:
                 # Update first activity
-                if not attendance.first_activity or batch.start_time < attendance.first_activity:
-                    attendance.first_activity = batch.start_time
+                if not cur_first or b_start < cur_first:
+                    attendance.first_activity = b_start
 
                 # Update last activity
-                if not attendance.last_activity or batch.end_time > attendance.last_activity:
-                    attendance.last_activity = batch.end_time
+                if not cur_last or b_end > cur_last:
+                    attendance.last_activity = b_end
 
             # Accumulate active and idle seconds
             attendance.active_seconds += batch.active_seconds

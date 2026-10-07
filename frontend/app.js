@@ -1,6 +1,8 @@
 // WorkPulse Dashboard Controller
 
-const API_BASE = '/api/v1';
+const API_BASE = (window.location.protocol.startsWith('http') && window.location.port === '8000')
+  ? '/api/v1'
+  : 'http://127.0.0.1:8000/api/v1';
 
 const state = {
   activeTab: 'tab-overview',

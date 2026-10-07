@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.api.deps import require_role
+from app.api.deps import get_current_user, require_role
 from app.database import get_db
 from app.models.department import Department
 from app.models.employee import Employee, RoleEnum
@@ -14,7 +14,7 @@ router = APIRouter(prefix="/departments", tags=["Departments"])
 @router.get("", response_model=list[DepartmentOut])
 async def list_departments(
     db: AsyncSession = Depends(get_db),
-    _user: Employee = Depends(require_role([RoleEnum.ADMIN, RoleEnum.MANAGER])),
+    _user: Employee = Depends(get_current_user),
 ):
     stmt = select(Department).order_by(Department.name.asc())
     res = await db.execute(stmt)

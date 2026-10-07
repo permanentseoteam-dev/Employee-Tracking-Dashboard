@@ -869,40 +869,6 @@ async function loadRulesAndStars() {
         });
       });
     }
-
-    const starsRes = await fetch(`${API_BASE}/rules/stars`, { headers: authHeaders() });
-    if (starsRes.ok) {
-      const stars = await starsRes.json();
-      const starsContainer = document.getElementById('starsListContainer');
-      starsContainer.innerHTML = '';
-      if (stars.length === 0) {
-        starsContainer.innerHTML = '<span style="color: var(--text-dim);">No stars awarded yet today. Click "Evaluate Stars Today" to calculate.</span>';
-        return;
-      }
-      stars.forEach(s => {
-        const item = document.createElement('div');
-        item.style.padding = '8px 10px';
-        item.style.marginBottom = '6px';
-        item.style.borderRadius = '6px';
-        item.style.background = 'rgba(255,255,255,0.03)';
-        item.style.border = '1px solid var(--border-subtle)';
-        item.style.display = 'flex';
-        item.style.alignItems = 'center';
-        item.style.justifyContent = 'space-between';
-
-        const isEarly = s.reason.includes('Early Bird');
-        const badge = isEarly ? '<span class="role-pill manager" style="font-size: 0.65rem;">Early Bird</span>' : '<span class="role-pill employee" style="font-size: 0.65rem;">Punctuality</span>';
-
-        item.innerHTML = `
-          <div>
-            <div style="font-weight: 600; color: var(--text-main); font-size: 0.8rem;">⭐ ${s.reason}</div>
-            <div style="font-size: 0.72rem; color: var(--text-dim);">Awarded on ${s.award_date}</div>
-          </div>
-          <div>${badge}</div>
-        `;
-        starsContainer.appendChild(item);
-      });
-    }
   } catch (err) {
     console.error('Error loading rules & stars:', err);
   }

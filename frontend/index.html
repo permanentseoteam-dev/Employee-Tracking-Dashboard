@@ -24,11 +24,10 @@
       <!-- Role Switcher -->
       <div class="user-switcher" id="userSwitcher">
         <span class="role-pill admin" id="activeRoleBadge">ADMIN</span>
-        <span class="user-name-label" id="activeUserName">System Administrator</span>
-        <select id="switchUserSelect" class="input-control" style="padding: 2px 6px; font-size: 0.75rem;">
-          <option value="admin">Switch to Admin</option>
-          <option value="manager">Switch to Manager</option>
-          <option value="employee">Switch to Employee (Alex)</option>
+        <select id="switchUserSelect" class="user-role-select" title="Active User Profile & Role">
+          <option value="admin">👑 System Administrator (Admin)</option>
+          <option value="manager">💼 Sarah Connor (Manager)</option>
+          <option value="employee">👤 Alex Rivera (Employee)</option>
         </select>
       </div>
 
@@ -54,11 +53,6 @@
       <button id="themeToggleBtn" class="btn btn-secondary btn-sm" title="Toggle Light / Dark Mode">
         <span id="themeIcon">🌙</span>
         <span id="themeLabel" style="font-size: 0.78rem;">Dark</span>
-      </button>
-
-      <button id="refreshDataBtn" class="btn btn-secondary btn-sm" title="Reload all data">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
-        Refresh
       </button>
     </div>
   </header>
@@ -469,14 +463,6 @@
                   <span id="rulesSaveFeedback" style="font-size: 0.8rem; color: var(--accent-emerald); display: none; font-weight: 500;">Saved & Applied!</span>
                 </div>
               </form>
-            </div>
-
-            <!-- Card 3: Recent Star Awards -->
-            <div style="background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: 18px;">
-              <h4 style="color: var(--text-main); margin-bottom: 12px; font-size: 0.95rem; font-weight: 700;">Recent Star Awards (Early Bird & Punctuality)</h4>
-              <div id="starsListContainer" style="font-size: 0.85rem; color: var(--text-muted); line-height: 1.8; max-height: 220px; overflow-y: auto;">
-                Loading awarded stars...
-              </div>
             </div>
           </div>
         </div>

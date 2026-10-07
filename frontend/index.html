@@ -32,6 +32,24 @@
         </select>
       </div>
 
+      <!-- Notification Center Bell -->
+      <div style="position: relative;">
+        <button id="notifBellBtn" class="btn btn-secondary btn-sm" title="Notifications & Announcements" style="position: relative; display: flex; align-items: center; gap: 6px;">
+          <span>🔔</span>
+          <span id="notifCountBadge" class="badge employee" style="display: none; padding: 1px 6px; font-size: 0.65rem; border-radius: 10px; font-weight: 700;">0</span>
+        </button>
+        <!-- Popover Drawer -->
+        <div id="notifDrawer" class="notif-dropdown" style="display: none;">
+          <div class="notif-header">
+            <div style="font-weight: 700; font-size: 0.85rem; color: var(--text-main);">🔔 Notifications & Notices</div>
+            <button id="markAllReadBtn" class="btn btn-link btn-sm" style="font-size: 0.72rem; color: var(--accent-cyan); background: none; border: none; cursor: pointer; text-decoration: underline;">Mark all read</button>
+          </div>
+          <div id="notifListContainer" class="notif-body">
+            <div style="padding: 16px; text-align: center; color: var(--text-dim); font-size: 0.8rem;">Loading notifications...</div>
+          </div>
+        </div>
+      </div>
+
       <!-- Theme Toggle Switcher -->
       <button id="themeToggleBtn" class="btn btn-secondary btn-sm" title="Toggle Light / Dark Mode">
         <span id="themeIcon">🌙</span>
@@ -46,35 +64,54 @@
   </header>
 
   <!-- Navigation Bar -->
-  <nav class="nav-tabs" id="navTabs">
-    <button class="tab-btn active" data-tab="tab-overview" id="btn-tab-overview">
+  <nav class="nav-tabs" id="navTabs" role="tablist">
+    <button type="button" class="tab-btn active" data-tab="tab-overview" id="btn-tab-overview" onclick="switchTab('tab-overview')" role="tab" aria-selected="true">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/></svg>
       Overview
     </button>
-    <button class="tab-btn" data-tab="tab-employees" id="btn-tab-employees">
+    <button type="button" class="tab-btn" data-tab="tab-employees" id="btn-tab-employees" onclick="switchTab('tab-employees')" role="tab">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
       Employees Directory
     </button>
-    <button class="tab-btn" data-tab="tab-attendance" id="btn-tab-attendance">
+    <button type="button" class="tab-btn" data-tab="tab-attendance" id="btn-tab-attendance" onclick="switchTab('tab-attendance')" role="tab">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
       Attendance Roll Call
     </button>
-    <button class="tab-btn" data-tab="tab-activity" id="btn-tab-activity">
+    <button type="button" class="tab-btn" data-tab="tab-activity" id="btn-tab-activity" onclick="switchTab('tab-activity')" role="tab">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
       Activity & Mouse Heatmap
     </button>
-    <button class="tab-btn" data-tab="tab-screenshots" id="btn-tab-screenshots">
+    <button type="button" class="tab-btn" data-tab="tab-screenshots" id="btn-tab-screenshots" onclick="switchTab('tab-screenshots')" role="tab">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>
       Screenshot Gallery
     </button>
-    <button class="tab-btn" data-tab="tab-rules" id="btn-tab-rules">
+    <button type="button" class="tab-btn" data-tab="tab-rules" id="btn-tab-rules" onclick="switchTab('tab-rules')" role="tab">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
       Rules & Star Rewards
+    </button>
+    <button type="button" class="tab-btn" data-tab="tab-finance" id="btn-tab-finance" onclick="switchTab('tab-finance')" role="tab">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M16 8h-6a2 2 0 1 0 0 4h4a2 2 0 1 1 0 4H8"/><path d="M12 6v12"/></svg>
+      Finance & Payroll
     </button>
   </nav>
 
   <!-- Main Workspace Content -->
   <main class="main-content">
+
+    <!-- Dynamic Finance Alert Banner (Alerts employee or manager when a finance notice is received) -->
+    <div id="financeAlertBanner" class="finance-banner" style="display: none;">
+      <div style="display: flex; align-items: center; gap: 12px; flex: 1;">
+        <span style="font-size: 1.5rem;">💰</span>
+        <div>
+          <div id="financeBannerTitle" style="font-weight: 700; font-size: 0.88rem; color: #fff;">Finance Notice from Administration</div>
+          <div id="financeBannerText" style="font-size: 0.78rem; color: var(--text-muted); margin-top: 2px;"></div>
+        </div>
+      </div>
+      <div style="display: flex; gap: 8px; align-items: center;">
+        <button id="financeBannerActionBtn" class="btn btn-primary btn-sm" style="font-size: 0.75rem;">View in Finance Tab</button>
+        <button id="financeBannerDismissBtn" class="btn btn-secondary btn-sm" style="padding: 2px 8px; font-size: 0.75rem;">&times;</button>
+      </div>
+    </div>
 
     <!-- Interactive Desktop Agent Simulator Box -->
     <section class="sim-box" id="simulatorBanner">
@@ -296,26 +333,20 @@
           </div>
         </div>
 
-        <!-- Custom Date & Time Filter Bar -->
-        <div class="filter-bar" style="flex-wrap: wrap; gap: 12px; margin-bottom: 20px;">
-          <div style="display: flex; align-items: center; gap: 6px;">
-            <label style="font-size: 0.8rem; color: var(--text-muted);">Employee:</label>
-            <select id="ssEmpSelect" class="input-control" style="min-width: 160px;">
+        <!-- Employee Filter & Delete Bar -->
+        <div class="filter-bar" style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 20px;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <label style="font-size: 0.8rem; color: var(--text-muted); font-weight: 600;">Employee:</label>
+            <select id="ssEmpSelect" class="input-control" style="min-width: 180px;">
               <option value="">All Employees</option>
             </select>
           </div>
-          <div style="display: flex; align-items: center; gap: 6px;">
-            <label style="font-size: 0.8rem; color: var(--text-muted);">Date:</label>
-            <input type="date" id="ssDateFilter" class="input-control">
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <button id="deleteScreenshotsBtn" class="btn btn-danger btn-sm" style="display: flex; align-items: center; gap: 6px; padding: 6px 14px; font-weight: 600;" title="Delete screenshots">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+              Delete Screenshots
+            </button>
           </div>
-          <div style="display: flex; align-items: center; gap: 6px;">
-            <label style="font-size: 0.8rem; color: var(--text-muted);">Time Range:</label>
-            <input type="time" id="ssTimeFrom" class="input-control" title="From Time">
-            <span style="color: var(--text-dim); font-size: 0.8rem;">to</span>
-            <input type="time" id="ssTimeTo" class="input-control" title="To Time">
-          </div>
-          <button id="applySsFilterBtn" class="btn btn-primary btn-sm">Apply Filter</button>
-          <button id="resetSsFilterBtn" class="btn btn-secondary btn-sm">Reset</button>
         </div>
 
         <div class="gallery-grid" id="screenshotsGalleryGrid">
@@ -463,6 +494,248 @@
       </div>
     </section>
 
+    <!-- 6. Finance & Compensation Tab (Admin Controlled Dispatch + Staff Overview) -->
+    <section class="tab-pane" id="tab-finance">
+      <div class="panel">
+        <div class="panel-header">
+          <div>
+            <h3 class="panel-title">💰 Finance, Compensation & Employee Communications</h3>
+            <p class="panel-subtitle">Admin-controlled financial notices, incentive disbursements, and team broadcast delivery tracking</p>
+          </div>
+          <div style="display: flex; gap: 10px; align-items: center;">
+            <span id="financeRoleNoticePill" class="role-pill admin">ADMIN SECURE</span>
+            <span id="financeTotalNoticesBadge" class="badge">0 Notices</span>
+          </div>
+        </div>
+
+        <!-- KPI Metrics Strip for Finance -->
+        <div class="kpi-grid" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); margin-bottom: 24px;">
+          <div class="stat-card">
+            <div class="stat-icon" style="background: rgba(16, 185, 129, 0.15); color: var(--accent-emerald);">💵</div>
+            <div class="stat-meta">
+              <div class="stat-label">Total Disbursed</div>
+              <div class="stat-value" id="kpiFinanceTotalDisbursed" style="color: var(--accent-emerald);">$0.00</div>
+            </div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon" style="background: rgba(99, 102, 241, 0.15); color: var(--accent-primary);">✉️</div>
+            <div class="stat-meta">
+              <div class="stat-label">Direct Notices</div>
+              <div class="stat-value" id="kpiFinanceDirectNotices">0</div>
+            </div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon" style="background: rgba(6, 182, 212, 0.15); color: var(--accent-cyan);">📢</div>
+            <div class="stat-meta">
+              <div class="stat-label">Company Broadcasts</div>
+              <div class="stat-value" id="kpiFinanceBroadcasts">0</div>
+            </div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon" style="background: rgba(245, 158, 11, 0.15); color: var(--accent-amber);">👥</div>
+            <div class="stat-meta">
+              <div class="stat-label">Enrolled Workforce</div>
+              <div class="stat-value" id="kpiFinanceTotalStaff">18</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ADMIN WORKSPACE (Visible only when Admin is logged in) -->
+        <div id="financeAdminWorkspace">
+          <div style="display: grid; grid-template-columns: 1.15fr 0.85fr; gap: 20px; margin-bottom: 24px;">
+
+            <!-- Form: Direct Message & Notification Dispatch to Employee -->
+            <div style="background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: 22px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
+                <h4 style="color: var(--text-main); font-size: 1rem; font-weight: 700; display: flex; align-items: center; gap: 8px;">
+                  <span>✉️</span> Compose & Dispatch Financial Notice
+                </h4>
+                <span class="role-pill admin" style="font-size: 0.65rem;">ADMIN ONLY DISPATCH</span>
+              </div>
+              <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 16px;">
+                Type a financial message to an employee. Upon sending, the message is recorded, the employee is instantly notified, and team leads / managers are alerted.
+              </p>
+
+              <form id="financeDispatchForm" style="display: flex; flex-direction: column; gap: 14px;">
+                <!-- Employee Selection -->
+                <div>
+                  <label style="display: block; font-size: 0.78rem; font-weight: 600; color: var(--text-main); margin-bottom: 6px;">
+                    Recipient Employee <span style="color: var(--accent-rose);">*</span>
+                  </label>
+                  <select id="financeRecipientSelect" class="input-control" style="width: 100%;" required>
+                    <option value="">-- Choose Employee to Message --</option>
+                    <option value="ALL">📢 All Staff (Company-Wide Broadcast)</option>
+                  </select>
+                </div>
+
+                <div style="display: grid; grid-template-columns: 1.2fr 0.8fr; gap: 12px;">
+                  <div>
+                    <label style="display: block; font-size: 0.78rem; font-weight: 600; color: var(--text-main); margin-bottom: 6px;">
+                      Subject / Header <span style="color: var(--accent-rose);">*</span>
+                    </label>
+                    <input type="text" id="financeSubjectInput" class="input-control" style="width: 100%;" placeholder="e.g. Q3 Incentive Bonus Approval" required>
+                  </div>
+                  <div>
+                    <label style="display: block; font-size: 0.78rem; font-weight: 600; color: var(--text-main); margin-bottom: 6px;">
+                      Category
+                    </label>
+                    <select id="financeCategorySelect" class="input-control" style="width: 100%;">
+                      <option value="BONUS">Bonus / Reward</option>
+                      <option value="SALARY">Salary / Compensation</option>
+                      <option value="REIMBURSEMENT">Expense Reimbursement</option>
+                      <option value="DEDUCTION">Adjustment / Deduction</option>
+                      <option value="GENERAL">General Notice</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                  <div>
+                    <label style="display: block; font-size: 0.78rem; font-weight: 600; color: var(--text-main); margin-bottom: 6px;">
+                      Amount ($ USD, Optional)
+                    </label>
+                    <input type="number" step="0.01" min="0" id="financeAmountInput" class="input-control" style="width: 100%;" placeholder="0.00">
+                  </div>
+                  <div>
+                    <label style="display: block; font-size: 0.78rem; font-weight: 600; color: var(--text-main); margin-bottom: 6px;">
+                      Priority Level
+                    </label>
+                    <select id="financePrioritySelect" class="input-control" style="width: 100%;">
+                      <option value="NORMAL">Normal Notice</option>
+                      <option value="URGENT">Urgent (High Attention)</option>
+                    </select>
+                  </div>
+                </div>
+
+                <!-- Message Field -->
+                <div>
+                  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                    <label style="font-size: 0.78rem; font-weight: 600; color: var(--text-main);">
+                      Message Content <span style="color: var(--accent-rose);">*</span>
+                    </label>
+                    <!-- Quick Message Templates -->
+                    <div style="display: flex; gap: 6px;">
+                      <button type="button" class="template-btn" id="tplBonusBtn">+ Bonus</button>
+                      <button type="button" class="template-btn" id="tplSlipBtn">+ Salary Slip</button>
+                      <button type="button" class="template-btn" id="tplReimburseBtn">+ Reimburse</button>
+                    </div>
+                  </div>
+                  <textarea id="financeMessageInput" class="input-control" rows="5" style="width: 100%; resize: vertical; line-height: 1.5;" placeholder="Type confidential message to employee regarding payroll, incentives, reimbursement receipts, or adjustments..." required></textarea>
+                </div>
+
+                <!-- Notifications Option -->
+                <div style="background: rgba(99, 102, 241, 0.05); padding: 12px 14px; border-radius: var(--radius-sm); border: 1px solid var(--border-subtle);">
+                  <label class="switch-label" style="font-size: 0.8rem; color: var(--text-main); cursor: pointer;">
+                    <input type="checkbox" id="financeNotifyOthersCheckbox" class="switch-input" checked>
+                    <span class="toggle-switch"></span>
+                    <span style="margin-left: 8px;"><strong>Notify Employee and Alert Department Leads</strong> (Delivers in-app notification & manager activity log)</span>
+                  </label>
+                </div>
+
+                <div style="display: flex; gap: 12px; align-items: center; margin-top: 6px;">
+                  <button type="submit" id="financeSubmitBtn" class="btn btn-primary" style="padding: 9px 20px;">
+                    <span>🚀</span> Send Message & Dispatch Notification
+                  </button>
+                  <span id="financeSubmitFeedback" style="font-size: 0.82rem; color: var(--accent-emerald); font-weight: 600; display: none;">
+                    ✅ Notice dispatched! Employee & team leads notified.
+                  </span>
+                </div>
+              </form>
+            </div>
+
+            <!-- Employee Quick Pick Directory -->
+            <div style="background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: 22px; display: flex; flex-direction: column;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                <h4 style="color: var(--text-main); font-size: 0.95rem; font-weight: 700;">👥 Staff Compensation Directory</h4>
+                <span id="financeStaffCountBadge" class="badge">18 Members</span>
+              </div>
+              <p style="font-size: 0.78rem; color: var(--text-muted); margin-bottom: 12px;">
+                Click <strong>"Message"</strong> on any employee to quickly compose a direct financial notice.
+              </p>
+
+              <div style="margin-bottom: 10px;">
+                <input type="text" id="financeStaffSearchInput" class="input-control" style="width: 100%; padding: 6px 10px; font-size: 0.78rem;" placeholder="Search employee by name, code or team...">
+              </div>
+
+              <div style="flex: 1; max-height: 400px; overflow-y: auto; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm);">
+                <table class="data-table" style="font-size: 0.78rem;">
+                  <thead>
+                    <tr>
+                      <th>Employee</th>
+                      <th>Dept</th>
+                      <th>Action</th>
+                    </tr>
+                  </thead>
+                  <tbody id="financeStaffTbody">
+                    <tr><td colspan="3" style="text-align: center; color: var(--text-dim); padding: 20px;">Loading staff roster...</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+          </div>
+
+          <!-- History & Audit Trail of Dispatched Messages -->
+          <div style="background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: 22px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+              <div>
+                <h4 style="color: var(--text-main); font-size: 1rem; font-weight: 700;">📜 Dispatched Finance Communications & Delivery Audit</h4>
+                <p style="font-size: 0.78rem; color: var(--text-muted); margin-top: 2px;">Comprehensive log of all financial messages, amounts, and recipient notification delivery status</p>
+              </div>
+              <button id="refreshFinanceLogBtn" class="btn btn-secondary btn-sm">Refresh Log</button>
+            </div>
+
+            <div style="overflow-x: auto;">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Date & Time</th>
+                    <th>Recipient</th>
+                    <th>Category</th>
+                    <th>Subject & Message Body</th>
+                    <th>Amount</th>
+                    <th>Delivery Status</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody id="financeMessagesTbody">
+                  <tr><td colspan="7" style="text-align: center; color: var(--text-dim); padding: 24px;">Loading dispatched messages...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- NON-ADMIN WORKSPACE (Shown when switched to Employee or Manager) -->
+        <div id="financeNonAdminWorkspace" style="display: none;">
+          <!-- Access Restriction Explainer -->
+          <div style="background: rgba(245, 158, 11, 0.08); border: 1px solid rgba(245, 158, 11, 0.25); border-radius: var(--radius-md); padding: 18px; margin-bottom: 20px; display: flex; align-items: center; gap: 14px;">
+            <span style="font-size: 1.8rem;">🔒</span>
+            <div>
+              <div style="font-weight: 700; color: var(--text-main); font-size: 0.95rem;">Administrative Access Restriction</div>
+              <div style="font-size: 0.82rem; color: var(--text-muted); margin-top: 3px;">
+                You are currently signed in as <strong id="nonAdminCurrentUserName" style="color: var(--text-main);">Staff Member</strong> (<span id="nonAdminCurrentRoleLabel" class="role-pill employee">EMPLOYEE</span>).
+                Composing and dispatching financial notices is strictly restricted to <strong>System Administrators</strong>. Below is your personal inbox of all financial notices and company announcements dispatched to you.
+              </div>
+            </div>
+          </div>
+
+          <!-- Personal Financial Notices Inbox -->
+          <div style="background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: 22px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+              <h4 style="color: var(--text-main); font-size: 1rem; font-weight: 700;">📬 My Financial Notices & Compensation Inbox</h4>
+              <span id="nonAdminInboxBadge" class="badge">0 Notices</span>
+            </div>
+
+            <div id="nonAdminInboxContainer">
+              <div style="text-align: center; color: var(--text-dim); padding: 30px;">Loading your financial notices...</div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
   </main>
 
   <!-- Screenshot Modal Lightbox -->
@@ -470,10 +743,45 @@
     <div class="modal-content">
       <div class="modal-header">
         <h4 id="modalTitle" style="color: #fff; font-size: 1rem;">Screenshot Preview</h4>
-        <button id="closeModalBtn" class="btn btn-secondary btn-sm" style="padding: 4px 10px;">&times;</button>
+        <div style="display: flex; gap: 8px; align-items: center;">
+          <button id="deleteActiveScreenshotBtn" class="btn btn-danger btn-sm" style="padding: 4px 10px; font-size: 0.75rem; display: flex; align-items: center; gap: 4px;" title="Delete this screenshot">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+            Delete
+          </button>
+          <button id="closeModalBtn" class="btn btn-secondary btn-sm" style="padding: 4px 10px;">&times;</button>
+        </div>
       </div>
       <div class="modal-body">
         <img id="modalImage" src="" alt="Full preview">
+      </div>
+    </div>
+  </div>
+
+  <!-- Finance Message Detail Modal -->
+  <div class="modal-overlay" id="financeDetailModal">
+    <div class="modal-content" style="max-width: 580px;">
+      <div class="modal-header">
+        <h4 id="financeModalSubject" style="color: #fff; font-size: 1.05rem;">Finance Notice</h4>
+        <button id="closeFinanceModalBtn" class="btn btn-secondary btn-sm" style="padding: 4px 10px;">&times;</button>
+      </div>
+      <div class="modal-body" style="padding: 20px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; padding-bottom: 12px; border-bottom: 1px solid var(--border-subtle);">
+          <div>
+            <div style="font-size: 0.75rem; color: var(--text-dim);">Recipient</div>
+            <div id="financeModalRecipient" style="font-weight: 700; color: var(--text-main); font-size: 0.95rem;">Alex Rivera</div>
+          </div>
+          <div>
+            <div style="font-size: 0.75rem; color: var(--text-dim);">Category & Amount</div>
+            <div id="financeModalMeta" style="font-weight: 700; color: var(--accent-emerald); font-size: 0.95rem;">BONUS &bull; $750.00</div>
+          </div>
+        </div>
+        <div style="font-size: 0.75rem; color: var(--text-dim); margin-bottom: 6px;">Message Content</div>
+        <div id="financeModalBody" style="background: rgba(255,255,255,0.03); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: 16px; font-size: 0.88rem; color: var(--text-main); line-height: 1.6; white-space: pre-wrap;">
+        </div>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 14px; font-size: 0.75rem; color: var(--text-dim);">
+          <span id="financeModalDate">Dispatched on ...</span>
+          <span id="financeModalDeliveryStatus" class="badge present">Delivered & Notified</span>
+        </div>
       </div>
     </div>
   </div>

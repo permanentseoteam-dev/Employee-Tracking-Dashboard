@@ -146,5 +146,36 @@ class ScreenshotService:
 
         return purged_count
 
+    @staticmethod
+    async def delete_screenshot(db: AsyncSession, screenshot_id: str) -> bool:
+        stmt = select(Screenshot).where(Screenshot.id == screenshot_id)
+        res = await db.execute(stmt)
+        s = res.scalars().first()
+        if not s:
+            return False
+
+        await storage_service.delete_file(s.s3_key)
+        await db.delete(s)
+        await db.flush()
+        return True
+
+    @staticmethod
+    async def delete_screenshots(db: AsyncSession, employee_id: str | None = None) -> int:
+        stmt = select(Screenshot)
+        if employee_id:
+            stmt = stmt.where(Screenshot.employee_id == employee_id)
+        res = await db.execute(stmt)
+        screenshots = res.scalars().all()
+
+        deleted_count = 0
+        for s in screenshots:
+            await storage_service.delete_file(s.s3_key)
+            await db.delete(s)
+            deleted_count += 1
+
+        await db.flush()
+        return deleted_count
+
 
 screenshot_service = ScreenshotService()
+

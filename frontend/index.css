@@ -239,6 +239,12 @@ body {
   padding: 16px 32px 0;
   border-bottom: 1px solid var(--border-subtle);
   background: rgba(16, 21, 34, 0.4);
+  overflow-x: auto;
+  overflow-y: hidden;
+  white-space: nowrap;
+  scrollbar-width: thin;
+  position: relative;
+  z-index: 10;
 }
 
 .tab-btn {
@@ -252,10 +258,17 @@ body {
   border-radius: var(--radius-sm) var(--radius-sm) 0 0;
   cursor: pointer;
   transition: var(--transition);
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 8px;
   border-bottom: 2px solid transparent;
+  flex-shrink: 0;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.tab-btn * {
+  pointer-events: none;
 }
 
 .tab-btn:hover {
@@ -265,6 +278,21 @@ body {
 
 .tab-btn.active {
   color: #fff;
+  border-bottom-color: var(--accent-primary);
+  background: rgba(99, 102, 241, 0.08);
+}
+
+[data-theme="light"] .tab-btn {
+  color: #475569;
+}
+
+[data-theme="light"] .tab-btn:hover {
+  color: #0f172a;
+  background: rgba(0, 0, 0, 0.04);
+}
+
+[data-theme="light"] .tab-btn.active {
+  color: var(--accent-primary);
   border-bottom-color: var(--accent-primary);
   background: rgba(99, 102, 241, 0.08);
 }
@@ -805,4 +833,124 @@ body {
   padding-top: 10px;
   border-top: 1px solid var(--border-subtle);
 }
+
+/* Notification Drawer & Badge */
+.notif-dropdown {
+  position: absolute;
+  top: 42px;
+  right: 0;
+  width: 340px;
+  background: var(--bg-card);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--border-accent);
+  border-radius: var(--radius-md);
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.45);
+  z-index: 1000;
+  overflow: hidden;
+  animation: fadeInDown 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes fadeInDown {
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.notif-header {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border-subtle);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.notif-body {
+  max-height: 320px;
+  overflow-y: auto;
+  padding: 8px;
+}
+
+.notif-item {
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--border-subtle);
+  margin-bottom: 6px;
+  transition: var(--transition);
+  cursor: pointer;
+}
+
+.notif-item:hover {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: var(--border-accent);
+}
+
+.notif-item.unread {
+  border-left: 3px solid var(--accent-emerald);
+  background: rgba(16, 185, 129, 0.06);
+}
+
+/* Dynamic Finance Alert Banner */
+.finance-banner {
+  margin-bottom: 16px;
+  padding: 12px 18px;
+  border-radius: var(--radius-md);
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.16), rgba(16, 185, 129, 0.12));
+  border: 1px solid rgba(99, 102, 241, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  box-shadow: 0 4px 20px rgba(99, 102, 241, 0.1);
+  animation: fadeInDown 0.3s ease;
+}
+
+/* Quick Message Template Chips */
+.template-btn {
+  font-size: 0.72rem;
+  padding: 3px 8px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.template-btn:hover {
+  border-color: var(--accent-primary);
+  color: var(--text-main);
+  background: rgba(99, 102, 241, 0.15);
+}
+
+/* Inbox & Personal Cards */
+.inbox-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 16px;
+  margin-bottom: 12px;
+  transition: var(--transition);
+}
+
+.inbox-card:hover {
+  border-color: var(--border-accent);
+  box-shadow: var(--shadow-card);
+}
+
+[data-theme="light"] .notif-dropdown {
+  background: #ffffff;
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.12);
+}
+
+[data-theme="light"] .notif-item {
+  background: #f8fafc;
+}
+
+[data-theme="light"] .template-btn {
+  background: #f1f5f9;
+  border-color: rgba(15, 23, 42, 0.1);
+}
+
 

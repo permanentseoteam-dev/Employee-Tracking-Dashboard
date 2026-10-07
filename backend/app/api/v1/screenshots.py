@@ -48,9 +48,8 @@ async def list_screenshots(
 @router.get("/file/{file_path:path}")
 async def stream_screenshot_file(
     file_path: str,
-    _user: Employee = Depends(get_current_user),
 ):
-    """Local file streamer endpoint for dev/local setups."""
+    """Local file streamer endpoint for dev/local setups and HTML img tags."""
     data = await storage_service.get_file_bytes(file_path)
     if not data:
         raise HTTPException(status_code=404, detail="Screenshot file not found")
@@ -70,3 +69,26 @@ async def purge_retention(
 ):
     purged = await screenshot_service.purge_expired_screenshots(db, retention_days=retention_days)
     return {"status": "success", "purged_screenshots": purged}
+
+
+@router.delete("/{screenshot_id}")
+async def delete_single_screenshot(
+    screenshot_id: str,
+    db: AsyncSession = Depends(get_db),
+    _user: Employee = Depends(require_role([RoleEnum.ADMIN, RoleEnum.MANAGER])),
+):
+    success = await screenshot_service.delete_screenshot(db, screenshot_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Screenshot not found")
+    return {"status": "success", "message": "Screenshot deleted successfully"}
+
+
+@router.delete("")
+async def delete_multiple_screenshots(
+    employee_id: str | None = Query(None),
+    db: AsyncSession = Depends(get_db),
+    _user: Employee = Depends(require_role([RoleEnum.ADMIN, RoleEnum.MANAGER])),
+):
+    deleted_count = await screenshot_service.delete_screenshots(db, employee_id=employee_id)
+    return {"status": "success", "deleted_count": deleted_count, "message": f"Successfully deleted {deleted_count} screenshots"}
+

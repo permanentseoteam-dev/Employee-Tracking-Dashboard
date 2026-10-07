@@ -6,6 +6,7 @@ from app.models.activity import ActivityLog, MouseHeatmap
 from app.models.screenshot import Screenshot
 from app.models.rules import SettingRule, EmployeeStar
 from app.models.audit import AuditLog
+from app.models.finance import FinanceMessage, FinanceNotification
 
 __all__ = [
     "Department",
@@ -21,4 +22,7 @@ __all__ = [
     "SettingRule",
     "EmployeeStar",
     "AuditLog",
+    "FinanceMessage",
+    "FinanceNotification",
 ]
+

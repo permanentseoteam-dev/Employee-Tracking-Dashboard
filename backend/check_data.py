@@ -80,8 +80,87 @@ try:
     with urllib.request.urlopen(req_del) as resp:
         del_res = json.loads(resp.read().decode())
         print(f"[DELETE] Status: {resp.status} | Result: {del_res['message']}")
+
+    # 4. Test Finance API
+    print("\nTesting Finance API:")
+    # Summary
+    req_fin_sum = urllib.request.Request(
+        "http://127.0.0.1:8000/api/v1/finance/summary",
+        headers={"Authorization": f"Bearer {token}"}
+    )
+    with urllib.request.urlopen(req_fin_sum) as resp:
+        sum_data = json.loads(resp.read().decode())
+        print(f"[FINANCE SUMMARY] Messages: {sum_data['total_messages']} | Disbursed: ${sum_data['total_amount_disbursed']} | Staff: {sum_data['total_employees']}")
+
+    # List messages
+    req_fin_msgs = urllib.request.Request(
+        "http://127.0.0.1:8000/api/v1/finance/messages",
+        headers={"Authorization": f"Bearer {token}"}
+    )
+    with urllib.request.urlopen(req_fin_msgs) as resp:
+        msgs = json.loads(resp.read().decode())
+        print(f"[FINANCE MESSAGES] Listed {len(msgs)} messages:")
+        for m in msgs:
+            print(f"  - [{m['message_type']}] To: {m['recipient_name']} | Subject: {m['subject']} | Amount: ${m['amount']}")
+
+    # Send a new finance message as Admin to Alex Rivera
+    alex_id = [e["id"] for e in emps if "Alex" in e["name"]][0]
+    send_payload = json.dumps({
+        "recipient_id": alex_id,
+        "subject": "Monthly Remote Home-Office Stipend",
+        "message": "Approved $150 internet and ergonomic equipment stipend for this billing cycle.",
+        "amount": 150.0,
+        "message_type": "REIMBURSEMENT",
+        "priority": "NORMAL",
+        "notify_others": True
+    }).encode()
+    req_send_fin = urllib.request.Request(
+        "http://127.0.0.1:8000/api/v1/finance/messages",
+        data=send_payload,
+        headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+        method="POST"
+    )
+    with urllib.request.urlopen(req_send_fin) as resp:
+        sent_msg = json.loads(resp.read().decode())
+        print(f"[FINANCE SEND] Status: {resp.status} | To: {sent_msg['recipient_name']} | Subject: {sent_msg['subject']}")
+
+    # Check notifications for Alex
+    # Log in as Alex
+    req_alex_login = urllib.request.Request(
+        "http://127.0.0.1:8000/api/v1/auth/login",
+        data=json.dumps({"email": "alex@tracking.local", "password": "alex123"}).encode(),
+        headers={"Content-Type": "application/json"}
+    )
+    with urllib.request.urlopen(req_alex_login) as resp:
+        alex_token = json.loads(resp.read().decode())["access_token"]
+
+    req_alex_notifs = urllib.request.Request(
+        "http://127.0.0.1:8000/api/v1/finance/notifications",
+        headers={"Authorization": f"Bearer {alex_token}"}
+    )
+    with urllib.request.urlopen(req_alex_notifs) as resp:
+        alex_notifs = json.loads(resp.read().decode())
+        print(f"[EMPLOYEE NOTIFICATIONS] Alex received {len(alex_notifs)} notifications:")
+        for n in alex_notifs[:3]:
+            safe_title = n['title'].encode('ascii', errors='replace').decode()
+            print(f"  - [{n['notification_type']}] {safe_title} (Read: {n['is_read']})")
+
+    # Test that Employee cannot send finance messages (Admin Only Gate)
+    try:
+        req_unauth_send = urllib.request.Request(
+            "http://127.0.0.1:8000/api/v1/finance/messages",
+            data=send_payload,
+            headers={"Authorization": f"Bearer {alex_token}", "Content-Type": "application/json"},
+            method="POST"
+        )
+        with urllib.request.urlopen(req_unauth_send) as resp:
+            print("Unexpected success by employee!")
+    except urllib.error.HTTPError as e:
+        print(f"[SECURITY ROLE GATE] Employee send blocked with HTTP {e.code} Forbidden: {e.read().decode()}")
+
 except urllib.error.HTTPError as e:
     print("HTTPError:", e.code, e.read().decode())
 except Exception as e:
     print("Error:", e)
+
 

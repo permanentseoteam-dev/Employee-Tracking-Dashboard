@@ -7,22 +7,90 @@ const API_BASE = (window.location.protocol.startsWith('http') && window.location
 const state = {
   activeTab: 'tab-overview',
   currentUser: null,
-  token: null,
+  token: localStorage.getItem('wp-token') || null,
   employees: [],
   selectedEmpId: null,
   currentDeviceToken: null,
 };
 
-// Initial setup on DOM ready
-document.addEventListener('DOMContentLoaded', async () => {
+// Global switchTab callable from inline HTML onclick, listeners, and scripts
+window.switchTab = function switchTab(tabId) {
+  if (!tabId) return;
+  state.activeTab = tabId;
+
+  // 1. Update tab navigation buttons
+  const tabBtns = document.querySelectorAll('.tab-btn');
+  tabBtns.forEach(btn => {
+    const isTarget = btn.getAttribute('data-tab') === tabId;
+    btn.classList.toggle('active', isTarget);
+    if (isTarget) {
+      btn.setAttribute('aria-selected', 'true');
+    } else {
+      btn.removeAttribute('aria-selected');
+    }
+  });
+
+  // 2. Explicitly toggle visibility on all tab panes
+  const tabPanes = document.querySelectorAll('.tab-pane');
+  tabPanes.forEach(pane => {
+    const isTarget = pane.id === tabId;
+    pane.classList.toggle('active', isTarget);
+    pane.style.display = isTarget ? 'block' : 'none';
+  });
+
+  // 3. Load tab content safely with isolated error catching
+  try {
+    if (tabId === 'tab-overview') loadOverviewData();
+    else if (tabId === 'tab-employees') loadEmployeesDirectory();
+    else if (tabId === 'tab-attendance') loadAttendanceRollCall();
+    else if (tabId === 'tab-activity') loadActivityTab();
+    else if (tabId === 'tab-screenshots') loadScreenshotsGallery();
+    else if (tabId === 'tab-rules') loadRulesAndStars();
+    else if (tabId === 'tab-finance') loadFinanceTab();
+  } catch (err) {
+    console.error(`Error loading content for ${tabId}:`, err);
+  }
+};
+
+// Safe event listener helper that never throws on missing elements
+function safeListen(id, event, callback) {
+  const el = document.getElementById(id);
+  if (el) {
+    el.addEventListener(event, callback);
+  }
+}
+
+// Initial setup on DOM ready (handles cases where DOMContentLoaded already fired)
+function initApp() {
   initTheme();
   setupTabs();
   setupEventListeners();
-  await loginAs('admin');
-  document.getElementById('todayDateLabel').textContent = new Date().toLocaleDateString(undefined, {
-    weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
+
+  // Restore cached user info if present
+  try {
+    const cachedUser = localStorage.getItem('wp-user');
+    if (cachedUser) state.currentUser = JSON.parse(cachedUser);
+  } catch (e) {}
+
+  // Login as admin and initialize views
+  loginAs('admin').then(() => {
+    const dateLabel = document.getElementById('todayDateLabel');
+    if (dateLabel) {
+      dateLabel.textContent = new Date().toLocaleDateString(undefined, {
+        weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
+      });
+    }
+    // Explicitly activate the current active tab
+    window.switchTab(state.activeTab || 'tab-overview');
   });
-});
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initApp);
+} else {
+  // DOM already parsed and ready
+  initApp();
+}
 
 // Theme Management
 function initTheme() {
@@ -55,32 +123,44 @@ function applyTheme(theme) {
   }
 }
 
-// Setup tab switches
+// Setup tab switches with multiple resilient layers
 function setupTabs() {
+  // Layer 1: Delegation on #navTabs container
+  const navTabs = document.getElementById('navTabs');
+  if (navTabs) {
+    navTabs.addEventListener('click', (e) => {
+      const btn = e.target.closest('.tab-btn');
+      if (btn) {
+        const targetTab = btn.getAttribute('data-tab');
+        if (targetTab) {
+          window.switchTab(targetTab);
+        }
+      }
+    });
+  }
+
+  // Layer 2: Individual listeners on tab buttons
   const tabBtns = document.querySelectorAll('.tab-btn');
   tabBtns.forEach(btn => {
-    btn.addEventListener('click', () => {
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
       const targetTab = btn.getAttribute('data-tab');
-      switchTab(targetTab);
+      if (targetTab) {
+        window.switchTab(targetTab);
+      }
     });
   });
-}
 
-function switchTab(tabId) {
-  state.activeTab = tabId;
-  document.querySelectorAll('.tab-btn').forEach(b => {
-    b.classList.toggle('active', b.getAttribute('data-tab') === tabId);
+  // Layer 3: Global document delegation as absolute fallback
+  document.addEventListener('click', (e) => {
+    const btn = e.target.closest('.tab-btn');
+    if (btn) {
+      const targetTab = btn.getAttribute('data-tab');
+      if (targetTab && targetTab !== state.activeTab) {
+        window.switchTab(targetTab);
+      }
+    }
   });
-  document.querySelectorAll('.tab-pane').forEach(p => {
-    p.classList.toggle('active', p.id === tabId);
-  });
-
-  if (tabId === 'tab-overview') loadOverviewData();
-  else if (tabId === 'tab-employees') loadEmployeesDirectory();
-  else if (tabId === 'tab-attendance') loadAttendanceRollCall();
-  else if (tabId === 'tab-activity') loadActivityTab();
-  else if (tabId === 'tab-screenshots') loadScreenshotsGallery();
-  else if (tabId === 'tab-rules') loadRulesAndStars();
 }
 
 // User / Role login helper
@@ -107,95 +187,143 @@ async function loginAs(role) {
     state.token = data.access_token;
     state.currentUser = data;
 
+    localStorage.setItem('wp-token', data.access_token);
+    localStorage.setItem('wp-user', JSON.stringify(data));
+
     // Update Header Pill
     const badge = document.getElementById('activeRoleBadge');
-    badge.textContent = data.role;
-    badge.className = `role-pill ${data.role.toLowerCase()}`;
-    document.getElementById('activeUserName').textContent = data.name;
+    if (badge) {
+      badge.textContent = data.role;
+      badge.className = `role-pill ${data.role.toLowerCase()}`;
+    }
+    const nameEl = document.getElementById('activeUserName');
+    if (nameEl) {
+      nameEl.textContent = data.name;
+    }
 
     await fetchEmployees();
     refreshAll();
+    await checkNotifications();
   } catch (err) {
     console.error('Error logging in:', err);
   }
 }
 
 function setupEventListeners() {
-  document.getElementById('switchUserSelect').addEventListener('change', (e) => {
+  safeListen('switchUserSelect', 'change', (e) => {
     loginAs(e.target.value);
   });
 
-  document.getElementById('refreshDataBtn').addEventListener('click', () => {
+  safeListen('refreshDataBtn', 'click', () => {
     refreshAll();
   });
 
-  document.getElementById('themeToggleBtn').addEventListener('click', toggleTheme);
+  safeListen('themeToggleBtn', 'click', toggleTheme);
 
   // Simulator Buttons
-  document.getElementById('simulateOnTimeBtn').addEventListener('click', () => simulateCheckIn('ontime'));
-  document.getElementById('simulateLateBtn').addEventListener('click', () => simulateCheckIn('late'));
-  document.getElementById('simulateScreenshotBtn').addEventListener('click', simulateScreenshotCapture);
+  safeListen('simulateOnTimeBtn', 'click', () => simulateCheckIn('ontime'));
+  safeListen('simulateLateBtn', 'click', () => simulateCheckIn('late'));
+  safeListen('simulateScreenshotBtn', 'click', simulateScreenshotCapture);
 
   // Filter Buttons
-  document.getElementById('applyAttFilterBtn').addEventListener('click', loadAttendanceRollCall);
-  document.getElementById('loadHeatmapBtn').addEventListener('click', renderHeatmapForSelected);
-  document.getElementById('heatmapEmpSelect').addEventListener('change', renderHeatmapForSelected);
+  safeListen('applyAttFilterBtn', 'click', loadAttendanceRollCall);
+  safeListen('loadHeatmapBtn', 'click', renderHeatmapForSelected);
+  safeListen('heatmapEmpSelect', 'change', renderHeatmapForSelected);
 
-  // Screenshot Filters
-  const applySsBtn = document.getElementById('applySsFilterBtn');
-  if (applySsBtn) applySsBtn.addEventListener('click', loadScreenshotsGallery);
-  const resetSsBtn = document.getElementById('resetSsFilterBtn');
-  if (resetSsBtn) resetSsBtn.addEventListener('click', () => {
-    if (document.getElementById('ssEmpSelect')) document.getElementById('ssEmpSelect').value = '';
-    if (document.getElementById('ssDateFilter')) document.getElementById('ssDateFilter').value = '';
-    if (document.getElementById('ssTimeFrom')) document.getElementById('ssTimeFrom').value = '';
-    if (document.getElementById('ssTimeTo')) document.getElementById('ssTimeTo').value = '';
-    loadScreenshotsGallery();
-  });
-  const ssEmpSelect = document.getElementById('ssEmpSelect');
-  if (ssEmpSelect) ssEmpSelect.addEventListener('change', loadScreenshotsGallery);
+  // Screenshot Filter & Delete Actions
+  safeListen('ssEmpSelect', 'change', loadScreenshotsGallery);
+  safeListen('deleteScreenshotsBtn', 'click', handleDeleteScreenshots);
+  safeListen('deleteActiveScreenshotBtn', 'click', handleDeleteActiveScreenshot);
 
   // Policy Rules Edit Form
-  const rulesForm = document.getElementById('rulesEditForm');
-  if (rulesForm) rulesForm.addEventListener('submit', handleSaveRules);
+  safeListen('rulesEditForm', 'submit', handleSaveRules);
 
   // Custom Policy Creation Form
-  const customRuleForm = document.getElementById('customRuleCreateForm');
-  if (customRuleForm) customRuleForm.addEventListener('submit', handleCreateCustomRule);
-  const newRuleActive = document.getElementById('newRuleActive');
-  if (newRuleActive) {
-    newRuleActive.addEventListener('change', (e) => {
-      const txt = document.getElementById('newRuleActiveText');
-      if (txt) txt.textContent = e.target.checked ? 'Enabled (Active)' : 'Disabled (Inactive)';
+  safeListen('customRuleCreateForm', 'submit', handleCreateCustomRule);
+  safeListen('newRuleActive', 'change', (e) => {
+    const txt = document.getElementById('newRuleActiveText');
+    if (txt) txt.textContent = e.target.checked ? 'Enabled (Active)' : 'Disabled (Inactive)';
+  });
+
+  // Employee Directory Filters
+  safeListen('employeeSearchInput', 'input', () => loadEmployeesDirectory());
+  safeListen('empRoleFilter', 'change', () => loadEmployeesDirectory());
+
+  // Evaluate Stars & Purge
+  safeListen('evaluateStarsBtn', 'click', evaluateStarsNow);
+  safeListen('purgeRetentionBtn', 'click', purgeRetentionNow);
+
+  // Notification Center
+  const notifBtn = document.getElementById('notifBellBtn');
+  if (notifBtn) {
+    notifBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      toggleNotifDrawer();
+    });
+  }
+  safeListen('markAllReadBtn', 'click', markAllNotificationsRead);
+  document.addEventListener('click', (e) => {
+    const drawer = document.getElementById('notifDrawer');
+    if (drawer && !drawer.contains(e.target) && e.target !== notifBtn) {
+      drawer.style.display = 'none';
+    }
+  });
+
+  // Finance Banner Actions
+  safeListen('financeBannerActionBtn', 'click', () => {
+    window.switchTab('tab-finance');
+    const banner = document.getElementById('financeAlertBanner');
+    if (banner) banner.style.display = 'none';
+  });
+  safeListen('financeBannerDismissBtn', 'click', () => {
+    const banner = document.getElementById('financeAlertBanner');
+    if (banner) banner.style.display = 'none';
+  });
+
+  // Finance Dispatch Form
+  safeListen('financeDispatchForm', 'submit', handleSendFinanceMessage);
+  safeListen('tplBonusBtn', 'click', () => applyFinanceTemplate('bonus'));
+  safeListen('tplSlipBtn', 'click', () => applyFinanceTemplate('slip'));
+  safeListen('tplReimburseBtn', 'click', () => applyFinanceTemplate('reimburse'));
+  safeListen('financeStaffSearchInput', 'input', renderFinanceStaffRoster);
+  safeListen('refreshFinanceLogBtn', 'click', loadFinanceTab);
+
+  // Modals
+  safeListen('closeModalBtn', 'click', () => {
+    const modal = document.getElementById('screenshotModal');
+    if (modal) modal.classList.remove('active');
+  });
+  const ssModal = document.getElementById('screenshotModal');
+  if (ssModal) {
+    ssModal.addEventListener('click', (e) => {
+      if (e.target.id === 'screenshotModal') ssModal.classList.remove('active');
     });
   }
 
-  // Employee Directory Filters
-  const empSearch = document.getElementById('employeeSearchInput');
-  const empRoleFilter = document.getElementById('empRoleFilter');
-  if (empSearch) empSearch.addEventListener('input', () => loadEmployeesDirectory());
-  if (empRoleFilter) empRoleFilter.addEventListener('change', () => loadEmployeesDirectory());
-
-  // Evaluate Stars
-  document.getElementById('evaluateStarsBtn').addEventListener('click', evaluateStarsNow);
-  document.getElementById('purgeRetentionBtn').addEventListener('click', purgeRetentionNow);
-
-  // Modal
-  document.getElementById('closeModalBtn').addEventListener('click', () => {
-    document.getElementById('screenshotModal').classList.remove('active');
+  safeListen('closeFinanceModalBtn', 'click', () => {
+    const finModal = document.getElementById('financeDetailModal');
+    if (finModal) finModal.classList.remove('active');
   });
-  document.getElementById('screenshotModal').addEventListener('click', (e) => {
-    if (e.target.id === 'screenshotModal') {
-      document.getElementById('screenshotModal').classList.remove('active');
-    }
-  });
+  const finModal = document.getElementById('financeDetailModal');
+  if (finModal) {
+    finModal.addEventListener('click', (e) => {
+      if (e.target.id === 'financeDetailModal') finModal.classList.remove('active');
+    });
+  }
+}
+
+async function ensureAuthenticated() {
+  if (!state.token) {
+    await loginAs('admin');
+  }
 }
 
 function authHeaders() {
-  return {
-    'Authorization': `Bearer ${state.token}`,
-    'Content-Type': 'application/json',
-  };
+  const headers = { 'Content-Type': 'application/json' };
+  if (state.token) {
+    headers['Authorization'] = `Bearer ${state.token}`;
+  }
+  return headers;
 }
 
 async function fetchEmployees() {
@@ -245,6 +373,7 @@ function refreshAll() {
 // 1. Overview Tab Data
 // Employees Directory
 async function loadEmployeesDirectory() {
+  await ensureAuthenticated();
   try {
     const res = await fetch(`${API_BASE}/employees`, { headers: authHeaders() });
     if (!res.ok) return;
@@ -324,6 +453,7 @@ window.viewEmployeeHeatmap = function(empId) {
 };
 
 async function loadOverviewData() {
+  await ensureAuthenticated();
   try {
     // Load KPI metrics
     const res = await fetch(`${API_BASE}/dashboard/metrics`, { headers: authHeaders() });
@@ -367,6 +497,7 @@ async function loadOverviewData() {
 
 // 2. Attendance Roll Call Tab
 async function loadAttendanceRollCall() {
+  await ensureAuthenticated();
   const dateInput = document.getElementById('attDateFilter').value;
   let url = `${API_BASE}/attendance/summary`;
   if (dateInput) url += `?target_date=${dateInput}`;
@@ -405,8 +536,9 @@ async function loadAttendanceRollCall() {
 
 // 3. Activity & Heatmap Tab
 async function loadActivityTab() {
+  await ensureAuthenticated();
   const select = document.getElementById('heatmapEmpSelect');
-  if (select.value) {
+  if (select && select.value) {
     state.selectedEmpId = select.value;
   }
   await renderHeatmapForSelected();
@@ -500,27 +632,11 @@ function getThermalColor(ratio) {
 
 // 4. Screenshots Gallery Tab
 async function loadScreenshotsGallery() {
+  await ensureAuthenticated();
   try {
     const empId = document.getElementById('ssEmpSelect')?.value || '';
-    const dateVal = document.getElementById('ssDateFilter')?.value || '';
-    const timeFrom = document.getElementById('ssTimeFrom')?.value || '';
-    const timeTo = document.getElementById('ssTimeTo')?.value || '';
-
-    let url = `${API_BASE}/screenshots?page=1&limit=36`;
+    let url = `${API_BASE}/screenshots?page=1&limit=48`;
     if (empId) url += `&employee_id=${encodeURIComponent(empId)}`;
-
-    if (dateVal) {
-      if (timeFrom) {
-        url += `&date_from=${encodeURIComponent(`${dateVal}T${timeFrom}:00Z`)}`;
-      } else {
-        url += `&date_from=${encodeURIComponent(`${dateVal}T00:00:00Z`)}`;
-      }
-      if (timeTo) {
-        url += `&date_to=${encodeURIComponent(`${dateVal}T${timeTo}:59Z`)}`;
-      } else {
-        url += `&date_to=${encodeURIComponent(`${dateVal}T23:59:59Z`)}`;
-      }
-    }
 
     const res = await fetch(url, { headers: authHeaders() });
     if (res.ok) {
@@ -528,12 +644,13 @@ async function loadScreenshotsGallery() {
       const grid = document.getElementById('screenshotsGalleryGrid');
       grid.innerHTML = '';
       if (!data.items || data.items.length === 0) {
-        grid.innerHTML = `<div style="grid-column: 1/-1; text-align: center; color: var(--text-dim); padding: 40px;">No screenshots found matching your filter criteria. Try adjusting date or time range.</div>`;
+        grid.innerHTML = `<div style="grid-column: 1/-1; text-align: center; color: var(--text-dim); padding: 40px;">No screenshots found for this employee. Click "Capture Screenshot" on top to test.</div>`;
         return;
       }
       data.items.forEach(ss => {
         const card = document.createElement('div');
         card.className = 'gallery-card';
+        card.setAttribute('data-id', ss.id);
         const d = new Date(ss.captured_at);
         const timeFormatted = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
         const dateFormatted = d.toLocaleDateString([], { month: 'short', day: 'numeric' });
@@ -541,14 +658,25 @@ async function loadScreenshotsGallery() {
           <div class="thumbnail-box" style="position: relative;">
             <img src="${ss.image_url}" alt="Screenshot" loading="lazy">
             <span style="position: absolute; bottom: 8px; right: 8px; background: rgba(0,0,0,0.75); color: #fff; font-size: 0.7rem; font-weight: 600; padding: 2px 7px; border-radius: 4px; backdrop-filter: blur(4px);">${timeFormatted}</span>
+            <button class="card-delete-btn" title="Delete this screenshot" style="position: absolute; top: 8px; right: 8px; background: rgba(239, 68, 68, 0.85); color: #fff; border: none; border-radius: 4px; padding: 3px 6px; cursor: pointer; display: flex; align-items: center; justify-content: center; backdrop-filter: blur(4px); transition: all 0.15s ease;">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+            </button>
           </div>
           <div class="gallery-info">
             <div class="gallery-emp">${ss.employee_name || 'Employee'}</div>
             <div class="gallery-time">${dateFormatted} &bull; ${timeFormatted} &bull; ${Math.round(ss.file_size_bytes / 1024)} KB</div>
           </div>
         `;
+
+        card.querySelector('.card-delete-btn').addEventListener('click', async (e) => {
+          e.stopPropagation();
+          if (confirm(`Delete screenshot for ${ss.employee_name}?`)) {
+            await deleteSingleScreenshot(ss.id);
+          }
+        });
+
         card.addEventListener('click', () => {
-          openScreenshotModal(ss.image_url, `${ss.employee_name} — ${dateFormatted} ${timeFormatted}`);
+          openScreenshotModal(ss.image_url, `${ss.employee_name} — ${dateFormatted} ${timeFormatted}`, ss.id);
         });
         grid.appendChild(card);
       });
@@ -558,15 +686,88 @@ async function loadScreenshotsGallery() {
   }
 }
 
-function openScreenshotModal(imgUrl, title) {
+function openScreenshotModal(imgUrl, title, screenshotId) {
+  state.activeScreenshotId = screenshotId;
   const modal = document.getElementById('screenshotModal');
   document.getElementById('modalImage').src = imgUrl;
   document.getElementById('modalTitle').textContent = title;
   modal.classList.add('active');
 }
 
+async function handleDeleteScreenshots() {
+  const empSelect = document.getElementById('ssEmpSelect');
+  const empId = empSelect?.value || '';
+  const selectedText = empSelect && empSelect.selectedIndex >= 0 ? empSelect.options[empSelect.selectedIndex].text : 'All Employees';
+
+  const confirmMsg = empId
+    ? `Are you sure you want to delete all screenshots for "${selectedText}"? This action cannot be undone.`
+    : `Are you sure you want to delete ALL screenshots across all employees? This action cannot be undone.`;
+
+  if (!confirm(confirmMsg)) return;
+
+  try {
+    const btn = document.getElementById('deleteScreenshotsBtn');
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = 'Deleting...';
+    }
+
+    let url = `${API_BASE}/screenshots`;
+    if (empId) {
+      url += `?employee_id=${encodeURIComponent(empId)}`;
+    }
+
+    const res = await fetch(url, {
+      method: 'DELETE',
+      headers: authHeaders()
+    });
+
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg> Delete Screenshots`;
+    }
+
+    if (res.ok) {
+      const data = await res.json();
+      alert(data.message || 'Screenshots deleted successfully.');
+      await loadScreenshotsGallery();
+    } else {
+      const err = await res.json().catch(() => ({}));
+      alert(`Failed to delete screenshots: ${err.detail || 'Server error'}`);
+    }
+  } catch (err) {
+    console.error('Error deleting screenshots:', err);
+    alert('Network error while deleting screenshots.');
+  }
+}
+
+async function handleDeleteActiveScreenshot() {
+  if (!state.activeScreenshotId) return;
+  if (!confirm('Are you sure you want to delete this screenshot?')) return;
+  await deleteSingleScreenshot(state.activeScreenshotId);
+  document.getElementById('screenshotModal')?.classList.remove('active');
+}
+
+async function deleteSingleScreenshot(screenshotId) {
+  try {
+    const res = await fetch(`${API_BASE}/screenshots/${screenshotId}`, {
+      method: 'DELETE',
+      headers: authHeaders()
+    });
+    if (res.ok) {
+      await loadScreenshotsGallery();
+    } else {
+      const err = await res.json().catch(() => ({}));
+      alert(`Failed to delete screenshot: ${err.detail || 'Server error'}`);
+    }
+  } catch (err) {
+    console.error('Error deleting screenshot:', err);
+  }
+}
+
 // 5. Rules & Stars Tab
 async function loadRulesAndStars() {
+  await ensureAuthenticated();
   try {
     const rulesRes = await fetch(`${API_BASE}/rules`, { headers: authHeaders() });
     if (rulesRes.ok) {
@@ -1045,3 +1246,469 @@ async function simulateScreenshotCapture() {
     }
   }, 'image/webp', 0.65);
 }
+
+// ============================================
+// Notification Center Controller
+// ============================================
+async function checkNotifications() {
+  if (!state.token) return;
+  try {
+    const res = await fetch(`${API_BASE}/finance/notifications`, { headers: authHeaders() });
+    if (!res.ok) return;
+    const notifs = await res.json();
+    const unread = notifs.filter(n => !n.is_read);
+
+    const badge = document.getElementById('notifCountBadge');
+    if (badge) {
+      if (unread.length > 0) {
+        badge.textContent = unread.length;
+        badge.style.display = 'inline-block';
+      } else {
+        badge.style.display = 'none';
+      }
+    }
+
+    // Render Drawer items
+    const listContainer = document.getElementById('notifListContainer');
+    if (listContainer) {
+      listContainer.innerHTML = '';
+      if (notifs.length === 0) {
+        listContainer.innerHTML = `<div style="padding: 20px; text-align: center; color: var(--text-dim); font-size: 0.8rem;">No notifications at this time.</div>`;
+      } else {
+        notifs.forEach(n => {
+          const item = document.createElement('div');
+          item.className = `notif-item ${n.is_read ? '' : 'unread'}`;
+          const dt = new Date(n.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+          const dateStr = new Date(n.created_at).toLocaleDateString([], { month: 'short', day: 'numeric' });
+          item.innerHTML = `
+            <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 3px;">
+              <div style="font-weight: 600; font-size: 0.8rem; color: var(--text-main);">${n.title}</div>
+              <span style="font-size: 0.68rem; color: var(--text-dim); white-space: nowrap; margin-left: 8px;">${dateStr} ${dt}</span>
+            </div>
+            <div style="font-size: 0.74rem; color: var(--text-muted); line-height: 1.4;">${n.body}</div>
+          `;
+          item.addEventListener('click', async () => {
+            if (!n.is_read) {
+              await fetch(`${API_BASE}/finance/notifications/${n.id}/read`, {
+                method: 'PUT',
+                headers: authHeaders()
+              });
+              checkNotifications();
+            }
+            switchTab('tab-finance');
+            document.getElementById('notifDrawer').style.display = 'none';
+          });
+          listContainer.appendChild(item);
+        });
+      }
+    }
+
+    // Dynamic Top Banner (For Employee & Manager if unread notices exist)
+    const alertBanner = document.getElementById('financeAlertBanner');
+    if (alertBanner) {
+      if (unread.length > 0 && state.currentUser && state.currentUser.role !== 'ADMIN') {
+        const latest = unread[0];
+        document.getElementById('financeBannerTitle').textContent = latest.title;
+        document.getElementById('financeBannerText').textContent = latest.body;
+        alertBanner.style.display = 'flex';
+      } else {
+        alertBanner.style.display = 'none';
+      }
+    }
+  } catch (err) {
+    console.error('Error fetching notifications:', err);
+  }
+}
+
+function toggleNotifDrawer() {
+  const drawer = document.getElementById('notifDrawer');
+  if (!drawer) return;
+  drawer.style.display = drawer.style.display === 'none' ? 'block' : 'none';
+}
+
+async function markAllNotificationsRead() {
+  try {
+    const res = await fetch(`${API_BASE}/finance/notifications/read-all`, {
+      method: 'POST',
+      headers: authHeaders()
+    });
+    if (res.ok) {
+      await checkNotifications();
+    }
+  } catch (err) {
+    console.error('Error marking all notifications read:', err);
+  }
+}
+
+// ============================================
+// Finance Tab Controller (Admin Controlled)
+// ============================================
+let allFinanceMessages = [];
+
+async function loadFinanceTab() {
+  await ensureAuthenticated();
+  if (!state.currentUser) {
+    await loginAs('admin');
+  }
+  const isAdmin = state.currentUser ? state.currentUser.role === 'ADMIN' : true;
+
+  // Toggle View Workspaces
+  const adminWs = document.getElementById('financeAdminWorkspace');
+  const nonAdminWs = document.getElementById('financeNonAdminWorkspace');
+  const rolePill = document.getElementById('financeRoleNoticePill');
+
+  if (rolePill) {
+    rolePill.textContent = isAdmin ? 'ADMIN SECURE' : `${state.currentUser.role} INBOX`;
+    rolePill.className = `role-pill ${state.currentUser.role.toLowerCase()}`;
+  }
+
+  if (isAdmin) {
+    if (adminWs) adminWs.style.display = 'block';
+    if (nonAdminWs) nonAdminWs.style.display = 'none';
+
+    // 1. Fetch Summary KPI
+    try {
+      const sumRes = await fetch(`${API_BASE}/finance/summary`, { headers: authHeaders() });
+      if (sumRes.ok) {
+        const sum = await sumRes.json();
+        document.getElementById('kpiFinanceTotalDisbursed').textContent = `$${sum.total_amount_disbursed.toLocaleString('en-US', { minimumFractionDigits: 2 })}`;
+        document.getElementById('kpiFinanceDirectNotices').textContent = sum.direct_notices;
+        document.getElementById('kpiFinanceBroadcasts').textContent = sum.broadcast_notices;
+        document.getElementById('kpiFinanceTotalStaff').textContent = sum.total_employees;
+        const totalBadge = document.getElementById('financeTotalNoticesBadge');
+        if (totalBadge) totalBadge.textContent = `${sum.total_messages} Notices`;
+      }
+    } catch (e) {
+      console.error('Failed to load finance summary:', e);
+    }
+
+    // 2. Populate Employee Select Dropdown
+    populateFinanceRecipientSelect();
+
+    // 3. Render Staff Compensation Directory
+    renderFinanceStaffRoster();
+
+    // 4. Render Dispatched Messages Audit Log
+    await loadFinanceMessagesLog();
+  } else {
+    // Non-Admin: Employee / Manager
+    if (adminWs) adminWs.style.display = 'none';
+    if (nonAdminWs) nonAdminWs.style.display = 'block';
+
+    const userNameEl = document.getElementById('nonAdminCurrentUserName');
+    const roleLabelEl = document.getElementById('nonAdminCurrentRoleLabel');
+    if (userNameEl) userNameEl.textContent = state.currentUser.name;
+    if (roleLabelEl) {
+      roleLabelEl.textContent = state.currentUser.role;
+      roleLabelEl.className = `role-pill ${state.currentUser.role.toLowerCase()}`;
+    }
+
+    await loadNonAdminInbox();
+  }
+}
+
+function populateFinanceRecipientSelect() {
+  const sel = document.getElementById('financeRecipientSelect');
+  if (!sel) return;
+  const currentVal = sel.value;
+  sel.innerHTML = `
+    <option value="">-- Choose Employee to Message --</option>
+    <option value="ALL">📢 All Staff (Company-Wide Broadcast)</option>
+  `;
+  state.employees.forEach(emp => {
+    const opt = document.createElement('option');
+    opt.value = emp.id;
+    opt.textContent = `${emp.name} (${emp.employee_code} — ${emp.role})`;
+    sel.appendChild(opt);
+  });
+  if (currentVal) sel.value = currentVal;
+}
+
+function renderFinanceStaffRoster() {
+  const tbody = document.getElementById('financeStaffTbody');
+  if (!tbody) return;
+
+  const search = (document.getElementById('financeStaffSearchInput')?.value || '').toLowerCase().trim();
+  const filtered = state.employees.filter(e => {
+    return !search || e.name.toLowerCase().includes(search) || e.employee_code.toLowerCase().includes(search);
+  });
+
+  const badge = document.getElementById('financeStaffCountBadge');
+  if (badge) badge.textContent = `${filtered.length} Members`;
+
+  tbody.innerHTML = '';
+  if (filtered.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="3" style="text-align: center; color: var(--text-dim); padding: 20px;">No employees found.</td></tr>`;
+    return;
+  }
+
+  filtered.forEach(emp => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <div style="width: 24px; height: 24px; border-radius: 50%; background: linear-gradient(135deg, var(--accent-primary), var(--accent-cyan)); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 0.65rem; font-weight: 700;">
+            ${emp.name.split(' ').map(n=>n[0]).join('').slice(0,2)}
+          </div>
+          <div>
+            <div style="font-weight: 600; color: var(--text-main); font-size: 0.78rem;">${emp.name}</div>
+            <div style="font-size: 0.68rem; color: var(--accent-cyan); font-family: monospace;">${emp.employee_code}</div>
+          </div>
+        </div>
+      </td>
+      <td><span class="role-pill ${emp.role.toLowerCase()}" style="font-size: 0.65rem;">${emp.role}</span></td>
+      <td>
+        <button class="btn btn-secondary btn-sm" onclick="selectEmployeeForFinanceMessage('${emp.id}')" style="padding: 2px 7px; font-size: 0.7rem; display: flex; align-items: center; gap: 4px;">
+          <span>💬</span> Message
+        </button>
+      </td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+window.selectEmployeeForFinanceMessage = function(empId) {
+  const sel = document.getElementById('financeRecipientSelect');
+  if (sel) {
+    sel.value = empId;
+    sel.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    document.getElementById('financeSubjectInput')?.focus();
+  }
+};
+
+window.applyFinanceTemplate = function(type) {
+  const subInput = document.getElementById('financeSubjectInput');
+  const catSelect = document.getElementById('financeCategorySelect');
+  const amtInput = document.getElementById('financeAmountInput');
+  const msgInput = document.getElementById('financeMessageInput');
+
+  if (type === 'bonus') {
+    if (subInput) subInput.value = 'Q3 Performance Incentive Bonus Approved';
+    if (catSelect) catSelect.value = 'BONUS';
+    if (amtInput) amtInput.value = '500.00';
+    if (msgInput) msgInput.value = 'Congratulations! In recognition of your outstanding productivity, reliable attendance, and commitment to project excellence, the company has awarded you an incentive bonus of $500.00. This amount has been credited to your direct deposit account.';
+  } else if (type === 'slip') {
+    const curMonth = new Date().toLocaleString('default', { month: 'long', year: 'numeric' });
+    if (subInput) subInput.value = `Monthly Salary Slip & Compensation Notice — ${curMonth}`;
+    if (catSelect) catSelect.value = 'SALARY';
+    if (amtInput) amtInput.value = '';
+    if (msgInput) msgInput.value = `Your monthly compensation summary and payroll voucher for ${curMonth} has been completed and processed. Direct deposit transfers have initiated. Please review your statements on the internal finance portal.`;
+  } else if (type === 'reimburse') {
+    if (subInput) subInput.value = 'Approved: Workstation Equipment Expense Reimbursement';
+    if (catSelect) catSelect.value = 'REIMBURSEMENT';
+    if (amtInput) amtInput.value = '175.50';
+    if (msgInput) msgInput.value = 'Your submitted business expense claim and accompanying tax receipts have been verified by Finance and approved for payout. The reimbursement sum will reflect in your upcoming paycheck.';
+  }
+};
+
+async function handleSendFinanceMessage(e) {
+  e.preventDefault();
+  const recipientId = document.getElementById('financeRecipientSelect').value;
+  const subject = document.getElementById('financeSubjectInput').value.trim();
+  const category = document.getElementById('financeCategorySelect').value;
+  const amountStr = document.getElementById('financeAmountInput').value;
+  const priority = document.getElementById('financePrioritySelect').value;
+  const message = document.getElementById('financeMessageInput').value.trim();
+  const notifyOthers = document.getElementById('financeNotifyOthersCheckbox').checked;
+
+  if (!recipientId) {
+    alert('Please select a recipient employee or choose All Staff.');
+    return;
+  }
+  if (!subject || !message) {
+    alert('Please provide a subject and message content.');
+    return;
+  }
+
+  const payload = {
+    recipient_id: recipientId === 'ALL' ? null : recipientId,
+    subject,
+    message,
+    amount: amountStr ? parseFloat(amountStr) : null,
+    message_type: category,
+    priority,
+    notify_others: notifyOthers
+  };
+
+  try {
+    const btn = document.getElementById('financeSubmitBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<span>⏳</span> Sending Notice...';
+
+    const res = await fetch(`${API_BASE}/finance/messages`, {
+      method: 'POST',
+      headers: authHeaders(),
+      body: JSON.stringify(payload)
+    });
+
+    btn.disabled = false;
+    btn.innerHTML = '<span>🚀</span> Send Message & Dispatch Notification';
+
+    if (res.ok) {
+      const fb = document.getElementById('financeSubmitFeedback');
+      if (fb) {
+        fb.style.display = 'inline';
+        setTimeout(() => { fb.style.display = 'none'; }, 4000);
+      }
+      document.getElementById('financeDispatchForm').reset();
+      document.getElementById('financeNotifyOthersCheckbox').checked = true;
+
+      // Reload Finance Tab data & notifications
+      await loadFinanceTab();
+      await checkNotifications();
+    } else {
+      const err = await res.json().catch(() => ({}));
+      alert(`Failed to send finance message: ${err.detail || 'Server error'}`);
+    }
+  } catch (err) {
+    console.error('Error dispatching finance message:', err);
+    alert('Network error while sending finance message.');
+  }
+}
+
+async function loadFinanceMessagesLog() {
+  const tbody = document.getElementById('financeMessagesTbody');
+  if (!tbody) return;
+
+  try {
+    const res = await fetch(`${API_BASE}/finance/messages?limit=50`, { headers: authHeaders() });
+    if (!res.ok) {
+      tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: var(--text-dim); padding: 20px;">Failed to load messages.</td></tr>`;
+      return;
+    }
+    allFinanceMessages = await res.json();
+    tbody.innerHTML = '';
+
+    if (allFinanceMessages.length === 0) {
+      tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: var(--text-dim); padding: 20px;">No finance messages dispatched yet. Use the form above to send your first message.</td></tr>`;
+      return;
+    }
+
+    allFinanceMessages.forEach(m => {
+      const tr = document.createElement('tr');
+      const dt = new Date(m.created_at).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' });
+      const amtText = m.amount !== null && m.amount !== undefined ? `<strong style="color: var(--accent-emerald);">$${m.amount.toFixed(2)}</strong>` : '<span style="color: var(--text-dim);">&mdash;</span>';
+
+      const typePillClass = m.message_type === 'BONUS' ? 'present' : (m.message_type === 'REIMBURSEMENT' ? 'manager' : (m.message_type === 'DEDUCTION' ? 'late' : 'admin'));
+
+      tr.innerHTML = `
+        <td style="color: var(--text-dim); font-size: 0.75rem; white-space: nowrap;">${dt}</td>
+        <td>
+          <div style="font-weight: 600; color: var(--text-main);">${m.recipient_name}</div>
+          <div style="font-size: 0.7rem; color: var(--text-dim);">${m.recipient_department}</div>
+        </td>
+        <td><span class="badge ${typePillClass}" style="font-size: 0.68rem;">${m.message_type}</span></td>
+        <td>
+          <div style="font-weight: 600; color: var(--text-main);">${m.subject}</div>
+          <div style="font-size: 0.74rem; color: var(--text-muted); max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${m.message}</div>
+        </td>
+        <td>${amtText}</td>
+        <td>
+          <span class="badge present" style="font-size: 0.68rem; display: flex; align-items: center; gap: 4px; width: fit-content;">
+            <span>✓</span> Delivered & Notified
+          </span>
+        </td>
+        <td>
+          <div style="display: flex; gap: 6px;">
+            <button class="btn btn-secondary btn-sm" onclick="viewFinanceDetail('${m.id}')" style="padding: 2px 7px; font-size: 0.7rem;">View</button>
+            <button class="btn btn-danger btn-sm" onclick="deleteFinanceMessage('${m.id}')" style="padding: 2px 7px; font-size: 0.7rem;">Delete</button>
+          </div>
+        </td>
+      `;
+      tbody.appendChild(tr);
+    });
+  } catch (err) {
+    console.error('Error loading finance log:', err);
+  }
+}
+
+window.viewFinanceDetail = function(msgId) {
+  const m = allFinanceMessages.find(item => item.id === msgId);
+  if (!m) return;
+
+  document.getElementById('financeModalSubject').textContent = m.subject;
+  document.getElementById('financeModalRecipient').textContent = `${m.recipient_name} (${m.recipient_code || 'ALL'})`;
+  const amtStr = m.amount ? `$${m.amount.toFixed(2)}` : 'Notice Only';
+  document.getElementById('financeModalMeta').textContent = `${m.message_type} • ${amtStr}`;
+  document.getElementById('financeModalBody').textContent = m.message;
+  document.getElementById('financeModalDate').textContent = `Dispatched by ${m.sender_name} on ${new Date(m.created_at).toLocaleString()}`;
+
+  document.getElementById('financeDetailModal').classList.add('active');
+};
+
+window.deleteFinanceMessage = async function(msgId) {
+  if (!confirm('Are you sure you want to delete this finance message? Associated notifications will also be cleared.')) return;
+  try {
+    const res = await fetch(`${API_BASE}/finance/messages/${msgId}`, {
+      method: 'DELETE',
+      headers: authHeaders()
+    });
+    if (res.ok) {
+      await loadFinanceTab();
+      await checkNotifications();
+    } else {
+      alert('Failed to delete finance message.');
+    }
+  } catch (e) {
+    console.error('Error deleting message:', e);
+  }
+};
+
+async function loadNonAdminInbox() {
+  const container = document.getElementById('nonAdminInboxContainer');
+  if (!container) return;
+
+  try {
+    const res = await fetch(`${API_BASE}/finance/messages?limit=30`, { headers: authHeaders() });
+    if (!res.ok) {
+      container.innerHTML = `<div style="text-align: center; color: var(--text-dim); padding: 20px;">Could not load notices.</div>`;
+      return;
+    }
+    const msgs = await res.json();
+    allFinanceMessages = msgs;
+
+    const badge = document.getElementById('nonAdminInboxBadge');
+    if (badge) badge.textContent = `${msgs.length} Notices`;
+
+    container.innerHTML = '';
+    if (msgs.length === 0) {
+      container.innerHTML = `
+        <div style="text-align: center; color: var(--text-dim); padding: 40px; background: rgba(255,255,255,0.02); border-radius: var(--radius-sm); border: 1px dashed var(--border-subtle);">
+          <div style="font-size: 2rem; margin-bottom: 8px;">📬</div>
+          <div style="font-weight: 600; color: var(--text-main);">No finance notices received yet.</div>
+          <div style="font-size: 0.8rem; color: var(--text-dim); margin-top: 4px;">When administration sends you payroll slips, bonus approvals, or reimbursements, they will appear here.</div>
+        </div>
+      `;
+      return;
+    }
+
+    msgs.forEach(m => {
+      const card = document.createElement('div');
+      card.className = 'inbox-card';
+      const dt = new Date(m.created_at).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' });
+      const amtBadge = m.amount ? `<span class="badge present" style="font-size: 0.75rem; font-weight: 700; padding: 3px 8px;">💵 $${m.amount.toFixed(2)}</span>` : '';
+      const typeBadge = `<span class="role-pill ${m.message_type === 'BONUS' ? 'manager' : (m.message_type === 'SALARY' ? 'admin' : 'employee')}" style="font-size: 0.68rem;">${m.message_type}</span>`;
+
+      card.innerHTML = `
+        <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px; gap: 12px; flex-wrap: wrap;">
+          <div>
+            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
+              <h4 style="font-size: 0.95rem; font-weight: 700; color: var(--text-main);">${m.subject}</h4>
+              ${typeBadge}
+              ${amtBadge}
+            </div>
+            <div style="font-size: 0.75rem; color: var(--text-dim);">From: <strong>${m.sender_name}</strong> &bull; Dispatched ${dt}</div>
+          </div>
+          <span class="badge present" style="font-size: 0.68rem;">Delivered</span>
+        </div>
+        <div style="background: rgba(0,0,0,0.2); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: 12px 14px; font-size: 0.84rem; color: var(--text-main); line-height: 1.6; white-space: pre-wrap; margin-top: 8px;">
+          ${m.message}
+        </div>
+      `;
+      container.appendChild(card);
+    });
+  } catch (err) {
+    console.error('Error loading personal inbox:', err);
+  }
+}
+

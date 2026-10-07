@@ -12,6 +12,7 @@ from app.models.device import Device
 from app.models.employee import Employee, RoleEnum, StatusEnum
 from app.models.rules import EmployeeStar, SettingRule
 from app.models.screenshot import Screenshot
+from app.models.finance import FinanceMessage, FinanceNotification
 from app.services.auth import generate_device_token, hash_password
 from app.services.screenshot_service import screenshot_service
 
@@ -324,8 +325,128 @@ async def seed():
                                 awarded_at=now,
                             ))
 
+        # 5. Finance Messages and Delivery Notifications
+        existing_finance = (await db.execute(select(FinanceMessage))).scalars().all()
+        if len(existing_finance) == 0:
+            alex_emp = (await db.execute(select(Employee).where(Employee.email == "alex@tracking.local"))).scalars().first()
+            marcus_emp = (await db.execute(select(Employee).where(Employee.email == "marcus@tracking.local"))).scalars().first()
+            sarah_mgr = (await db.execute(select(Employee).where(Employee.email == "manager@tracking.local"))).scalars().first()
+
+            if alex_emp and admin:
+                f_msg1 = FinanceMessage(
+                    id=str(uuid.uuid4()),
+                    sender_id=admin.id,
+                    recipient_id=alex_emp.id,
+                    recipient_name=alex_emp.name,
+                    recipient_code=alex_emp.employee_code,
+                    recipient_department="Core Platform Engineering",
+                    subject="Q3 Performance Bonus Disbursed",
+                    message="Hi Alex, your stellar engineering contribution and 100% on-time attendance this quarter have earned you a $750 performance bonus. This has been credited to your direct deposit account. Keep up the phenomenal work!",
+                    amount=750.00,
+                    message_type="BONUS",
+                    priority="NORMAL",
+                    notify_others=True,
+                    is_broadcast=False,
+                    is_read=False,
+                    created_at=now - timedelta(hours=3),
+                )
+                db.add(f_msg1)
+                await db.flush()
+
+                # Recipient notification
+                db.add(FinanceNotification(
+                    id=str(uuid.uuid4()),
+                    message_id=f_msg1.id,
+                    target_user_id=alex_emp.id,
+                    title="💰 Finance Notice from Admin: Q3 Performance Bonus Disbursed",
+                    body=f_msg1.message,
+                    notification_type="FINANCE_DIRECT",
+                    is_read=False,
+                    created_at=now - timedelta(hours=3),
+                ))
+
+                # Manager notification
+                if sarah_mgr:
+                    db.add(FinanceNotification(
+                        id=str(uuid.uuid4()),
+                        message_id=f_msg1.id,
+                        target_user_id=sarah_mgr.id,
+                        title=f"📋 Finance Update for {alex_emp.name}: Q3 Performance Bonus Disbursed",
+                        body=f"Admin sent a $750 BONUS communication to {alex_emp.name} ({alex_emp.employee_code}).",
+                        notification_type="MANAGER_ALERT",
+                        is_read=False,
+                        created_at=now - timedelta(hours=3),
+                    ))
+
+            if marcus_emp and admin:
+                f_msg2 = FinanceMessage(
+                    id=str(uuid.uuid4()),
+                    sender_id=admin.id,
+                    recipient_id=marcus_emp.id,
+                    recipient_name=marcus_emp.name,
+                    recipient_code=marcus_emp.employee_code,
+                    recipient_department="Product & UX Design",
+                    subject="UX Design Hardware Reimbursement Approved",
+                    message="Hello Marcus, your hardware monitor calibration tool expense report (#EXP-4029) for $320.00 has been verified by Finance and approved. Payout scheduled for Friday payroll.",
+                    amount=320.00,
+                    message_type="REIMBURSEMENT",
+                    priority="NORMAL",
+                    notify_others=True,
+                    is_broadcast=False,
+                    is_read=False,
+                    created_at=now - timedelta(hours=1, minutes=40),
+                )
+                db.add(f_msg2)
+                await db.flush()
+
+                db.add(FinanceNotification(
+                    id=str(uuid.uuid4()),
+                    message_id=f_msg2.id,
+                    target_user_id=marcus_emp.id,
+                    title="💰 Finance Notice from Admin: UX Design Hardware Reimbursement Approved",
+                    body=f_msg2.message,
+                    notification_type="FINANCE_DIRECT",
+                    is_read=False,
+                    created_at=now - timedelta(hours=1, minutes=40),
+                ))
+
+            if admin:
+                f_msg3 = FinanceMessage(
+                    id=str(uuid.uuid4()),
+                    sender_id=admin.id,
+                    recipient_id=None,
+                    recipient_name="All Staff (Company Broadcast)",
+                    recipient_code="ALL",
+                    recipient_department="All Departments",
+                    subject="Annual Merit Review & Health Benefit Adjustments",
+                    message="Dear Team, all health insurance premium allowances and annual merit compensation adjustments have been processed into payroll. Please review your statements on the portal. Reach out to HR/Finance with any questions.",
+                    amount=None,
+                    message_type="GENERAL",
+                    priority="NORMAL",
+                    notify_others=True,
+                    is_broadcast=True,
+                    is_read=False,
+                    created_at=now - timedelta(days=1),
+                )
+                db.add(f_msg3)
+                await db.flush()
+
+                # Broadcast to employees
+                all_active = (await db.execute(select(Employee).where(Employee.status == "ACTIVE"))).scalars().all()
+                for e in all_active:
+                    db.add(FinanceNotification(
+                        id=str(uuid.uuid4()),
+                        message_id=f_msg3.id,
+                        target_user_id=e.id,
+                        title="📢 Company Finance Announcement: Annual Merit Review & Health Benefit Adjustments",
+                        body=f_msg3.message,
+                        notification_type="BROADCAST",
+                        is_read=False,
+                        created_at=now - timedelta(days=1),
+                    ))
+
         await db.commit()
-        print("Successfully seeded 14 employees, 3 managers, 1 admin across 6 departments with live attendance, activity, heatmaps, and screenshots!")
+        print("Successfully seeded employees, attendance, heatmaps, screenshots, and enterprise finance messaging records!")
 
 
 if __name__ == "__main__":

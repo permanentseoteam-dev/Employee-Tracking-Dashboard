@@ -1,8 +1,10 @@
+import os
 import json
 import urllib.request
 import sqlite3
 
-conn = sqlite3.connect("backend/tracking.db")
+db_path = "tracking.db" if os.path.exists("tracking.db") else "backend/tracking.db"
+conn = sqlite3.connect(db_path)
 cursor = conn.cursor()
 tables = [r[0] for r in cursor.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()]
 print("Tables:", tables)

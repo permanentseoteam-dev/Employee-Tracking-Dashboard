@@ -1,8 +1,16 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.activity import ActivityLog
 from app.schemas.activity import ActivityBatchItem, ActivityStatsOut
+
+
+def _to_naive_utc(dt: datetime | None) -> datetime | None:
+    if dt is None:
+        return None
+    if getattr(dt, "tzinfo", None) is not None:
+        return dt.astimezone(timezone.utc).replace(tzinfo=None)
+    return dt
 
 
 class ActivityService:
@@ -34,6 +42,9 @@ class ActivityService:
         date_from: datetime,
         date_to: datetime,
     ) -> ActivityStatsOut:
+        st = _to_naive_utc(date_from)
+        et = _to_naive_utc(date_to)
+
         stmt = (
             select(
                 func.coalesce(func.sum(ActivityLog.key_press_count), 0).label("keys"),
@@ -44,10 +55,12 @@ class ActivityService:
             )
             .where(
                 ActivityLog.employee_id == employee_id,
-                ActivityLog.start_time >= date_from,
-                ActivityLog.end_time <= date_to,
             )
         )
+        if st is not None:
+            stmt = stmt.where(ActivityLog.end_time >= st)
+        if et is not None:
+            stmt = stmt.where(ActivityLog.start_time <= et)
         result = await db.execute(stmt)
         row = result.first()
         

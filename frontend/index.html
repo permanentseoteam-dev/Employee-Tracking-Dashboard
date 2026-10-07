@@ -296,6 +296,28 @@
           </div>
         </div>
 
+        <!-- Custom Date & Time Filter Bar -->
+        <div class="filter-bar" style="flex-wrap: wrap; gap: 12px; margin-bottom: 20px;">
+          <div style="display: flex; align-items: center; gap: 6px;">
+            <label style="font-size: 0.8rem; color: var(--text-muted);">Employee:</label>
+            <select id="ssEmpSelect" class="input-control" style="min-width: 160px;">
+              <option value="">All Employees</option>
+            </select>
+          </div>
+          <div style="display: flex; align-items: center; gap: 6px;">
+            <label style="font-size: 0.8rem; color: var(--text-muted);">Date:</label>
+            <input type="date" id="ssDateFilter" class="input-control">
+          </div>
+          <div style="display: flex; align-items: center; gap: 6px;">
+            <label style="font-size: 0.8rem; color: var(--text-muted);">Time Range:</label>
+            <input type="time" id="ssTimeFrom" class="input-control" title="From Time">
+            <span style="color: var(--text-dim); font-size: 0.8rem;">to</span>
+            <input type="time" id="ssTimeTo" class="input-control" title="To Time">
+          </div>
+          <button id="applySsFilterBtn" class="btn btn-primary btn-sm">Apply Filter</button>
+          <button id="resetSsFilterBtn" class="btn btn-secondary btn-sm">Reset</button>
+        </div>
+
         <div class="gallery-grid" id="screenshotsGalleryGrid">
           <div style="grid-column: 1/-1; text-align: center; color: var(--text-dim); padding: 40px;">
             No screenshots captured yet. Click "Capture Screenshot" on top to test.
@@ -315,20 +337,72 @@
           <button id="evaluateStarsBtn" class="btn btn-primary btn-sm">Evaluate Stars Today</button>
         </div>
 
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
-          <!-- Rules Card -->
-          <div style="background: rgba(255,255,255,0.02); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: 18px;">
-            <h4 style="color: #fff; margin-bottom: 12px; font-size: 0.95rem;">Active Rules Configuration</h4>
-            <div id="rulesListContainer" style="font-size: 0.85rem; color: var(--text-muted); line-height: 1.8;">
-              Loading policy rules...
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px;">
+          <!-- Interactive Rule Editor -->
+          <div style="background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: 20px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+              <h4 style="color: var(--text-main); font-size: 0.95rem; font-weight: 600; margin: 0;">Configure Work Policies</h4>
+              <span class="role-pill admin" style="font-size: 0.65rem;">Self-Service Editor</span>
             </div>
+            <form id="rulesEditForm" style="display: flex; flex-direction: column; gap: 14px;">
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                <div>
+                  <label style="display:block; font-size: 0.75rem; color: var(--text-muted); margin-bottom: 4px;">Shift Start Time</label>
+                  <input type="time" id="ruleShiftStart" step="1" class="input-control" style="width: 100%;" required>
+                </div>
+                <div>
+                  <label style="display:block; font-size: 0.75rem; color: var(--text-muted); margin-bottom: 4px;">Shift End Time</label>
+                  <input type="time" id="ruleShiftEnd" step="1" class="input-control" style="width: 100%;" required>
+                </div>
+              </div>
+
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                <div>
+                  <label style="display:block; font-size: 0.75rem; color: var(--text-muted); margin-bottom: 4px;">Grace Period (Minutes)</label>
+                  <input type="number" id="ruleGraceMinutes" class="input-control" style="width: 100%;" min="0" max="120" required>
+                </div>
+                <div>
+                  <label style="display:block; font-size: 0.75rem; color: var(--text-muted); margin-bottom: 4px;">Full Day Min Active (Hours)</label>
+                  <input type="number" step="0.5" id="ruleMinActiveHours" class="input-control" style="width: 100%;" min="1" max="16" required>
+                </div>
+              </div>
+
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                <div>
+                  <label style="display:block; font-size: 0.75rem; color: var(--text-muted); margin-bottom: 4px;">Half Day Threshold (Hours)</label>
+                  <input type="number" step="0.5" id="ruleHalfDayHours" class="input-control" style="width: 100%;" min="1" max="12" required>
+                </div>
+                <div>
+                  <label style="display:block; font-size: 0.75rem; color: var(--text-muted); margin-bottom: 4px;">Daily Star Active Req (Hours)</label>
+                  <input type="number" step="0.5" id="ruleStarActiveHours" class="input-control" style="width: 100%;" min="1" max="16" required>
+                </div>
+              </div>
+
+              <div style="padding: 12px; background: rgba(99, 102, 241, 0.08); border-radius: 6px; border-left: 3px solid var(--accent-indigo); font-size: 0.75rem; color: var(--text-muted); line-height: 1.5;">
+                <strong style="color: var(--text-main);">Punctuality & Early Bird Stars:</strong> Employees whose first activity starts <em>before Shift Start</em> automatically receive the <strong>Early Bird Star</strong>. First activity within the <em>Grace Period</em> receives the <strong>Punctuality Star</strong>.
+              </div>
+
+              <div style="display: flex; gap: 10px; align-items: center; margin-top: 6px;">
+                <button type="submit" id="saveRulesBtn" class="btn btn-primary btn-sm">Save Policy Changes</button>
+                <span id="rulesSaveFeedback" style="font-size: 0.8rem; color: var(--accent-emerald); display: none; font-weight: 500;">Saved & Applied!</span>
+              </div>
+            </form>
           </div>
 
-          <!-- Stars Awarded List -->
-          <div style="background: rgba(255,255,255,0.02); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: 18px;">
-            <h4 style="color: #fff; margin-bottom: 12px; font-size: 0.95rem;">Recent Star Awards</h4>
-            <div id="starsListContainer" style="font-size: 0.85rem; color: var(--text-muted); line-height: 1.8;">
-              Loading awarded stars...
+          <!-- Stars Awarded List & Rules Summary -->
+          <div style="display: flex; flex-direction: column; gap: 16px;">
+            <div style="background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: 18px;">
+              <h4 style="color: var(--text-main); margin-bottom: 12px; font-size: 0.95rem; font-weight: 600;">Active Policy Summary</h4>
+              <div id="rulesListContainer" style="font-size: 0.85rem; color: var(--text-muted); line-height: 1.8;">
+                Loading policy rules...
+              </div>
+            </div>
+
+            <div style="background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: 18px;">
+              <h4 style="color: var(--text-main); margin-bottom: 12px; font-size: 0.95rem; font-weight: 600;">Recent Star Awards (Early Bird & Punctuality)</h4>
+              <div id="starsListContainer" style="font-size: 0.85rem; color: var(--text-muted); line-height: 1.8; max-height: 260px; overflow-y: auto;">
+                Loading awarded stars...
+              </div>
             </div>
           </div>
         </div>

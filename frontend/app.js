@@ -139,6 +139,25 @@ function setupEventListeners() {
   // Filter Buttons
   document.getElementById('applyAttFilterBtn').addEventListener('click', loadAttendanceRollCall);
   document.getElementById('loadHeatmapBtn').addEventListener('click', renderHeatmapForSelected);
+  document.getElementById('heatmapEmpSelect').addEventListener('change', renderHeatmapForSelected);
+
+  // Screenshot Filters
+  const applySsBtn = document.getElementById('applySsFilterBtn');
+  if (applySsBtn) applySsBtn.addEventListener('click', loadScreenshotsGallery);
+  const resetSsBtn = document.getElementById('resetSsFilterBtn');
+  if (resetSsBtn) resetSsBtn.addEventListener('click', () => {
+    if (document.getElementById('ssEmpSelect')) document.getElementById('ssEmpSelect').value = '';
+    if (document.getElementById('ssDateFilter')) document.getElementById('ssDateFilter').value = '';
+    if (document.getElementById('ssTimeFrom')) document.getElementById('ssTimeFrom').value = '';
+    if (document.getElementById('ssTimeTo')) document.getElementById('ssTimeTo').value = '';
+    loadScreenshotsGallery();
+  });
+  const ssEmpSelect = document.getElementById('ssEmpSelect');
+  if (ssEmpSelect) ssEmpSelect.addEventListener('change', loadScreenshotsGallery);
+
+  // Policy Rules Edit Form
+  const rulesForm = document.getElementById('rulesEditForm');
+  if (rulesForm) rulesForm.addEventListener('submit', handleSaveRules);
 
   // Employee Directory Filters
   const empSearch = document.getElementById('employeeSearchInput');
@@ -182,15 +201,29 @@ async function fetchEmployees() {
 
 function populateEmployeeDropdowns() {
   const select = document.getElementById('heatmapEmpSelect');
-  select.innerHTML = '';
-  state.employees.forEach(emp => {
-    const opt = document.createElement('option');
-    opt.value = emp.id;
-    opt.textContent = `${emp.name} (${emp.employee_code})`;
-    select.appendChild(opt);
-  });
-  if (state.employees.length > 0) {
-    state.selectedEmpId = state.employees[0].id;
+  const ssSelect = document.getElementById('ssEmpSelect');
+
+  if (select) {
+    select.innerHTML = '';
+    state.employees.forEach(emp => {
+      const opt = document.createElement('option');
+      opt.value = emp.id;
+      opt.textContent = `${emp.name} (${emp.employee_code})`;
+      select.appendChild(opt);
+    });
+    if (state.employees.length > 0) {
+      state.selectedEmpId = state.employees[0].id;
+    }
+  }
+
+  if (ssSelect) {
+    ssSelect.innerHTML = '<option value="">All Employees</option>';
+    state.employees.forEach(emp => {
+      const opt = document.createElement('option');
+      opt.value = emp.id;
+      opt.textContent = `${emp.name} (${emp.employee_code})`;
+      ssSelect.appendChild(opt);
+    });
   }
 }
 
@@ -457,30 +490,54 @@ function getThermalColor(ratio) {
 // 4. Screenshots Gallery Tab
 async function loadScreenshotsGallery() {
   try {
-    const res = await fetch(`${API_BASE}/screenshots?page=1&limit=24`, { headers: authHeaders() });
+    const empId = document.getElementById('ssEmpSelect')?.value || '';
+    const dateVal = document.getElementById('ssDateFilter')?.value || '';
+    const timeFrom = document.getElementById('ssTimeFrom')?.value || '';
+    const timeTo = document.getElementById('ssTimeTo')?.value || '';
+
+    let url = `${API_BASE}/screenshots?page=1&limit=36`;
+    if (empId) url += `&employee_id=${encodeURIComponent(empId)}`;
+
+    if (dateVal) {
+      if (timeFrom) {
+        url += `&date_from=${encodeURIComponent(`${dateVal}T${timeFrom}:00Z`)}`;
+      } else {
+        url += `&date_from=${encodeURIComponent(`${dateVal}T00:00:00Z`)}`;
+      }
+      if (timeTo) {
+        url += `&date_to=${encodeURIComponent(`${dateVal}T${timeTo}:59Z`)}`;
+      } else {
+        url += `&date_to=${encodeURIComponent(`${dateVal}T23:59:59Z`)}`;
+      }
+    }
+
+    const res = await fetch(url, { headers: authHeaders() });
     if (res.ok) {
       const data = await res.json();
       const grid = document.getElementById('screenshotsGalleryGrid');
       grid.innerHTML = '';
       if (!data.items || data.items.length === 0) {
-        grid.innerHTML = `<div style="grid-column: 1/-1; text-align: center; color: var(--text-dim); padding: 40px;">No screenshots captured yet. Click "Capture Screenshot" on top to test.</div>`;
+        grid.innerHTML = `<div style="grid-column: 1/-1; text-align: center; color: var(--text-dim); padding: 40px;">No screenshots found matching your filter criteria. Try adjusting date or time range.</div>`;
         return;
       }
       data.items.forEach(ss => {
         const card = document.createElement('div');
         card.className = 'gallery-card';
-        const dt = new Date(ss.captured_at).toLocaleString();
+        const d = new Date(ss.captured_at);
+        const timeFormatted = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        const dateFormatted = d.toLocaleDateString([], { month: 'short', day: 'numeric' });
         card.innerHTML = `
-          <div class="thumbnail-box">
+          <div class="thumbnail-box" style="position: relative;">
             <img src="${ss.image_url}" alt="Screenshot" loading="lazy">
+            <span style="position: absolute; bottom: 8px; right: 8px; background: rgba(0,0,0,0.75); color: #fff; font-size: 0.7rem; font-weight: 600; padding: 2px 7px; border-radius: 4px; backdrop-filter: blur(4px);">${timeFormatted}</span>
           </div>
           <div class="gallery-info">
             <div class="gallery-emp">${ss.employee_name || 'Employee'}</div>
-            <div class="gallery-time">${dt} &bull; ${Math.round(ss.file_size_bytes / 1024)} KB</div>
+            <div class="gallery-time">${dateFormatted} &bull; ${timeFormatted} &bull; ${Math.round(ss.file_size_bytes / 1024)} KB</div>
           </div>
         `;
         card.addEventListener('click', () => {
-          openScreenshotModal(ss.image_url, `${ss.employee_name} — ${dt}`);
+          openScreenshotModal(ss.image_url, `${ss.employee_name} — ${dateFormatted} ${timeFormatted}`);
         });
         grid.appendChild(card);
       });
@@ -505,12 +562,40 @@ async function loadRulesAndStars() {
       const rules = await rulesRes.json();
       const container = document.getElementById('rulesListContainer');
       container.innerHTML = '';
+
+      const attRule = rules.find(r => r.rule_type === 'ATTENDANCE') || rules[0];
+      const starRule = rules.find(r => r.rule_type === 'STAR');
+
+      if (attRule) {
+        state.activeAttendanceRuleId = attRule.id;
+        const p = attRule.config_payload || {};
+        const shiftStartInput = document.getElementById('ruleShiftStart');
+        const shiftEndInput = document.getElementById('ruleShiftEnd');
+        const graceInput = document.getElementById('ruleGraceMinutes');
+        const minActiveInput = document.getElementById('ruleMinActiveHours');
+        const halfDayInput = document.getElementById('ruleHalfDayHours');
+
+        if (shiftStartInput) shiftStartInput.value = p.shift_start || '09:00:00';
+        if (shiftEndInput) shiftEndInput.value = p.shift_end || '18:00:00';
+        if (graceInput) graceInput.value = p.grace_period_minutes !== undefined ? p.grace_period_minutes : 15;
+        if (minActiveInput) minActiveInput.value = p.minimum_active_hours_full_day || 7.0;
+        if (halfDayInput) halfDayInput.value = p.half_day_hours || 4.0;
+      }
+
+      if (starRule) {
+        state.activeStarRuleId = starRule.id;
+        const sp = starRule.config_payload || {};
+        const starHours = (sp.min_active_seconds_for_star || 21600) / 3600;
+        const starInput = document.getElementById('ruleStarActiveHours');
+        if (starInput) starInput.value = starHours;
+      }
+
       rules.forEach(r => {
         const div = document.createElement('div');
         div.style.marginBottom = '12px';
         div.innerHTML = `
-          <div style="font-weight: 700; color: #fff;">${r.name} (${r.rule_type})</div>
-          <pre style="background: rgba(0,0,0,0.3); padding: 8px; border-radius: 6px; font-size: 0.75rem; margin-top: 4px; overflow-x: auto;">${JSON.stringify(r.config_payload, null, 2)}</pre>
+          <div style="font-weight: 600; color: var(--text-main); font-size: 0.85rem;">${r.name} <span class="role-pill ${r.is_active ? 'active' : 'offline'}" style="font-size: 0.65rem; margin-left: 6px;">${r.is_active ? 'Active' : 'Disabled'}</span></div>
+          <pre style="background: rgba(0,0,0,0.25); padding: 8px 10px; border-radius: 6px; font-size: 0.75rem; margin-top: 4px; overflow-x: auto; color: var(--text-muted); border: 1px solid var(--border-subtle);">${JSON.stringify(r.config_payload, null, 2)}</pre>
         `;
         container.appendChild(div);
       });
@@ -527,13 +612,85 @@ async function loadRulesAndStars() {
       }
       stars.forEach(s => {
         const item = document.createElement('div');
-        item.style.marginBottom = '8px';
-        item.innerHTML = `⭐ <strong>${s.reason}</strong> &bull; Date: ${s.award_date}`;
+        item.style.padding = '8px 10px';
+        item.style.marginBottom = '6px';
+        item.style.borderRadius = '6px';
+        item.style.background = 'rgba(255,255,255,0.03)';
+        item.style.border = '1px solid var(--border-subtle)';
+        item.style.display = 'flex';
+        item.style.alignItems = 'center';
+        item.style.justifyContent = 'space-between';
+
+        const isEarly = s.reason.includes('Early Bird');
+        const badge = isEarly ? '<span class="role-pill manager" style="font-size: 0.65rem;">Early Bird</span>' : '<span class="role-pill employee" style="font-size: 0.65rem;">Punctuality</span>';
+
+        item.innerHTML = `
+          <div>
+            <div style="font-weight: 600; color: var(--text-main); font-size: 0.8rem;">⭐ ${s.reason}</div>
+            <div style="font-size: 0.72rem; color: var(--text-dim);">Awarded on ${s.award_date}</div>
+          </div>
+          <div>${badge}</div>
+        `;
         starsContainer.appendChild(item);
       });
     }
   } catch (err) {
     console.error('Error loading rules & stars:', err);
+  }
+}
+
+async function handleSaveRules(e) {
+  e.preventDefault();
+  if (!state.activeAttendanceRuleId) {
+    alert('No attendance rule loaded to update.');
+    return;
+  }
+
+  const shiftStart = document.getElementById('ruleShiftStart').value;
+  const shiftEnd = document.getElementById('ruleShiftEnd').value;
+  const graceMinutes = parseInt(document.getElementById('ruleGraceMinutes').value, 10);
+  const minActive = parseFloat(document.getElementById('ruleMinActiveHours').value);
+  const halfDay = parseFloat(document.getElementById('ruleHalfDayHours').value);
+  const starHours = parseFloat(document.getElementById('ruleStarActiveHours').value);
+
+  const attPayload = {
+    shift_start: shiftStart.length === 5 ? `${shiftStart}:00` : shiftStart,
+    shift_end: shiftEnd.length === 5 ? `${shiftEnd}:00` : shiftEnd,
+    grace_period_minutes: graceMinutes,
+    minimum_active_hours_full_day: minActive,
+    half_day_hours: halfDay,
+  };
+
+  try {
+    const resAtt = await fetch(`${API_BASE}/rules/${state.activeAttendanceRuleId}`, {
+      method: 'PUT',
+      headers: authHeaders(),
+      body: JSON.stringify({ config_payload: attPayload })
+    });
+
+    if (state.activeStarRuleId) {
+      await fetch(`${API_BASE}/rules/${state.activeStarRuleId}`, {
+        method: 'PUT',
+        headers: authHeaders(),
+        body: JSON.stringify({
+          config_payload: { min_active_seconds_for_star: Math.round(starHours * 3600) }
+        })
+      });
+    }
+
+    if (resAtt.ok) {
+      const fb = document.getElementById('rulesSaveFeedback');
+      if (fb) {
+        fb.style.display = 'inline';
+        setTimeout(() => { fb.style.display = 'none'; }, 3500);
+      }
+      await loadRulesAndStars();
+    } else {
+      alert('Failed to save rules. Please ensure you are logged in as Admin or Manager.');
+    }
+  } catch (err) {
+    console.error('Failed to save rules:', err);
+    alert('Network error saving rules.');
   }
 }
 

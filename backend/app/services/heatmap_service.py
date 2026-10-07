@@ -1,8 +1,16 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.activity import MouseHeatmap
 from app.schemas.activity import HeatmapBatchItem, MouseHeatmapOut
+
+
+def _to_naive_utc(dt: datetime | None) -> datetime | None:
+    if dt is None:
+        return None
+    if getattr(dt, "tzinfo", None) is not None:
+        return dt.astimezone(timezone.utc).replace(tzinfo=None)
+    return dt
 
 
 class HeatmapService:
@@ -36,11 +44,17 @@ class HeatmapService:
         grid_cols: int = 20,
         grid_rows: int = 12,
     ) -> MouseHeatmapOut:
+        st = _to_naive_utc(start_time)
+        et = _to_naive_utc(end_time)
+
         stmt = select(MouseHeatmap).where(
             MouseHeatmap.employee_id == employee_id,
-            MouseHeatmap.window_start >= start_time,
-            MouseHeatmap.window_end <= end_time,
         )
+        if st is not None:
+            stmt = stmt.where(MouseHeatmap.window_end >= st)
+        if et is not None:
+            stmt = stmt.where(MouseHeatmap.window_start <= et)
+
         result = await db.execute(stmt)
         heatmaps = result.scalars().all()
 

@@ -216,28 +216,42 @@ async def seed():
                     act_log = ActivityLog(
                         employee_id=emp.id,
                         device_id=dev.id,
-                        start_time=now - timedelta(minutes=45),
+                        start_time=now - timedelta(hours=3),
                         end_time=now,
-                        key_press_count=450 + (code.__hash__() % 300),
-                        mouse_click_count=85 + (code.__hash__() % 60),
-                        mouse_move_count=2100 + (code.__hash__() % 800),
-                        active_seconds=2400,
-                        idle_seconds=300,
+                        key_press_count=1850 + (abs(hash(code)) % 800),
+                        mouse_click_count=420 + (abs(hash(code)) % 250),
+                        mouse_move_count=8200 + (abs(hash(code)) % 3000),
+                        active_seconds=active_sec,
+                        idle_seconds=idle_sec,
                     )
                     db.add(act_log)
 
-                # Heatmap
+                # Realistic 20x12 Heatmap Matrix
                 hm = (await db.execute(select(MouseHeatmap).where(MouseHeatmap.employee_id == emp.id))).scalars().first()
                 if not hm:
-                    heatmap_matrix = {
-                        "1,2": 18, "2,2": 32, "2,3": 41, "3,5": 22,
-                        "5,8": 55, "6,8": 62, "6,9": 38, "4,10": 26,
-                        "7,14": 49, "8,15": 71, "9,15": 30, "0,0": 11,
-                    }
+                    heatmap_matrix = {}
+                    # Top navigation bar & tabs (rows 0-1)
+                    for c in range(1, 19):
+                        heatmap_matrix[f"0,{c}"] = 25 + (c * 7 + abs(hash(code))) % 45
+                        heatmap_matrix[f"1,{c}"] = 35 + (c * 9 + abs(hash(code))) % 60
+                    # Left sidebar / tool palette (rows 2-9, cols 1-3)
+                    for r in range(2, 10):
+                        for c in range(1, 4):
+                            heatmap_matrix[f"{r},{c}"] = 40 + (r * 11 + c * 5 + abs(hash(code))) % 75
+                    # Central active workspace / editor (rows 3-8, cols 5-15)
+                    for r in range(3, 9):
+                        for c in range(5, 16):
+                            weight = 60 + ((r - 5)**2 + (c - 10)**2) * 4
+                            count = max(15, 140 - weight + (abs(hash(code + str(r) + str(c))) % 40))
+                            heatmap_matrix[f"{r},{c}"] = count
+                    # Bottom taskbar & status strip (rows 10-11, cols 0-19)
+                    for c in [0, 1, 2, 8, 9, 10, 17, 18, 19]:
+                        heatmap_matrix[f"11,{c}"] = 30 + (c * 8 + abs(hash(code))) % 55
+
                     hm_rec = MouseHeatmap(
                         employee_id=emp.id,
                         device_id=dev.id,
-                        window_start=now - timedelta(minutes=45),
+                        window_start=now - timedelta(hours=4),
                         window_end=now,
                         screen_width=1920,
                         screen_height=1080,
@@ -247,29 +261,41 @@ async def seed():
                     )
                     db.add(hm_rec)
 
-                # Screenshot
-                ss = (await db.execute(select(Screenshot).where(Screenshot.employee_id == emp.id))).scalars().first()
-                if not ss:
-                    img_bytes = create_mock_desktop_image(
-                        title=f"{name} — {dept_code} Workstation",
-                        subtitle=f"Application session on {dev.hostname}",
-                        color_scheme="green" if status_enum == AttendanceStatusEnum.PRESENT else "blue"
-                    )
-                    await screenshot_service.save_screenshot(
-                        db=db,
-                        employee_id=emp.id,
-                        device_id=dev.id,
-                        file_bytes=img_bytes,
-                        captured_at=now - timedelta(minutes=15),
-                        format="webp",
-                        width=1280,
-                        height=720,
-                    )
+                # Screenshots throughout the day
+                existing_ss_count = (await db.execute(select(Screenshot).where(Screenshot.employee_id == emp.id))).scalars().all()
+                if len(existing_ss_count) < 2:
+                    shots_config = [
+                        ("09:15 AM — Morning Standup & Task Brief", "blue", timedelta(hours=3, minutes=30)),
+                        ("11:30 AM — Active Feature Implementation", "blue", timedelta(hours=2)),
+                        ("02:15 PM — Code Review & Architecture PR", "green", timedelta(minutes=45)),
+                        ("04:30 PM — Automated Test Suite & Deploy", "green", timedelta(minutes=10)),
+                    ]
+                    for title_sfx, col_scheme, time_ago in shots_config:
+                        img_bytes = create_mock_desktop_image(
+                            title=f"{name} — {title_sfx}",
+                            subtitle=f"Workstation {dev.hostname} ({dept_code})",
+                            color_scheme=col_scheme,
+                        )
+                        await screenshot_service.save_screenshot(
+                            db=db,
+                            employee_id=emp.id,
+                            device_id=dev.id,
+                            file_bytes=img_bytes,
+                            captured_at=now - time_ago,
+                            format="webp",
+                            width=1280,
+                            height=720,
+                        )
 
-                # Star award for on-time
+                # Star awards: Punctuality and Early Bird
                 if status_enum == AttendanceStatusEnum.PRESENT:
-                    star = (await db.execute(select(EmployeeStar).where(EmployeeStar.employee_id == emp.id, EmployeeStar.award_date == today_date))).scalars().first()
-                    if not star:
+                    # 1. Punctuality Star
+                    star1 = (await db.execute(select(EmployeeStar).where(
+                        EmployeeStar.employee_id == emp.id,
+                        EmployeeStar.award_date == today_date,
+                        EmployeeStar.reason == "On-Time Arrival (Punctuality)",
+                    ))).scalars().first()
+                    if not star1:
                         db.add(EmployeeStar(
                             id=str(uuid.uuid4()),
                             employee_id=emp.id,
@@ -279,6 +305,24 @@ async def seed():
                             criteria_snapshot={"status": "PRESENT", "first_activity": checkin_str},
                             awarded_at=now,
                         ))
+
+                    # 2. Early Bird Star (if arrived before 09:00:00)
+                    if checkin_str and checkin_str < "09:00:00":
+                        star_early = (await db.execute(select(EmployeeStar).where(
+                            EmployeeStar.employee_id == emp.id,
+                            EmployeeStar.award_date == today_date,
+                            EmployeeStar.reason == "Early Bird Star (Arrived Before Shift Time)",
+                        ))).scalars().first()
+                        if not star_early:
+                            db.add(EmployeeStar(
+                                id=str(uuid.uuid4()),
+                                employee_id=emp.id,
+                                award_date=today_date,
+                                star_count=1,
+                                reason="Early Bird Star (Arrived Before Shift Time)",
+                                criteria_snapshot={"first_activity": checkin_str, "shift_start": "09:00:00"},
+                                awarded_at=now,
+                            ))
 
         await db.commit()
         print("Successfully seeded 14 employees, 3 managers, 1 admin across 6 departments with live attendance, activity, heatmaps, and screenshots!")

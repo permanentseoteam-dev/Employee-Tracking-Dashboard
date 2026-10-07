@@ -9,6 +9,14 @@ from app.schemas.screenshot import PaginatedScreenshots, ScreenshotOut
 from app.services.storage import storage_service
 
 
+def _to_naive_utc(dt: datetime | None) -> datetime | None:
+    if dt is None:
+        return None
+    if getattr(dt, "tzinfo", None) is not None:
+        return dt.astimezone(timezone.utc).replace(tzinfo=None)
+    return dt
+
+
 class ScreenshotService:
     @staticmethod
     async def save_screenshot(
@@ -57,21 +65,24 @@ class ScreenshotService:
             Employee, Screenshot.employee_id == Employee.id, isouter=True
         )
 
+        st = _to_naive_utc(date_from)
+        et = _to_naive_utc(date_to)
+
         if employee_ids:
             stmt = stmt.where(Screenshot.employee_id.in_(employee_ids))
-        if date_from:
-            stmt = stmt.where(Screenshot.captured_at >= date_from)
-        if date_to:
-            stmt = stmt.where(Screenshot.captured_at <= date_to)
+        if st:
+            stmt = stmt.where(Screenshot.captured_at >= st)
+        if et:
+            stmt = stmt.where(Screenshot.captured_at <= et)
 
         # Count total
         count_stmt = select(func.count(Screenshot.id))
         if employee_ids:
             count_stmt = count_stmt.where(Screenshot.employee_id.in_(employee_ids))
-        if date_from:
-            count_stmt = count_stmt.where(Screenshot.captured_at >= date_from)
-        if date_to:
-            count_stmt = count_stmt.where(Screenshot.captured_at <= date_to)
+        if st:
+            count_stmt = count_stmt.where(Screenshot.captured_at >= st)
+        if et:
+            count_stmt = count_stmt.where(Screenshot.captured_at <= et)
 
         total_res = await db.execute(count_stmt)
         total = total_res.scalar() or 0

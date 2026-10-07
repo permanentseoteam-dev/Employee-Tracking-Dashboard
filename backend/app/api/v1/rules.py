@@ -52,7 +52,7 @@ async def update_rule(
     rule_id: str,
     payload: SettingRuleUpdate,
     db: AsyncSession = Depends(get_db),
-    _admin: Employee = Depends(require_role([RoleEnum.ADMIN])),
+    _user: Employee = Depends(require_role([RoleEnum.ADMIN, RoleEnum.MANAGER])),
 ):
     stmt = select(SettingRule).where(SettingRule.id == rule_id)
     rule = (await db.execute(stmt)).scalars().first()

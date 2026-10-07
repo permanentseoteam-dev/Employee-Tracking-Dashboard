@@ -37,7 +37,20 @@ function applyRolePermissions() {
     }
   }
 
-  // 2. Rules & Stars Workspaces: Admin Hub vs Personal Performance Scorecard
+  // 2. Screenshot Gallery Tab: Visible for ADMIN and MANAGER, HIDDEN for EMPLOYEE
+  const ssTabBtn = document.getElementById('btn-tab-screenshots');
+  if (ssTabBtn) {
+    if (role === 'EMPLOYEE') {
+      ssTabBtn.style.display = 'none';
+      if (state.activeTab === 'tab-screenshots') {
+        state.activeTab = 'tab-overview';
+      }
+    } else {
+      ssTabBtn.style.display = 'inline-flex';
+    }
+  }
+
+  // 3. Rules & Stars Workspaces: Admin Hub vs Personal Performance Scorecard
   const adminWs = document.getElementById('rulesAdminWorkspace');
   const personalWs = document.getElementById('rulesPersonalWorkspace');
   if (role === 'ADMIN') {
@@ -55,6 +68,9 @@ window.switchTab = function switchTab(tabId) {
   if (!tabId) return;
   const role = (state.currentUser?.role || localStorage.getItem('wp-role') || 'admin').toUpperCase();
   if (tabId === 'tab-finance' && role !== 'ADMIN') {
+    tabId = 'tab-overview';
+  }
+  if (tabId === 'tab-screenshots' && role === 'EMPLOYEE') {
     tabId = 'tab-overview';
   }
   state.activeTab = tabId;
@@ -89,8 +105,10 @@ window.switchTab = function switchTab(tabId) {
     else if (tabId === 'tab-attendance') loadAttendanceRollCall();
     else if (tabId === 'tab-activity') loadActivityTab();
     else if (tabId === 'tab-screenshots') {
-      loadScreenshotsGallery();
-      initScreenshotTimer();
+      if (role !== 'EMPLOYEE') {
+        loadScreenshotsGallery();
+        initScreenshotTimer();
+      }
     }
     else if (tabId === 'tab-rules') loadRulesAndStars();
     else if (tabId === 'tab-finance') {

@@ -20,6 +20,7 @@ async def list_screenshots(
     page: int = Query(1, ge=1),
     limit: int = Query(24, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
+    _user: Employee = Depends(require_role([RoleEnum.ADMIN, RoleEnum.MANAGER])),
     scoped_ids: list[str] | None = Depends(get_scoped_employee_ids),
 ):
     target_emp_ids = None

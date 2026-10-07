@@ -71,6 +71,10 @@
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
       Attendance Roll Call
     </button>
+    <button type="button" class="tab-btn" data-tab="tab-sheets" id="btn-tab-sheets" onclick="switchTab('tab-sheets')" role="tab">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" x2="8" y1="13" y2="13"/><line x1="16" x2="8" y1="17" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+      <span id="sheetTabNavLabel">Task Sheet</span>
+    </button>
     <button type="button" class="tab-btn" data-tab="tab-activity" id="btn-tab-activity" onclick="switchTab('tab-activity')" role="tab">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
       Activity & Mouse Heatmap
@@ -241,6 +245,321 @@
               <tr><td colspan="8" style="text-align:center; color: var(--text-dim);">Loading records...</td></tr>
             </tbody>
           </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- Tab: Daily Task Sheets & Work Logs (Role-tailored: Employee Task Submission vs Manager/Admin Cards Grid & Review) -->
+    <section class="tab-pane" id="tab-sheets">
+      <!-- Top Title Panel -->
+      <div class="panel-card" style="margin-bottom: 20px;">
+        <div class="panel-header" style="flex-wrap: wrap; gap: 12px;">
+          <div>
+            <div class="panel-title" style="display: flex; align-items: center; gap: 10px;">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" x2="8" y1="13" y2="13"/><line x1="16" x2="8" y1="17" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+              <span id="sheetSectionHeaderTitle">Daily Task Sheets & Employee Work Logs</span>
+            </div>
+            <p style="font-size: 0.78rem; color: var(--text-muted); margin: 4px 0 0 0;" id="sheetSectionSubtitle">
+              Employee daily task logging, progress updates, hours tracking, and supervisor reviews.
+            </p>
+          </div>
+          <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+            <span id="sheetsRoleContextBadge" class="role-pill admin">ADMIN VIEW</span>
+            <span id="sheetsActiveDateLabel" class="badge" style="background: rgba(99, 102, 241, 0.12); color: var(--accent-primary); border: 1px solid rgba(99, 102, 241, 0.25);">Today</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 1. MANAGER & ADMIN WORKSPACE (Cards / Grid View for Multiple Employee Sheets) -->
+      <div id="sheetsManagerWorkspace" style="display: none;">
+        <!-- KPI Metrics Strip for Task Sheets -->
+        <div class="stat-grid" style="margin-bottom: 20px;">
+          <div class="stat-card">
+            <div class="stat-label">Daily Sheets</div>
+            <div class="stat-value" id="kpiSheetTotal">-</div>
+            <div class="stat-sub">Active staff sheets</div>
+          </div>
+          <div class="stat-card emerald">
+            <div class="stat-label">Submitted Sheets</div>
+            <div class="stat-value" id="kpiSheetSubmitted">-</div>
+            <div class="stat-sub">Ready for review</div>
+          </div>
+          <div class="stat-card violet">
+            <div class="stat-label">Tasks Completed</div>
+            <div class="stat-value" id="kpiSheetCompletedTasks">-</div>
+            <div class="stat-sub">Resolved items</div>
+          </div>
+          <div class="stat-card cyan">
+            <div class="stat-label">Total Logged Hours</div>
+            <div class="stat-value" id="kpiSheetTotalHours">-</div>
+            <div class="stat-sub">Productive work time</div>
+          </div>
+          <div class="stat-card amber">
+            <div class="stat-label">Pending Reviews</div>
+            <div class="stat-value" id="kpiSheetPendingReviews">-</div>
+            <div class="stat-sub">Awaiting feedback</div>
+          </div>
+        </div>
+
+        <!-- Filter & View Controls Toolbar -->
+        <div class="panel-card" style="margin-bottom: 20px; padding: 16px 20px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 14px;">
+            <!-- Left Filter Dropdowns -->
+            <div style="display: flex; align-items: center; flex-wrap: wrap; gap: 10px; flex: 1;">
+              <!-- Date Selector -->
+              <div style="display: flex; align-items: center; gap: 6px;">
+                <label style="font-size: 0.78rem; color: var(--text-muted); font-weight: 600;">Date:</label>
+                <select id="sheetDatePresetFilter" class="input-control" style="padding: 6px 12px; font-size: 0.78rem; width: auto;">
+                  <option value="today">Today</option>
+                  <option value="yesterday">Yesterday</option>
+                  <option value="all">All Dates</option>
+                </select>
+              </div>
+
+              <!-- Department Filter -->
+              <div style="display: flex; align-items: center; gap: 6px;">
+                <label style="font-size: 0.78rem; color: var(--text-muted); font-weight: 600;">Dept:</label>
+                <select id="sheetDeptFilter" class="input-control" style="padding: 6px 12px; font-size: 0.78rem; width: auto;">
+                  <option value="">All Departments</option>
+                </select>
+              </div>
+
+              <!-- Employee Filter -->
+              <div style="display: flex; align-items: center; gap: 6px;">
+                <label style="font-size: 0.78rem; color: var(--text-muted); font-weight: 600;">Employee:</label>
+                <select id="sheetEmpFilter" class="input-control" style="padding: 6px 12px; font-size: 0.78rem; width: auto;">
+                  <option value="">All Employees</option>
+                </select>
+              </div>
+
+              <!-- Status Filter -->
+              <div style="display: flex; align-items: center; gap: 6px;">
+                <label style="font-size: 0.78rem; color: var(--text-muted); font-weight: 600;">Status:</label>
+                <select id="sheetStatusFilter" class="input-control" style="padding: 6px 12px; font-size: 0.78rem; width: auto;">
+                  <option value="ALL">All Statuses</option>
+                  <option value="SUBMITTED">Submitted</option>
+                  <option value="APPROVED">Approved / Reviewed</option>
+                  <option value="DRAFT">In Draft</option>
+                </select>
+              </div>
+
+              <!-- Search input -->
+              <div style="position: relative; min-width: 220px; flex: 1;">
+                <input type="text" id="sheetSearchInput" class="input-control" placeholder="Search employee, tasks..." style="padding: 6px 12px 6px 32px; font-size: 0.78rem; width: 100%;">
+                <span style="position: absolute; left: 10px; top: 50%; transform: translateY(-50%); font-size: 0.8rem; color: var(--text-dim);">🔍</span>
+              </div>
+            </div>
+
+            <!-- Right View Switcher & Actions -->
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <div class="view-toggle-group" style="display: flex; background: rgba(0,0,0,0.25); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: 2px;">
+                <button id="sheetsViewGridBtn" class="btn btn-sm active" style="padding: 4px 10px; font-size: 0.75rem; display: flex; align-items: center; gap: 5px; background: var(--accent-primary); color: #fff; border: none; border-radius: 6px;" title="Cards & Grid View">
+                  <span>🎴</span>
+                  <span>Cards Grid</span>
+                </button>
+                <button id="sheetsViewTableBtn" class="btn btn-sm btn-secondary" style="padding: 4px 10px; font-size: 0.75rem; display: flex; align-items: center; gap: 5px; border: none; border-radius: 6px;" title="Detailed Table View">
+                  <span>📋</span>
+                  <span>Table</span>
+                </button>
+              </div>
+
+              <button id="refreshSheetsBtn" class="btn btn-secondary btn-sm" style="padding: 6px 12px; font-size: 0.78rem; display: flex; align-items: center; gap: 4px;" title="Refresh Task Sheets">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+                <span>Refresh</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Multiple Sheets CARDS GRID Container -->
+        <div id="sheetsCardsGrid" class="sheets-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap: 20px; margin-bottom: 24px;">
+          <!-- Dynamically populated employee sheet cards -->
+          <div style="grid-column: 1 / -1; text-align: center; color: var(--text-dim); padding: 40px;">
+            Loading employee task sheets...
+          </div>
+        </div>
+
+        <!-- Multiple Sheets TABLE View Container (Toggled via Switcher) -->
+        <div id="sheetsTableContainer" class="panel-card" style="display: none; margin-bottom: 24px;">
+          <div style="overflow-x: auto;">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Employee</th>
+                  <th>Date</th>
+                  <th>Department</th>
+                  <th>Tasks Summary</th>
+                  <th>Progress</th>
+                  <th>Logged Hours</th>
+                  <th>Status</th>
+                  <th>Manager Review</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="sheetsTableTbody">
+                <tr><td colspan="9" style="text-align: center; color: var(--text-dim); padding: 30px;">Loading records...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- 2. EMPLOYEE WORKSPACE (Personal Daily Task Sheet Creation, Editing & Submission) -->
+      <div id="sheetsEmployeeWorkspace" style="display: none;">
+        <!-- Employee Sheet Active Status & Header Card -->
+        <div class="panel-card" style="margin-bottom: 20px; background: linear-gradient(135deg, rgba(22, 28, 45, 0.9), rgba(15, 23, 42, 0.95)); border: 1px solid var(--border-accent);">
+          <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 14px;">
+            <div>
+              <div style="display: flex; align-items: center; gap: 10px;">
+                <h3 style="font-size: 1.15rem; font-weight: 700; color: #fff; margin: 0;">Today's Daily Task Sheet</h3>
+                <span id="empSheetStatusBadge" class="sheet-status-pill draft">DRAFT</span>
+              </div>
+              <p style="font-size: 0.8rem; color: var(--text-muted); margin: 4px 0 0 0;">
+                Log your daily accomplishments, progress, and working hours. Submit when completed for manager review.
+              </p>
+            </div>
+
+            <!-- Header Quick Stats & Actions -->
+            <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+              <div style="display: flex; align-items: center; gap: 8px; background: rgba(0,0,0,0.25); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: 6px 12px;">
+                <span style="font-size: 0.75rem; color: var(--text-dim);">Logged Today:</span>
+                <strong id="empSheetTotalHoursBadge" style="color: var(--accent-cyan); font-size: 0.9rem;">0.0 hrs</strong>
+              </div>
+              <div style="display: flex; align-items: center; gap: 8px; background: rgba(0,0,0,0.25); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: 6px 12px;">
+                <span style="font-size: 0.75rem; color: var(--text-dim);">Tasks Progress:</span>
+                <strong id="empSheetTasksRatioBadge" style="color: var(--accent-emerald); font-size: 0.9rem;">0 / 0</strong>
+              </div>
+              <button id="empOpenAddTaskBtn" class="btn btn-primary btn-sm" style="display: flex; align-items: center; gap: 6px; padding: 7px 14px;">
+                <span>+</span>
+                <span>Add Task</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Manager Review Feedback Banner (Displayed if manager reviewed this sheet) -->
+        <div id="empManagerFeedbackCard" class="panel-card" style="display: none; margin-bottom: 20px; background: linear-gradient(135deg, rgba(139, 92, 246, 0.12), rgba(6, 182, 212, 0.08)); border: 1px solid rgba(139, 92, 246, 0.35);">
+          <div style="display: flex; align-items: flex-start; gap: 12px;">
+            <div style="width: 36px; height: 36px; border-radius: 50%; background: rgba(139, 92, 246, 0.2); display: flex; align-items: center; justify-content: center; font-size: 1.2rem; flex-shrink: 0;">
+              ⭐
+            </div>
+            <div style="flex: 1;">
+              <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+                <div style="font-weight: 700; color: #fff; font-size: 0.9rem;" id="empFeedbackReviewerName">Manager Review Feedback</div>
+                <span style="font-size: 0.75rem; color: var(--text-dim);" id="empFeedbackDate">Just now</span>
+              </div>
+              <p style="margin: 6px 0 0 0; font-size: 0.84rem; color: var(--text-main); line-height: 1.5; font-style: italic;" id="empFeedbackContentText">
+                "Great work on resolving the core platform issues today!"
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Quick Inline Task Creation Card -->
+        <div class="panel-card" style="margin-bottom: 20px;">
+          <div class="panel-header" style="margin-bottom: 12px;">
+            <div class="panel-title" style="font-size: 0.95rem;">
+              <span>📝</span>
+              <span>Quick Task Entry</span>
+            </div>
+          </div>
+          <form id="quickTaskAddForm" style="display: grid; grid-template-columns: 2fr 1.2fr 1fr 1fr auto; gap: 12px; align-items: flex-end;">
+            <div>
+              <label style="font-size: 0.75rem; color: var(--text-muted); font-weight: 600; display: block; margin-bottom: 4px;">Task Title *</label>
+              <input type="text" id="quickTaskTitle" class="input-control" placeholder="e.g. Implement user auth flow..." required style="width: 100%;">
+            </div>
+            <div>
+              <label style="font-size: 0.75rem; color: var(--text-muted); font-weight: 600; display: block; margin-bottom: 4px;">Category</label>
+              <select id="quickTaskCategory" class="input-control" style="width: 100%;">
+                <option value="Frontend Development">Frontend Development</option>
+                <option value="Backend API">Backend API</option>
+                <option value="Core Platform">Core Platform</option>
+                <option value="UI/UX Design">UI/UX Design</option>
+                <option value="Testing & QA">Testing & QA</option>
+                <option value="DevOps & Cloud">DevOps & Cloud</option>
+                <option value="Security & Auth">Security & Auth</option>
+                <option value="Client Meeting">Client Meeting</option>
+                <option value="Documentation">Documentation</option>
+                <option value="General">General</option>
+              </select>
+            </div>
+            <div>
+              <label style="font-size: 0.75rem; color: var(--text-muted); font-weight: 600; display: block; margin-bottom: 4px;">Priority</label>
+              <select id="quickTaskPriority" class="input-control" style="width: 100%;">
+                <option value="MEDIUM">Medium</option>
+                <option value="HIGH">High</option>
+                <option value="URGENT">Urgent</option>
+                <option value="LOW">Low</option>
+              </select>
+            </div>
+            <div>
+              <label style="font-size: 0.75rem; color: var(--text-muted); font-weight: 600; display: block; margin-bottom: 4px;">Hours</label>
+              <input type="number" id="quickTaskHours" class="input-control" min="0.1" max="24" step="0.25" placeholder="1.5" value="1.0" required style="width: 100%;">
+            </div>
+            <div>
+              <button type="submit" class="btn btn-primary" style="padding: 8px 18px; font-weight: 600; white-space: nowrap;">+ Add Task</button>
+            </div>
+          </form>
+        </div>
+
+        <!-- Today's Task Items Interactive List -->
+        <div class="panel-card" style="margin-bottom: 20px;">
+          <div class="panel-header">
+            <div class="panel-title" style="font-size: 0.95rem;">
+              <span>📋</span>
+              <span>Today's Task Items & Deliverables</span>
+            </div>
+            <span id="empTasksCountLabel" style="font-size: 0.78rem; color: var(--text-muted);">0 Tasks Listed</span>
+          </div>
+
+          <div id="empTasksListContainer" style="display: flex; flex-direction: column; gap: 10px;">
+            <div style="text-align: center; color: var(--text-dim); padding: 30px;">
+              No tasks added yet for today. Use the form above to add your first task!
+            </div>
+          </div>
+        </div>
+
+        <!-- Daily Accomplishments Summary & Submission Block -->
+        <div class="panel-card" style="margin-bottom: 24px;">
+          <div class="panel-header" style="margin-bottom: 14px;">
+            <div class="panel-title" style="font-size: 0.95rem;">
+              <span>🚀</span>
+              <span>Daily Summary, Blockers & Submission</span>
+            </div>
+          </div>
+
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;">
+            <div>
+              <label style="font-size: 0.78rem; color: var(--text-muted); font-weight: 600; display: block; margin-bottom: 6px;">Daily Accomplishments & Summary:</label>
+              <textarea id="empSheetSummaryNotes" class="input-control" rows="3" placeholder="Briefly describe what you completed and achieved today..." style="width: 100%; resize: vertical;"></textarea>
+            </div>
+            <div>
+              <label style="font-size: 0.78rem; color: var(--text-muted); font-weight: 600; display: block; margin-bottom: 6px;">Blockers or Assistance Needed (Optional):</label>
+              <textarea id="empSheetBlockersSummary" class="input-control" rows="3" placeholder="Note any blockers, missing assets, or questions for manager..." style="width: 100%; resize: vertical;"></textarea>
+            </div>
+          </div>
+
+          <div style="display: flex; justify-content: flex-end; align-items: center; gap: 12px; border-top: 1px solid var(--border-subtle); padding-top: 14px;">
+            <button id="empSaveDraftBtn" class="btn btn-secondary btn-sm" style="padding: 8px 16px;">💾 Save Draft</button>
+            <button id="empSubmitSheetBtn" class="btn btn-primary btn-sm" style="padding: 8px 20px; font-weight: 700; background: linear-gradient(135deg, var(--accent-primary), var(--accent-hover));">
+              🚀 Submit Daily Sheet for Review
+            </button>
+          </div>
+        </div>
+
+        <!-- My Past Sheets History Grid -->
+        <div class="panel-card">
+          <div class="panel-header">
+            <div class="panel-title" style="font-size: 0.95rem;">
+              <span>📅</span>
+              <span>My Past Daily Sheets History</span>
+            </div>
+          </div>
+          <div id="empPastSheetsGrid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px;">
+            <div style="text-align: center; color: var(--text-dim); padding: 20px; grid-column: 1 / -1;">
+              Loading your previous daily sheets...
+            </div>
+          </div>
         </div>
       </div>
     </section>
@@ -996,6 +1315,200 @@
           <span id="financeModalDeliveryStatus" class="badge present">Delivered & Notified</span>
         </div>
       </div>
+    </div>
+  </div>
+
+  <!-- Sheet Details Modal (Comprehensive View of Any Employee Daily Sheet) -->
+  <div class="modal-overlay" id="sheetDetailsModal">
+    <div class="modal-content" style="max-width: 720px; max-height: 90vh; display: flex; flex-direction: column;">
+      <div class="modal-header">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <div id="modalSheetAvatar" style="width: 34px; height: 34px; border-radius: 50%; background: linear-gradient(135deg, var(--accent-primary), var(--accent-cyan)); color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.85rem;">
+            AR
+          </div>
+          <div>
+            <h4 id="modalSheetEmpName" style="color: #fff; font-size: 1.05rem; margin: 0;">Alex Rivera's Daily Sheet</h4>
+            <div style="font-size: 0.75rem; color: var(--text-dim); margin-top: 2px;">
+              <span id="modalSheetEmpMeta">EMP001 &bull; Core Platform Engineering</span> &bull; <strong id="modalSheetDate" style="color: var(--accent-cyan);">2026-10-07</strong>
+            </div>
+          </div>
+        </div>
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <span id="modalSheetStatusBadge" class="sheet-status-pill submitted">SUBMITTED</span>
+          <button id="closeSheetDetailsModalBtn" class="btn btn-secondary btn-sm" style="padding: 4px 10px;">&times;</button>
+        </div>
+      </div>
+
+      <div class="modal-body" style="padding: 20px; overflow-y: auto; flex: 1;">
+        <!-- Metrics bar -->
+        <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 16px;">
+          <div style="background: rgba(255,255,255,0.03); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: 10px 14px; text-align: center;">
+            <div style="font-size: 0.72rem; color: var(--text-dim);">Logged Hours</div>
+            <div id="modalSheetHours" style="font-size: 1.1rem; font-weight: 700; color: var(--accent-cyan);">7.5 hrs</div>
+          </div>
+          <div style="background: rgba(255,255,255,0.03); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: 10px 14px; text-align: center;">
+            <div style="font-size: 0.72rem; color: var(--text-dim);">Completed Tasks</div>
+            <div id="modalSheetTasksCount" style="font-size: 1.1rem; font-weight: 700; color: var(--accent-emerald);">3 / 4 Done</div>
+          </div>
+          <div style="background: rgba(255,255,255,0.03); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: 10px 14px; text-align: center;">
+            <div style="font-size: 0.72rem; color: var(--text-dim);">Progress Rate</div>
+            <div id="modalSheetProgress" style="font-size: 1.1rem; font-weight: 700; color: var(--accent-primary);">75%</div>
+          </div>
+        </div>
+
+        <!-- Progress bar -->
+        <div style="width: 100%; height: 6px; background: rgba(255,255,255,0.06); border-radius: 3px; overflow: hidden; margin-bottom: 20px;">
+          <div id="modalSheetProgressBar" style="height: 100%; background: linear-gradient(90deg, var(--accent-primary), var(--accent-cyan)); width: 75%; transition: width 0.3s ease;"></div>
+        </div>
+
+        <!-- Tasks list -->
+        <div style="margin-bottom: 20px;">
+          <div style="font-size: 0.8rem; font-weight: 700; color: var(--text-main); margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center;">
+            <span>Tasks & Work Items</span>
+            <span id="modalSheetTaskItemsCount" style="font-size: 0.75rem; color: var(--text-dim);">4 items</span>
+          </div>
+          <div id="modalSheetTasksList" style="display: flex; flex-direction: column; gap: 8px;">
+            <!-- Populated via JS -->
+          </div>
+        </div>
+
+        <!-- Employee Summary & Blockers -->
+        <div style="display: grid; grid-template-columns: 1fr; gap: 12px; margin-bottom: 20px;">
+          <div style="background: rgba(255,255,255,0.02); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: 12px 14px;">
+            <div style="font-size: 0.72rem; color: var(--text-dim); margin-bottom: 4px; font-weight: 600;">Employee Daily Accomplishments Summary:</div>
+            <div id="modalSheetSummaryText" style="font-size: 0.84rem; color: var(--text-main); line-height: 1.5; white-space: pre-wrap;">-</div>
+          </div>
+          <div id="modalSheetBlockersContainer" style="background: rgba(244, 63, 94, 0.05); border: 1px solid rgba(244, 63, 94, 0.2); border-radius: var(--radius-sm); padding: 12px 14px; display: none;">
+            <div style="font-size: 0.72rem; color: var(--accent-rose); margin-bottom: 4px; font-weight: 600;">Reported Blockers / Needs Assistance:</div>
+            <div id="modalSheetBlockersText" style="font-size: 0.84rem; color: var(--text-main); line-height: 1.5; white-space: pre-wrap;">-</div>
+          </div>
+        </div>
+
+        <!-- Manager Feedback Section -->
+        <div id="modalSheetFeedbackContainer" style="background: rgba(139, 92, 246, 0.08); border: 1px solid rgba(139, 92, 246, 0.3); border-radius: var(--radius-sm); padding: 14px; margin-bottom: 10px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+            <div style="font-size: 0.75rem; font-weight: 700; color: #fff;">Supervisor Review & Feedback</div>
+            <span id="modalSheetFeedbackMeta" style="font-size: 0.72rem; color: var(--text-dim);">Sarah Connor</span>
+          </div>
+          <p id="modalSheetFeedbackText" style="margin: 0; font-size: 0.84rem; color: var(--text-main); font-style: italic; line-height: 1.5;">
+            "Great work on completing the scheduled tickets on time."
+          </p>
+        </div>
+      </div>
+
+      <div class="modal-footer" style="padding: 14px 20px; border-top: 1px solid var(--border-subtle); display: flex; justify-content: space-between; align-items: center;">
+        <button id="modalSheetCloseFooterBtn" class="btn btn-secondary btn-sm">Close</button>
+        <div style="display: flex; gap: 8px;">
+          <button id="modalSheetReviewActionBtn" class="btn btn-primary btn-sm" style="display: none; background: linear-gradient(135deg, var(--accent-violet), var(--accent-primary));">
+            ⭐ Approve / Add Feedback
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Manager Review & Approval Modal -->
+  <div class="modal-overlay" id="sheetReviewModal">
+    <div class="modal-content" style="max-width: 520px;">
+      <div class="modal-header">
+        <h4 id="sheetReviewModalTitle" style="color: #fff; font-size: 1.05rem;">Review Employee Task Sheet</h4>
+        <button id="closeSheetReviewModalBtn" class="btn btn-secondary btn-sm" style="padding: 4px 10px;">&times;</button>
+      </div>
+      <form id="sheetReviewForm">
+        <input type="hidden" id="reviewSheetId" value="">
+        <div class="modal-body" style="padding: 20px;">
+          <div style="margin-bottom: 14px;">
+            <label style="font-size: 0.78rem; color: var(--text-muted); font-weight: 600; display: block; margin-bottom: 6px;">Approval Status:</label>
+            <select id="reviewSheetStatusSelect" class="input-control" style="width: 100%;">
+              <option value="APPROVED">⭐ Approved (Marks sheet approved & commended)</option>
+              <option value="REVIEWED">👁️ Reviewed (Acknowledged with feedback)</option>
+              <option value="SUBMITTED">⏳ Needs Revision (Keeps submitted state)</option>
+            </select>
+          </div>
+          <div>
+            <label style="font-size: 0.78rem; color: var(--text-muted); font-weight: 600; display: block; margin-bottom: 6px;">Supervisor Feedback / Remarks *:</label>
+            <textarea id="reviewSheetFeedbackText" class="input-control" rows="4" placeholder="Write feedback, praise, or next steps for the employee..." required style="width: 100%; resize: vertical;"></textarea>
+          </div>
+        </div>
+        <div class="modal-footer" style="padding: 14px 20px; border-top: 1px solid var(--border-subtle); display: flex; justify-content: flex-end; gap: 10px;">
+          <button type="button" id="cancelSheetReviewBtn" class="btn btn-secondary btn-sm">Cancel</button>
+          <button type="submit" class="btn btn-primary btn-sm" style="background: linear-gradient(135deg, var(--accent-emerald), #059669); font-weight: 700;">
+            ✓ Submit Review
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Task Item Edit Modal -->
+  <div class="modal-overlay" id="taskItemEditModal">
+    <div class="modal-content" style="max-width: 540px;">
+      <div class="modal-header">
+        <h4 style="color: #fff; font-size: 1.05rem;">Edit Task Item</h4>
+        <button id="closeTaskEditModalBtn" class="btn btn-secondary btn-sm" style="padding: 4px 10px;">&times;</button>
+      </div>
+      <form id="taskItemEditForm">
+        <input type="hidden" id="editTaskId" value="">
+        <div class="modal-body" style="padding: 20px; display: flex; flex-direction: column; gap: 14px;">
+          <div>
+            <label style="font-size: 0.78rem; color: var(--text-muted); font-weight: 600; display: block; margin-bottom: 4px;">Task Title *</label>
+            <input type="text" id="editTaskTitle" class="input-control" required style="width: 100%;">
+          </div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+            <div>
+              <label style="font-size: 0.78rem; color: var(--text-muted); font-weight: 600; display: block; margin-bottom: 4px;">Category</label>
+              <select id="editTaskCategory" class="input-control" style="width: 100%;">
+                <option value="Frontend Development">Frontend Development</option>
+                <option value="Backend API">Backend API</option>
+                <option value="Core Platform">Core Platform</option>
+                <option value="UI/UX Design">UI/UX Design</option>
+                <option value="Testing & QA">Testing & QA</option>
+                <option value="DevOps & Cloud">DevOps & Cloud</option>
+                <option value="Security & Auth">Security & Auth</option>
+                <option value="Client Meeting">Client Meeting</option>
+                <option value="Documentation">Documentation</option>
+                <option value="General">General</option>
+              </select>
+            </div>
+            <div>
+              <label style="font-size: 0.78rem; color: var(--text-muted); font-weight: 600; display: block; margin-bottom: 4px;">Priority</label>
+              <select id="editTaskPriority" class="input-control" style="width: 100%;">
+                <option value="LOW">Low</option>
+                <option value="MEDIUM">Medium</option>
+                <option value="HIGH">High</option>
+                <option value="URGENT">Urgent</option>
+              </select>
+            </div>
+          </div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+            <div>
+              <label style="font-size: 0.78rem; color: var(--text-muted); font-weight: 600; display: block; margin-bottom: 4px;">Status</label>
+              <select id="editTaskStatus" class="input-control" style="width: 100%;">
+                <option value="TODO">Todo</option>
+                <option value="IN_PROGRESS">In Progress</option>
+                <option value="COMPLETED">Completed</option>
+                <option value="BLOCKED">Blocked</option>
+              </select>
+            </div>
+            <div>
+              <label style="font-size: 0.78rem; color: var(--text-muted); font-weight: 600; display: block; margin-bottom: 4px;">Hours Spent</label>
+              <input type="number" id="editTaskHours" class="input-control" min="0" max="24" step="0.25" required style="width: 100%;">
+            </div>
+          </div>
+          <div>
+            <label style="font-size: 0.78rem; color: var(--text-muted); font-weight: 600; display: block; margin-bottom: 4px;">Description / Details (Optional)</label>
+            <textarea id="editTaskDescription" class="input-control" rows="2" style="width: 100%; resize: vertical;"></textarea>
+          </div>
+          <div>
+            <label style="font-size: 0.78rem; color: var(--text-muted); font-weight: 600; display: block; margin-bottom: 4px;">Blockers / Notes (Optional)</label>
+            <input type="text" id="editTaskBlockers" class="input-control" placeholder="e.g. Waiting on API spec..." style="width: 100%;">
+          </div>
+        </div>
+        <div class="modal-footer" style="padding: 14px 20px; border-top: 1px solid var(--border-subtle); display: flex; justify-content: flex-end; gap: 10px;">
+          <button type="button" id="cancelTaskEditBtn" class="btn btn-secondary btn-sm">Cancel</button>
+          <button type="submit" class="btn btn-primary btn-sm">Save Changes</button>
+        </div>
+      </form>
     </div>
   </div>
 

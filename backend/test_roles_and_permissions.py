@@ -36,7 +36,9 @@ def test_role_permissions():
     
     # Admin can inspect employee performance scorecard
     alex_perf = get_with_token("/rules/performance?employee_id=" + [e for e in get_with_token("/employees", admin_token) if e["name"] == "Alex Rivera"][0]["id"], admin_token)
-    print(f"Admin Inspector for Alex: Stars={alex_perf['total_stars']}, Violations={alex_perf['total_violations_count']}, Punctuality={alex_perf['punctuality_rate_pct']}%")
+    # Admin can access screenshots
+    admin_ss = get_with_token("/screenshots?limit=5", admin_token)
+    print(f"Admin Screenshots: Total={admin_ss['total']}")
 
     print("\n=== 2. TESTING MANAGER PERMISSIONS ===")
     manager_auth = login("manager@tracking.local", "manager123")
@@ -49,6 +51,10 @@ def test_role_permissions():
         print("ERROR: Manager should NOT have access to finance summary!")
     except urllib.error.HTTPError as e:
         print(f"Manager Finance Access Blocked as Expected: HTTP {e.code}")
+
+    # Manager CAN access screenshots
+    manager_ss = get_with_token("/screenshots?limit=5", manager_token)
+    print(f"Manager Screenshots: Total={manager_ss['total']}")
 
     # Manager gets their OWN scorecard only
     manager_perf = get_with_token("/rules/performance", manager_token)
@@ -66,6 +72,13 @@ def test_role_permissions():
     except urllib.error.HTTPError as e:
         print(f"Employee Finance Access Blocked as Expected: HTTP {e.code}")
 
+    # Employee CANNOT access screenshot gallery
+    try:
+        get_with_token("/screenshots?limit=5", emp_token)
+        print("ERROR: Employee should NOT have access to screenshots!")
+    except urllib.error.HTTPError as e:
+        print(f"Employee Screenshot Access Blocked as Expected: HTTP {e.code}")
+
     # Employee gets their OWN scorecard only
     emp_perf = get_with_token("/rules/performance", emp_token)
     print(f"Employee Own Scorecard: Name={emp_perf['employee_name']}, Stars={emp_perf['total_stars']}, Violations={len(emp_perf['violations_ledger'])}, Punctuality={emp_perf['punctuality_rate_pct']}%")
@@ -76,7 +89,7 @@ def test_role_permissions():
     for s in emp_perf['stars_ledger'][:3]:
         print(f"  - [{s['date']}] STAR: {s['reason']}")
 
-    print("\n=== ALL BACKEND PERMISSION TESTS PASSED! ===")
+    print("\n=== ALL ROLE PERMISSION TESTS PASSED! ===")
 
 if __name__ == "__main__":
     test_role_permissions()

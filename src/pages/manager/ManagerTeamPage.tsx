@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { RefreshCw } from 'lucide-react';
+import { motion } from 'framer-motion';
+import { RefreshCw, Users } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { dataService } from '../../services/dataService';
 import type { EmployeeRecord } from '../../types/roles';
@@ -22,62 +23,74 @@ export const ManagerTeamPage: React.FC = () => {
   }, [user.id]);
 
   return (
-    <div>
-      <div className="page-header">
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.25 }}
+      style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', width: '100%' }}
+    >
+      {/* Header */}
+      <div className="grid-operations-header">
         <div>
-          <h1 className="page-title">My Assigned Team Members</h1>
-          <p className="page-subtitle">
-            Team: {user.team_name || 'Core Backend Team'} &bull; Managed by {user.name}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)' }}>
+            <Users size={14} color="var(--color-secondary)" />
+            <span>Assigned Team Roster</span>
+          </div>
+          <h1 style={{ fontSize: 28, fontWeight: 800, color: 'var(--text-primary)', letterSpacing: '-0.03em', marginTop: 2 }}>
+            My Assigned Team Members
+          </h1>
+          <p style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 4 }}>
+            Team: <strong style={{ color: 'var(--text-primary)' }}>{user.team_name || 'Engineering Core'}</strong> &bull; Lead: {user.name}
           </p>
         </div>
-        <div style={{ display: 'flex', gap: 10 }}>
-          <button className="btn btn-secondary" onClick={loadData}>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <button className="btn-pill btn-pill-secondary" onClick={loadData}>
             <RefreshCw size={14} />
             <span>Refresh</span>
           </button>
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 18 }}>
+      {/* Grid of Team Members */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: '1.25rem' }}>
         {employees.map((emp) => (
-          <div key={emp.id} className="content-card">
-            <div className="content-card-title">
-              <div>
-                <div style={{ fontSize: 16 }}>{emp.name}</div>
-                <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{emp.email}</div>
+          <div key={emp.id} className="frosted-card" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div className="avatar-chip" style={{ width: 38, height: 38 }}>
+                  {emp.name.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase()}
+                </div>
+                <div>
+                  <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text-primary)' }}>{emp.name}</div>
+                  <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{emp.email}</div>
+                </div>
               </div>
-              <span
-                style={{
-                  fontSize: 11,
-                  fontWeight: 600,
-                  padding: '2px 8px',
-                  borderRadius: 'var(--radius-full)',
-                  backgroundColor: emp?.status === 'active' ? 'var(--success-bg)' : 'var(--warning-bg)',
-                  color: emp?.status === 'active' ? 'var(--success)' : 'var(--warning)',
-                }}
-              >
-                {(emp?.status || '').toUpperCase()}
+              <span className={`status-pill ${emp?.status === 'active' ? 'active' : 'idle'}`}>
+                {(emp?.status || 'active').toUpperCase()}
               </span>
             </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, fontSize: 12, marginBottom: 14 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '10px 12px', background: 'var(--surface-frosted-subdued)', borderRadius: 'var(--radius-card-sm)', fontSize: 12 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                 <span style={{ color: 'var(--text-muted)' }}>Current Task:</span>
-                <span style={{ fontWeight: 500, maxWidth: 180, textAlign: 'right' }}>
+                <span style={{ fontWeight: 600, color: 'var(--text-primary)', maxWidth: 180, textAlign: 'right', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {emp?.current_task || 'Idle / No active task'}
                 </span>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ color: 'var(--text-muted)' }}>First Check-in:</span>
-                <span style={{ fontFamily: 'monospace' }}>{emp?.first_activity || '--:--'}</span>
+                <span style={{ color: 'var(--text-muted)' }}>First Activity:</span>
+                <span style={{ fontFamily: 'monospace', color: 'var(--text-primary)' }}>{emp?.first_activity || '09:00 AM'}</span>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ color: 'var(--text-muted)' }}>Tracked Today:</span>
-                <span style={{ fontWeight: 600 }}>{(((emp?.active_seconds || 0) / 3600)).toFixed(1)} hrs</span>
+                <span style={{ color: 'var(--text-muted)' }}>Active Today:</span>
+                <span style={{ fontWeight: 700, color: 'var(--text-primary)' }}>
+                  {(((emp?.active_seconds || 0) / 3600)).toFixed(1)} hrs
+                </span>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                 <span style={{ color: 'var(--text-muted)' }}>Device Binding:</span>
-                <span style={{ fontFamily: 'monospace', color: 'var(--text-secondary)' }}>{emp.device_id}</span>
+                <span style={{ fontFamily: 'monospace', color: 'var(--text-muted)', fontSize: 11 }}>{emp.device_id}</span>
               </div>
             </div>
 
@@ -86,11 +99,12 @@ export const ManagerTeamPage: React.FC = () => {
                 display: 'flex',
                 justifyContent: 'space-between',
                 alignItems: 'center',
-                paddingTop: 10,
-                borderTop: '1px solid var(--border-subtle)',
+                paddingTop: 8,
+                borderTop: '1px solid var(--surface-border-subtle)',
+                marginTop: 'auto',
               }}
             >
-              <span style={{ fontSize: 13, fontWeight: 700, color: '#f59e0b' }}>
+              <span style={{ fontSize: 13, fontWeight: 800, color: '#f59e0b' }}>
                 ⭐ {emp.stars} Stars
               </span>
               <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Joined: {emp.joined_at}</span>
@@ -98,6 +112,6 @@ export const ManagerTeamPage: React.FC = () => {
           </div>
         ))}
       </div>
-    </div>
+    </motion.div>
   );
 };

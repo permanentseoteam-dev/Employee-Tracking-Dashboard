@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Search, RefreshCw, Smartphone } from 'lucide-react';
+import { motion } from 'framer-motion';
+import { Plus, Search, RefreshCw, Smartphone, X, Users, UserCheck } from 'lucide-react';
 import { dataService } from '../../services/dataService';
 import type { EmployeeRecord, ManagerRecord, TeamRecord } from '../../types/roles';
 
@@ -60,7 +61,7 @@ export const AdminEmployeesPage: React.FC = () => {
     try {
       await dataService.addEmployee('admin', {
         name: newEmpName,
-        email: newEmpEmail || `${newEmpName.toLowerCase().replace(' ', '.')}@company.com`,
+        email: newEmpEmail || `${newEmpName.toLowerCase().replace(/\s+/g, '.')}@company.com`,
         department: newEmpDept,
         manager_id: newEmpManagerId,
         manager_name: mgr?.name || 'Assigned Manager',
@@ -98,42 +99,61 @@ export const AdminEmployeesPage: React.FC = () => {
   });
 
   return (
-    <div>
-      <div className="page-header">
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.25 }}
+      style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', width: '100%' }}
+    >
+      {/* Header */}
+      <div className="grid-operations-header">
         <div>
-          <h1 className="page-title">Employee Roster Management</h1>
-          <p className="page-subtitle">
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)' }}>
+            <Users size={14} color="var(--color-secondary)" />
+            <span>Workforce Directory</span>
+          </div>
+          <h1 style={{ fontSize: 28, fontWeight: 800, color: 'var(--text-primary)', letterSpacing: '-0.03em', marginTop: 2 }}>
+            Employee Roster Management
+          </h1>
+          <p style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 4 }}>
             Manage organization members, hardware device bindings, and team manager assignments
           </p>
         </div>
-        <div style={{ display: 'flex', gap: 10 }}>
-          <button className="btn btn-secondary" onClick={loadData}>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <button className="btn-pill btn-pill-secondary" onClick={loadData}>
             <RefreshCw size={14} />
             <span>Refresh</span>
           </button>
-          <button className="btn btn-primary" onClick={() => setIsAddModalOpen(true)}>
+          <button className="btn-pill btn-pill-primary" onClick={() => setIsAddModalOpen(true)}>
             <Plus size={15} />
             <span>Add Employee</span>
           </button>
         </div>
       </div>
 
-      <div className="content-card">
+      {/* Main Roster Card */}
+      <div className="frosted-card">
         <div className="content-card-title">
-          <span>Registered Employees ({filtered.length})</span>
-          <div style={{ display: 'flex', gap: 10 }}>
-            <div className="search-box" style={{ width: 220, padding: '4px 10px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontSize: 16, fontWeight: 700 }}>Registered Employees</span>
+            <span className="live-telemetry-badge">{filtered.length} total</span>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div className="stitch-search-pill" style={{ maxWidth: 240 }}>
               <Search size={14} color="var(--text-muted)" />
               <input
                 type="text"
-                placeholder="Search employee, email..."
+                placeholder="Search name, email..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
             </div>
+
             <select
-              className="form-input"
-              style={{ width: 140, padding: '4px 8px', fontSize: 12 }}
+              className="stitch-select"
+              style={{ width: 160, padding: '7px 12px', fontSize: 12 }}
               value={selectedDept}
               onChange={(e) => setSelectedDept(e.target.value)}
             >
@@ -145,8 +165,8 @@ export const AdminEmployeesPage: React.FC = () => {
           </div>
         </div>
 
-        <div style={{ overflowX: 'auto' }}>
-          <table className="data-table">
+        <div className="stitch-table-wrapper">
+          <table className="stitch-table">
             <thead>
               <tr>
                 <th>Employee Name</th>
@@ -155,40 +175,59 @@ export const AdminEmployeesPage: React.FC = () => {
                 <th>Assigned Manager</th>
                 <th>Device ID</th>
                 <th>Joined</th>
-                <th>Actions</th>
+                <th style={{ textAlign: 'right' }}>Actions</th>
               </tr>
             </thead>
             <tbody>
               {filtered.map((emp) => (
                 <tr key={emp.id}>
-                  <td style={{ fontWeight: 600 }}>
-                    <div>{emp.name}</div>
-                    <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{emp.email}</div>
-                  </td>
-                  <td>{emp.department}</td>
-                  <td>{emp.team_name}</td>
-                  <td>{emp.manager_name}</td>
                   <td>
-                    <span style={{ fontFamily: 'monospace', fontSize: 11, color: 'var(--text-muted)' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <div className="avatar-chip">
+                        {emp.name.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase()}
+                      </div>
+                      <div>
+                        <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{emp.name}</div>
+                        <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{emp.email}</div>
+                      </div>
+                    </div>
+                  </td>
+                  <td>
+                    <span className="status-pill neutral">{emp.department}</span>
+                  </td>
+                  <td style={{ fontWeight: 500 }}>{emp.team_name}</td>
+                  <td>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                      <UserCheck size={13} color="var(--color-secondary)" />
+                      <span>{emp.manager_name}</span>
+                    </div>
+                  </td>
+                  <td>
+                    <span style={{ fontFamily: 'monospace', fontSize: 11, color: 'var(--text-muted)', background: 'var(--surface-frosted-subdued)', padding: '2px 6px', borderRadius: 4 }}>
                       {emp.device_id}
                     </span>
                   </td>
                   <td style={{ fontSize: 12, color: 'var(--text-muted)' }}>{emp.joined_at}</td>
-                  <td>
-                    <div style={{ display: 'flex', gap: 6 }}>
-                      <button
-                        className="btn btn-secondary"
-                        style={{ padding: '3px 8px', fontSize: 11 }}
-                        title="Reset Registered Device Token"
-                        onClick={() => handleResetDevice(emp)}
-                      >
-                        <Smartphone size={12} />
-                        <span>Reset Device</span>
-                      </button>
-                    </div>
+                  <td style={{ textAlign: 'right' }}>
+                    <button
+                      className="btn-pill btn-pill-secondary"
+                      style={{ padding: '4px 10px', fontSize: 11 }}
+                      title="Revoke registered hardware token"
+                      onClick={() => handleResetDevice(emp)}
+                    >
+                      <Smartphone size={12} />
+                      <span>Reset Device</span>
+                    </button>
                   </td>
                 </tr>
               ))}
+              {filtered.length === 0 && (
+                <tr>
+                  <td colSpan={7} style={{ textAlign: 'center', padding: '2.5rem', color: 'var(--text-muted)' }}>
+                    No employee records match the selected search query.
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
@@ -196,59 +235,51 @@ export const AdminEmployeesPage: React.FC = () => {
 
       {/* Add Employee Modal */}
       {isAddModalOpen && (
-        <div
-          style={{
-            position: 'fixed',
-            inset: 0,
-            backgroundColor: 'rgba(0,0,0,0.6)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 1000,
-          }}
-        >
-          <div
-            className="content-card"
-            style={{ width: 440, maxWidth: '90vw', margin: 0 }}
-          >
+        <div className="stitch-modal-backdrop" onClick={() => setIsAddModalOpen(false)}>
+          <div className="stitch-modal-content" style={{ maxWidth: 480 }} onClick={(e) => e.stopPropagation()}>
             <div className="content-card-title">
-              <span>Register New Employee</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Users size={18} color="var(--color-secondary)" />
+                <span style={{ fontSize: 17, fontWeight: 700 }}>Register New Employee</span>
+              </div>
               <button
-                className="icon-btn"
+                type="button"
+                className="btn-icon-circle"
+                style={{ width: 30, height: 30 }}
                 onClick={() => setIsAddModalOpen(false)}
               >
-                &times;
+                <X size={15} />
               </button>
             </div>
 
-            <form onSubmit={handleAddEmployee}>
-              <div className="form-group">
-                <label className="form-label">Full Name</label>
+            <form onSubmit={handleAddEmployee} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <div className="stitch-form-group">
+                <label className="stitch-label">Full Name</label>
                 <input
                   type="text"
                   required
-                  className="form-input"
-                  placeholder="e.g. John Doe"
+                  className="stitch-input"
+                  placeholder="e.g. Alex Johnson"
                   value={newEmpName}
                   onChange={(e) => setNewEmpName(e.target.value)}
                 />
               </div>
 
-              <div className="form-group">
-                <label className="form-label">Corporate Email</label>
+              <div className="stitch-form-group">
+                <label className="stitch-label">Corporate Email</label>
                 <input
                   type="email"
-                  className="form-input"
-                  placeholder="e.g. john.doe@company.com"
+                  className="stitch-input"
+                  placeholder="e.g. alex.johnson@company.com"
                   value={newEmpEmail}
                   onChange={(e) => setNewEmpEmail(e.target.value)}
                 />
               </div>
 
-              <div className="form-group">
-                <label className="form-label">Department</label>
+              <div className="stitch-form-group">
+                <label className="stitch-label">Department</label>
                 <select
-                  className="form-input"
+                  className="stitch-select"
                   value={newEmpDept}
                   onChange={(e) => setNewEmpDept(e.target.value)}
                 >
@@ -258,10 +289,10 @@ export const AdminEmployeesPage: React.FC = () => {
                 </select>
               </div>
 
-              <div className="form-group">
-                <label className="form-label">Assign Manager</label>
+              <div className="stitch-form-group">
+                <label className="stitch-label">Assign Manager</label>
                 <select
-                  className="form-input"
+                  className="stitch-select"
                   value={newEmpManagerId}
                   onChange={(e) => setNewEmpManagerId(e.target.value)}
                 >
@@ -273,22 +304,22 @@ export const AdminEmployeesPage: React.FC = () => {
                 </select>
               </div>
 
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 20 }}>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 10 }}>
                 <button
                   type="button"
-                  className="btn btn-secondary"
+                  className="btn-pill btn-pill-secondary"
                   onClick={() => setIsAddModalOpen(false)}
                 >
                   Cancel
                 </button>
-                <button type="submit" className="btn btn-primary">
-                  Save & Bind Agent
+                <button type="submit" className="btn-pill btn-pill-primary">
+                  Save & Register
                 </button>
               </div>
             </form>
           </div>
         </div>
       )}
-    </div>
+    </motion.div>
   );
 };

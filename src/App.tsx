@@ -133,6 +133,13 @@ export const App: React.FC = () => {
 
     return (
       <div className="app-container">
+        {/* Ambient Luminous Gradient Canvas */}
+        <div className="stitch-ambient-canvas">
+          <div className="ambient-orb ambient-orb-1" />
+          <div className="ambient-orb ambient-orb-2" />
+          <div className="ambient-orb ambient-orb-3" />
+        </div>
+
         <TopBar
           status={status}
           dbStats={dbStats}
@@ -140,9 +147,9 @@ export const App: React.FC = () => {
           searchQuery={searchQuery}
           onSearchChange={setSearchQuery}
         />
-        <div className="app-body">
+        <div style={{ display: 'flex', flex: 1, position: 'relative', zIndex: 10 }}>
           <AdminSidebar currentRoute={currentRoute} onNavigate={navigate} />
-          <main className="main-content">
+          <main className="stitch-main">
             <ErrorBoundary fallbackTitle="Admin Section Error">
               {renderAdminContent()}
             </ErrorBoundary>
@@ -180,6 +187,13 @@ export const App: React.FC = () => {
 
     return (
       <div className="app-container">
+        {/* Ambient Luminous Gradient Canvas */}
+        <div className="stitch-ambient-canvas">
+          <div className="ambient-orb ambient-orb-1" />
+          <div className="ambient-orb ambient-orb-2" />
+          <div className="ambient-orb ambient-orb-3" />
+        </div>
+
         <TopBar
           status={status}
           dbStats={dbStats}
@@ -187,9 +201,9 @@ export const App: React.FC = () => {
           searchQuery={searchQuery}
           onSearchChange={setSearchQuery}
         />
-        <div className="app-body">
+        <div style={{ display: 'flex', flex: 1, position: 'relative', zIndex: 10 }}>
           <ManagerSidebar currentRoute={currentRoute} onNavigate={navigate} />
-          <main className="main-content">
+          <main className="stitch-main">
             <ErrorBoundary fallbackTitle="Manager Section Error">
               {renderManagerContent()}
             </ErrorBoundary>

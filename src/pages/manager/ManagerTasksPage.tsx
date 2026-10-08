@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, RefreshCw } from 'lucide-react';
+import { motion } from 'framer-motion';
+import { Plus, RefreshCw, CheckSquare, X } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { dataService } from '../../services/dataService';
 import type { TaskItem, ProjectItem, EmployeeRecord } from '../../types/roles';
@@ -26,8 +27,8 @@ export const ManagerTasksPage: React.FC = () => {
       setTasks(tList);
       setProjects(pList);
       setTeamEmployees(eList);
-      if (eList.length > 0) setNewAssignedEmpId(eList[0].id);
-      if (pList.length > 0) setNewProjectId(pList[0].id);
+      if (eList.length > 0 && !newAssignedEmpId) setNewAssignedEmpId(eList[0].id);
+      if (pList.length > 0 && !newProjectId) setNewProjectId(pList[0].id);
     } catch (err) {
       console.error(err);
     }
@@ -97,20 +98,33 @@ export const ManagerTasksPage: React.FC = () => {
   };
 
   return (
-    <div>
-      <div className="page-header">
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.25 }}
+      style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', width: '100%' }}
+    >
+      {/* Header */}
+      <div className="grid-operations-header">
         <div>
-          <h1 className="page-title">Team Task & Project Operations</h1>
-          <p className="page-subtitle">
-            Delegate tasks to team members &bull; Track project milestones and deliverables
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)' }}>
+            <CheckSquare size={14} color="var(--color-secondary)" />
+            <span>Task Delegation & Sprint Work</span>
+          </div>
+          <h1 style={{ fontSize: 28, fontWeight: 800, color: 'var(--text-primary)', letterSpacing: '-0.03em', marginTop: 2 }}>
+            Team Task & Project Operations
+          </h1>
+          <p style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 4 }}>
+            Delegate sprint tasks to members and track milestone delivery in real time
           </p>
         </div>
-        <div style={{ display: 'flex', gap: 10 }}>
-          <button className="btn btn-secondary" onClick={loadData}>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <button className="btn-pill btn-pill-secondary" onClick={loadData}>
             <RefreshCw size={14} />
             <span>Refresh</span>
           </button>
-          <button className="btn btn-primary" onClick={() => setIsNewTaskOpen(true)}>
+          <button className="btn-pill btn-pill-primary" onClick={() => setIsNewTaskOpen(true)}>
             <Plus size={15} />
             <span>Create Team Task</span>
           </button>
@@ -118,21 +132,31 @@ export const ManagerTasksPage: React.FC = () => {
       </div>
 
       {/* Projects summary */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 16, marginBottom: 20 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '1.25rem' }}>
         {projects.map((proj) => (
-          <div key={proj.id} className="content-card" style={{ marginBottom: 0 }}>
-            <div className="content-card-title">
+          <div key={proj.id} className="frosted-card" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
               <div>
-                <span style={{ fontSize: 14 }}>{proj.name}</span>
-                <span style={{ fontSize: 11, color: 'var(--text-muted)', marginLeft: 8 }}>{proj.code}</span>
+                <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-primary)' }}>{proj.name}</div>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'monospace' }}>{proj.code}</div>
               </div>
-              <span style={{ fontSize: 11, color: 'var(--primary)', fontWeight: 600 }}>{proj.progress_percentage}%</span>
+              <span className="live-telemetry-badge">{proj.progress_percentage}%</span>
             </div>
-            <div style={{ height: 6, backgroundColor: 'var(--bg-surface)', borderRadius: 3, overflow: 'hidden', marginBottom: 10 }}>
-              <div style={{ height: '100%', width: `${proj.progress_percentage}%`, backgroundColor: 'var(--primary)' }} />
+
+            <div style={{ height: 6, background: 'var(--surface-border-subtle)', borderRadius: 'var(--radius-pill)', overflow: 'hidden' }}>
+              <div
+                style={{
+                  height: '100%',
+                  width: `${proj.progress_percentage}%`,
+                  background: 'var(--color-secondary)',
+                  borderRadius: 'var(--radius-pill)',
+                  transition: 'width 0.4s ease',
+                }}
+              />
             </div>
+
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: 'var(--text-muted)' }}>
-              <span>Tasks: {proj.completed_tasks} / {proj.total_tasks} completed</span>
+              <span>Tasks: <strong style={{ color: 'var(--text-primary)' }}>{proj.completed_tasks}</strong> / {proj.total_tasks}</span>
               <span>Due: {proj.due_date}</span>
             </div>
           </div>
@@ -140,13 +164,16 @@ export const ManagerTasksPage: React.FC = () => {
       </div>
 
       {/* Tasks Table */}
-      <div className="content-card">
+      <div className="frosted-card">
         <div className="content-card-title">
-          <span>Active Team Tasks ({tasks.length})</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontSize: 16, fontWeight: 700 }}>Active Team Tasks</span>
+            <span className="live-telemetry-badge">{tasks.length} items</span>
+          </div>
         </div>
 
-        <div style={{ overflowX: 'auto' }}>
-          <table className="data-table">
+        <div className="stitch-table-wrapper">
+          <table className="stitch-table">
             <thead>
               <tr>
                 <th>Task Title</th>
@@ -156,44 +183,39 @@ export const ManagerTasksPage: React.FC = () => {
                 <th>Status</th>
                 <th>Tracked Hours</th>
                 <th>Due Date</th>
-                <th>Action</th>
+                <th style={{ textAlign: 'right' }}>Action</th>
               </tr>
             </thead>
             <tbody>
               {tasks.map((task) => (
                 <tr key={task.id}>
-                  <td style={{ fontWeight: 600 }}>{task.title}</td>
-                  <td>{task.project_name}</td>
-                  <td>{task.employee_name}</td>
+                  <td style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{task.title}</td>
+                  <td style={{ color: 'var(--text-secondary)' }}>{task.project_name}</td>
+                  <td>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <div className="avatar-chip" style={{ width: 24, height: 24, fontSize: 10 }}>
+                        {task.employee_name.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase()}
+                      </div>
+                      <span>{task.employee_name}</span>
+                    </div>
+                  </td>
                   <td>
                     <span
-                      style={{
-                        fontSize: 10,
-                        fontWeight: 700,
-                        padding: '2px 6px',
-                        borderRadius: 4,
-                        textTransform: 'uppercase',
-                        backgroundColor:
-                          task.priority === 'urgent'
-                            ? 'var(--danger-bg)'
-                            : task.priority === 'high'
-                            ? 'var(--warning-bg)'
-                            : 'var(--bg-surface)',
-                        color:
-                          task.priority === 'urgent'
-                            ? 'var(--danger)'
-                            : task.priority === 'high'
-                            ? 'var(--warning)'
-                            : 'var(--text-secondary)',
-                      }}
+                      className={`status-pill ${
+                        task.priority === 'urgent'
+                          ? 'critical'
+                          : task.priority === 'high'
+                          ? 'late'
+                          : 'neutral'
+                      }`}
                     >
                       {task.priority}
                     </span>
                   </td>
                   <td>
                     <select
-                      className="form-input"
-                      style={{ padding: '2px 6px', fontSize: 11, width: 110 }}
+                      className="stitch-select"
+                      style={{ padding: '4px 10px', fontSize: 11, width: 120 }}
                       value={task.status}
                       onChange={(e) => handleStatusChange(task.id, e.target.value as any)}
                     >
@@ -203,21 +225,30 @@ export const ManagerTasksPage: React.FC = () => {
                       <option value="paused">Paused</option>
                     </select>
                   </td>
-                  <td style={{ fontFamily: 'monospace' }}>{(((task.tracked_seconds || 0) / 3600)).toFixed(1)}h</td>
+                  <td style={{ fontFamily: 'monospace', fontWeight: 600 }}>
+                    {(((task.tracked_seconds || 0) / 3600)).toFixed(1)}h
+                  </td>
                   <td style={{ fontSize: 12, color: 'var(--text-muted)' }}>{task.due_date}</td>
-                  <td>
+                  <td style={{ textAlign: 'right' }}>
                     {task.status !== 'completed' && (
                       <button
-                        className="btn btn-secondary"
-                        style={{ padding: '2px 8px', fontSize: 11 }}
+                        className="btn-pill btn-pill-secondary"
+                        style={{ padding: '3px 10px', fontSize: 11 }}
                         onClick={() => handleStatusChange(task.id, 'completed')}
                       >
-                        Complete
+                        Mark Done
                       </button>
                     )}
                   </td>
                 </tr>
               ))}
+              {tasks.length === 0 && (
+                <tr>
+                  <td colSpan={8} style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>
+                    No team tasks logged. Click "Create Team Task" to assign one.
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
@@ -225,40 +256,40 @@ export const ManagerTasksPage: React.FC = () => {
 
       {/* New Task Modal */}
       {isNewTaskOpen && (
-        <div
-          style={{
-            position: 'fixed',
-            inset: 0,
-            backgroundColor: 'rgba(0,0,0,0.6)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 1000,
-          }}
-        >
-          <div className="content-card" style={{ width: 440, maxWidth: '90vw', margin: 0 }}>
+        <div className="stitch-modal-backdrop" onClick={() => setIsNewTaskOpen(false)}>
+          <div className="stitch-modal-content" style={{ maxWidth: 480 }} onClick={(e) => e.stopPropagation()}>
             <div className="content-card-title">
-              <span>Create & Assign Team Task</span>
-              <button className="icon-btn" onClick={() => setIsNewTaskOpen(false)}>&times;</button>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <CheckSquare size={18} color="var(--color-secondary)" />
+                <span style={{ fontSize: 16, fontWeight: 700 }}>Create & Assign Team Task</span>
+              </div>
+              <button
+                type="button"
+                className="btn-icon-circle"
+                style={{ width: 30, height: 30 }}
+                onClick={() => setIsNewTaskOpen(false)}
+              >
+                <X size={15} />
+              </button>
             </div>
 
-            <form onSubmit={handleCreateTask}>
-              <div className="form-group">
-                <label className="form-label">Task Title</label>
+            <form onSubmit={handleCreateTask} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <div className="stitch-form-group">
+                <label className="stitch-label">Task Title</label>
                 <input
                   type="text"
                   required
-                  className="form-input"
-                  placeholder="e.g. Implement WebSocket reconnection retry"
+                  className="stitch-input"
+                  placeholder="e.g. Implement WebRTC audio streaming"
                   value={newTitle}
                   onChange={(e) => setNewTitle(e.target.value)}
                 />
               </div>
 
-              <div className="form-group">
-                <label className="form-label">Assign To Team Member</label>
+              <div className="stitch-form-group">
+                <label className="stitch-label">Assign To Member</label>
                 <select
-                  className="form-input"
+                  className="stitch-select"
                   value={newAssignedEmpId}
                   onChange={(e) => setNewAssignedEmpId(e.target.value)}
                 >
@@ -270,10 +301,10 @@ export const ManagerTasksPage: React.FC = () => {
                 </select>
               </div>
 
-              <div className="form-group">
-                <label className="form-label">Project</label>
+              <div className="stitch-form-group">
+                <label className="stitch-label">Project</label>
                 <select
-                  className="form-input"
+                  className="stitch-select"
                   value={newProjectId}
                   onChange={(e) => setNewProjectId(e.target.value)}
                 >
@@ -286,10 +317,10 @@ export const ManagerTasksPage: React.FC = () => {
               </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                <div className="form-group">
-                  <label className="form-label">Priority</label>
+                <div className="stitch-form-group">
+                  <label className="stitch-label">Priority</label>
                   <select
-                    className="form-input"
+                    className="stitch-select"
                     value={newPriority}
                     onChange={(e) => setNewPriority(e.target.value as any)}
                   >
@@ -299,26 +330,26 @@ export const ManagerTasksPage: React.FC = () => {
                     <option value="low">Low</option>
                   </select>
                 </div>
-                <div className="form-group">
-                  <label className="form-label">Due Date</label>
+                <div className="stitch-form-group">
+                  <label className="stitch-label">Due Date</label>
                   <input
                     type="date"
-                    className="form-input"
+                    className="stitch-input"
                     value={newDueDate}
                     onChange={(e) => setNewDueDate(e.target.value)}
                   />
                 </div>
               </div>
 
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 16 }}>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 10 }}>
                 <button
                   type="button"
-                  className="btn btn-secondary"
+                  className="btn-pill btn-pill-secondary"
                   onClick={() => setIsNewTaskOpen(false)}
                 >
                   Cancel
                 </button>
-                <button type="submit" className="btn btn-primary">
+                <button type="submit" className="btn-pill btn-pill-primary">
                   Assign Task
                 </button>
               </div>
@@ -326,6 +357,6 @@ export const ManagerTasksPage: React.FC = () => {
           </div>
         </div>
       )}
-    </div>
+    </motion.div>
   );
 };

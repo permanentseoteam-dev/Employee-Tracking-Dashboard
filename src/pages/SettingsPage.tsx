@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Save, RefreshCw, Terminal, Database, Sun, Moon } from 'lucide-react';
+import { motion } from 'framer-motion';
+import { Save, RefreshCw, Terminal, Database, Sun, Moon, Settings as SettingsIcon, ShieldCheck } from 'lucide-react';
 import { api } from '../services/tauriBridge';
 import { useTheme } from '../context/ThemeContext';
 import type { AppConfig, DbStats, LogEntry } from '../types';
@@ -38,7 +39,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ dbStats }) => {
     try {
       const updated = await api.updateAppConfig(config);
       setConfig(updated);
-      setSaveMessage('Configuration updated successfully in SQLite database.');
+      setSaveMessage('Configuration updated successfully in local SQLite store.');
       setTimeout(() => setSaveMessage(null), 3000);
     } catch (err: any) {
       alert(`Save error: ${err}`);
@@ -48,46 +49,65 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ dbStats }) => {
   };
 
   return (
-    <div>
-      <div className="page-header">
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.25 }}
+      style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', width: '100%' }}
+    >
+      {/* Header */}
+      <div className="grid-operations-header">
         <div>
-          <h1 className="page-title">Agent Settings & Diagnostics</h1>
-          <p className="page-subtitle">
-            Local SQLite configuration &bull; Secret-free redacted audit logs
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)' }}>
+            <SettingsIcon size={14} color="var(--color-secondary)" />
+            <span>Local Workstation Engine</span>
+          </div>
+          <h1 style={{ fontSize: 28, fontWeight: 800, color: 'var(--text-primary)', letterSpacing: '-0.03em', marginTop: 2 }}>
+            Agent Settings & Diagnostics
+          </h1>
+          <p style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 4 }}>
+            Local SQLite telemetry configuration and secret-free redacted audit diagnostics
           </p>
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <button className="btn-pill btn-pill-secondary" onClick={loadData}>
+            <RefreshCw size={14} />
+            <span>Refresh</span>
+          </button>
         </div>
       </div>
 
       {saveMessage && (
         <div
           style={{
-            padding: '10px 14px',
-            backgroundColor: 'var(--success-bg)',
-            color: 'var(--success)',
-            borderRadius: 'var(--radius-md)',
-            marginBottom: 16,
-            border: '1px solid rgba(16, 185, 129, 0.3)',
+            padding: '10px 16px',
+            background: 'var(--status-success-bg)',
+            color: 'var(--status-success)',
+            borderRadius: 'var(--radius-card-sm)',
+            fontWeight: 600,
+            fontSize: 13,
           }}
         >
           {saveMessage}
         </div>
       )}
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 20 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: '1.5rem' }}>
         {/* Configuration Form */}
         {config && (
-          <form className="content-card" onSubmit={handleSave}>
+          <form className="frosted-card" onSubmit={handleSave} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
             <div className="content-card-title">
-              <span>Telemetry & Screenshot Thresholds</span>
-              <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Config v{config.version}</span>
+              <span style={{ fontSize: 16, fontWeight: 700 }}>Telemetry & Screenshot Thresholds</span>
+              <span className="live-telemetry-badge">Config v{config.version}</span>
             </div>
 
-            <div className="form-group">
-              <label className="form-label">Screenshot Interval (Seconds, min 30)</label>
+            <div className="stitch-form-group">
+              <label className="stitch-label">Screenshot Interval (Seconds, min 30)</label>
               <input
                 type="number"
                 min="30"
-                className="form-input"
+                className="stitch-input"
                 value={config.screenshot_interval_secs}
                 onChange={(e) =>
                   setConfig({
@@ -98,13 +118,13 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ dbStats }) => {
               />
             </div>
 
-            <div className="form-group">
-              <label className="form-label">Screenshot Compression Quality (10 - 100)</label>
+            <div className="stitch-form-group">
+              <label className="stitch-label">Screenshot Compression Quality (10 - 100)</label>
               <input
                 type="number"
                 min="10"
                 max="100"
-                className="form-input"
+                className="stitch-input"
                 value={config.screenshot_quality}
                 onChange={(e) =>
                   setConfig({
@@ -115,12 +135,12 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ dbStats }) => {
               />
             </div>
 
-            <div className="form-group">
-              <label className="form-label">Idle Inactivity Threshold (Seconds)</label>
+            <div className="stitch-form-group">
+              <label className="stitch-label">Idle Inactivity Threshold (Seconds)</label>
               <input
                 type="number"
                 min="10"
-                className="form-input"
+                className="stitch-input"
                 value={config.idle_threshold_secs}
                 onChange={(e) =>
                   setConfig({
@@ -131,11 +151,11 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ dbStats }) => {
               />
             </div>
 
-            <div className="form-group">
-              <label className="form-label">Backend API Server Endpoint</label>
+            <div className="stitch-form-group">
+              <label className="stitch-label">Backend API Server Endpoint</label>
               <input
                 type="text"
-                className="form-input"
+                className="stitch-input"
                 value={config.server_url}
                 onChange={(e) =>
                   setConfig({
@@ -146,8 +166,8 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ dbStats }) => {
               />
             </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, margin: '16px 0' }}>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: '8px 0' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer', color: 'var(--text-primary)' }}>
                 <input
                   type="checkbox"
                   checked={config.track_keyboard}
@@ -156,7 +176,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ dbStats }) => {
                 <span>Track Aggregate Keyboard Counts</span>
               </label>
 
-              <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer', color: 'var(--text-primary)' }}>
                 <input
                   type="checkbox"
                   checked={config.track_mouse}
@@ -165,7 +185,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ dbStats }) => {
                 <span>Track Mouse Moves & Clicks</span>
               </label>
 
-              <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer', color: 'var(--text-primary)' }}>
                 <input
                   type="checkbox"
                   checked={config.track_screenshots}
@@ -175,35 +195,37 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ dbStats }) => {
               </label>
             </div>
 
-            <button type="submit" className="btn btn-primary" disabled={isSaving}>
-              <Save size={15} />
-              <span>{isSaving ? 'Saving...' : 'Save Configuration'}</span>
-            </button>
+            <div style={{ marginTop: 'auto', paddingTop: 8 }}>
+              <button type="submit" className="btn-pill btn-pill-primary" disabled={isSaving} style={{ width: '100%' }}>
+                <Save size={15} />
+                <span>{isSaving ? 'Saving Configuration...' : 'Save Configuration'}</span>
+              </button>
+            </div>
           </form>
         )}
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
           {/* Appearance & Theme Selector */}
-          <div className="content-card">
+          <div className="frosted-card" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             <div className="content-card-title">
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 {theme === 'dark' ? (
-                  <Moon size={16} color="var(--primary)" />
+                  <Moon size={18} color="var(--color-secondary)" />
                 ) : (
-                  <Sun size={16} color="var(--warning)" />
+                  <Sun size={18} color="var(--color-secondary)" />
                 )}
-                <span>Appearance & Theme</span>
+                <span style={{ fontSize: 16, fontWeight: 700 }}>Appearance & Theme</span>
               </div>
             </div>
 
-            <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 14 }}>
-              Toggle between Light and Dark interface modes.
+            <p style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
+              Toggle between Luminous Frosted Light and Obsidian Frosted Dark modes.
             </p>
 
-            <div style={{ display: 'flex', gap: 12 }}>
+            <div style={{ display: 'flex', gap: 10 }}>
               <button
                 type="button"
-                className={`btn ${theme === 'dark' ? 'btn-primary' : 'btn-secondary'}`}
+                className={`btn-pill ${theme === 'dark' ? 'btn-pill-primary' : 'btn-pill-secondary'}`}
                 onClick={() => setTheme('dark')}
                 style={{ flex: 1 }}
               >
@@ -212,7 +234,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ dbStats }) => {
               </button>
               <button
                 type="button"
-                className={`btn ${theme === 'light' ? 'btn-primary' : 'btn-secondary'}`}
+                className={`btn-pill ${theme === 'light' ? 'btn-pill-primary' : 'btn-pill-secondary'}`}
                 onClick={() => setTheme('light')}
                 style={{ flex: 1 }}
               >
@@ -223,72 +245,79 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ dbStats }) => {
           </div>
 
           {/* Database Diagnostics */}
-          <div className="content-card">
+          <div className="frosted-card" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             <div className="content-card-title">
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <Database size={16} color="var(--primary)" />
-                <span>SQLite Database Health</span>
+                <Database size={18} color="var(--color-secondary)" />
+                <span style={{ fontSize: 16, fontWeight: 700 }}>Local SQLite Telemetry Health</span>
               </div>
             </div>
 
-            <table className="data-table">
-              <tbody>
-                <tr>
-                  <td>Schema Migration Version</td>
-                  <td style={{ fontWeight: 600 }}>v{dbStats.schema_version}</td>
-                </tr>
-                <tr>
-                  <td>Pending Outbox Items</td>
-                  <td>{dbStats.pending_outbox_count}</td>
-                </tr>
-                <tr>
-                  <td>Activity Telemetry Rows</td>
-                  <td>{dbStats.activity_records_count}</td>
-                </tr>
-                <tr>
-                  <td>Screenshot Records</td>
-                  <td>{dbStats.screenshot_records_count}</td>
-                </tr>
-                <tr>
-                  <td>Task Sessions Recorded</td>
-                  <td>{dbStats.task_sessions_count}</td>
-                </tr>
-              </tbody>
-            </table>
+            <div className="stitch-table-wrapper">
+              <table className="stitch-table">
+                <tbody>
+                  <tr>
+                    <td>Schema Migration Version</td>
+                    <td style={{ fontWeight: 700, color: 'var(--text-primary)' }}>v{dbStats.schema_version}</td>
+                  </tr>
+                  <tr>
+                    <td>Pending Outbox Items</td>
+                    <td style={{ fontWeight: 600 }}>{dbStats.pending_outbox_count}</td>
+                  </tr>
+                  <tr>
+                    <td>Activity Telemetry Rows</td>
+                    <td style={{ fontWeight: 600 }}>{dbStats.activity_records_count}</td>
+                  </tr>
+                  <tr>
+                    <td>Screenshot Records</td>
+                    <td style={{ fontWeight: 600 }}>{dbStats.screenshot_records_count}</td>
+                  </tr>
+                  <tr>
+                    <td>Task Sessions Recorded</td>
+                    <td style={{ fontWeight: 600 }}>{dbStats.task_sessions_count}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
 
             <div
               style={{
-                marginTop: 16,
-                padding: 12,
-                backgroundColor: 'var(--bg-surface)',
-                borderRadius: 'var(--radius-md)',
-                fontSize: 12,
+                marginTop: 6,
+                padding: '10px 12px',
+                background: 'var(--surface-frosted-subdued)',
+                borderRadius: 'var(--radius-card-sm)',
+                fontSize: 11,
                 color: 'var(--text-muted)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
               }}
             >
-              WAL journaling and ACID guarantees are active. Credentials are sequestered in Windows Credential Vault.
+              <ShieldCheck size={14} color="var(--status-success)" />
+              <span>WAL journaling and DPAPI hardware secrets are active.</span>
             </div>
           </div>
         </div>
       </div>
 
       {/* Redacted Audit Logs */}
-      <div className="content-card" style={{ marginTop: 20 }}>
+      <div className="frosted-card">
         <div className="content-card-title">
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <Terminal size={16} color="var(--primary)" />
-            <span>Redacted Agent Diagnostics Logs</span>
+            <Terminal size={18} color="var(--color-secondary)" />
+            <span style={{ fontSize: 16, fontWeight: 700 }}>Redacted Agent Diagnostics Logs</span>
           </div>
-          <button className="icon-btn" onClick={loadData} title="Refresh Logs">
+          <button className="btn-icon-circle" onClick={loadData} title="Refresh Logs" style={{ width: 32, height: 32 }}>
             <RefreshCw size={14} />
           </button>
         </div>
 
         <div
           style={{
-            backgroundColor: 'var(--bg-terminal, #070a0f)',
-            padding: 12,
-            borderRadius: 'var(--radius-md)',
+            background: 'var(--surface-frosted-subdued)',
+            border: '1px solid var(--surface-border-subtle)',
+            padding: 14,
+            borderRadius: 'var(--radius-card-sm)',
             fontFamily: 'monospace',
             fontSize: 12,
             maxHeight: 220,
@@ -296,10 +325,10 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ dbStats }) => {
           }}
         >
           {logs.length === 0 ? (
-            <div style={{ color: 'var(--text-muted)' }}>No logs available.</div>
+            <div style={{ color: 'var(--text-muted)' }}>No logs available in the local telemetry queue.</div>
           ) : (
             logs.map((log, idx) => (
-              <div key={idx} style={{ marginBottom: 4, display: 'flex', gap: 8 }}>
+              <div key={idx} style={{ marginBottom: 5, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                 <span style={{ color: 'var(--text-muted)' }}>
                   [{new Date(log.timestamp).toLocaleTimeString()}]
                 </span>
@@ -307,22 +336,22 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ dbStats }) => {
                   style={{
                     color:
                       log.level === 'ERROR'
-                        ? 'var(--danger)'
+                        ? 'var(--status-error)'
                         : log.level === 'WARN'
-                        ? 'var(--warning)'
-                        : 'var(--primary)',
-                    fontWeight: 600,
+                        ? 'var(--status-warning)'
+                        : 'var(--color-secondary)',
+                    fontWeight: 700,
                   }}
                 >
                   [{log.level}]
                 </span>
-                <span style={{ color: 'var(--text-secondary)' }}>[{log.target}]</span>
+                <span style={{ color: 'var(--text-muted)' }}>[{log.target}]</span>
                 <span style={{ color: 'var(--text-primary)' }}>{log.message}</span>
               </div>
             ))
           )}
         </div>
       </div>
-    </div>
+    </motion.div>
   );
 };

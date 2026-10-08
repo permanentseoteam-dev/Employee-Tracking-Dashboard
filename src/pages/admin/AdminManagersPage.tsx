@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Search, RefreshCw } from 'lucide-react';
+import { motion } from 'framer-motion';
+import { Search, RefreshCw, UserCheck, ShieldCheck, FolderKanban, Users } from 'lucide-react';
 import { dataService } from '../../services/dataService';
 import type { ManagerRecord } from '../../types/roles';
 
@@ -28,38 +29,56 @@ export const AdminManagersPage: React.FC = () => {
   });
 
   return (
-    <div>
-      <div className="page-header">
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.25 }}
+      style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', width: '100%' }}
+    >
+      {/* Header */}
+      <div className="grid-operations-header">
         <div>
-          <h1 className="page-title">Manager Hierarchy & Scopes</h1>
-          <p className="page-subtitle">
-            Configure managerial authority, assigned teams, and team employee access boundaries
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)' }}>
+            <UserCheck size={14} color="var(--color-secondary)" />
+            <span>Organizational Hierarchy</span>
+          </div>
+          <h1 style={{ fontSize: 28, fontWeight: 800, color: 'var(--text-primary)', letterSpacing: '-0.03em', marginTop: 2 }}>
+            Manager Hierarchy & Scopes
+          </h1>
+          <p style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 4 }}>
+            Configure managerial authority, assigned operational teams, and employee access boundaries
           </p>
         </div>
-        <div style={{ display: 'flex', gap: 10 }}>
-          <button className="btn btn-secondary" onClick={loadData}>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <button className="btn-pill btn-pill-secondary" onClick={loadData}>
             <RefreshCw size={14} />
             <span>Refresh</span>
           </button>
         </div>
       </div>
 
-      <div className="content-card">
+      {/* Main Content Card */}
+      <div className="frosted-card">
         <div className="content-card-title">
-          <span>Active Managers ({filtered.length})</span>
-          <div className="search-box" style={{ width: 220, padding: '4px 10px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontSize: 16, fontWeight: 700 }}>Active Managers</span>
+            <span className="live-telemetry-badge">{filtered.length} leads</span>
+          </div>
+
+          <div className="stitch-search-pill" style={{ maxWidth: 240 }}>
             <Search size={14} color="var(--text-muted)" />
             <input
               type="text"
-              placeholder="Search manager..."
+              placeholder="Search manager, dept..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
             />
           </div>
         </div>
 
-        <div style={{ overflowX: 'auto' }}>
-          <table className="data-table">
+        <div className="stitch-table-wrapper">
+          <table className="stitch-table">
             <thead>
               <tr>
                 <th>Manager</th>
@@ -67,28 +86,39 @@ export const AdminManagersPage: React.FC = () => {
                 <th>Assigned Teams</th>
                 <th>Direct Reports</th>
                 <th>Active Projects</th>
-                <th>Access Scope</th>
+                <th style={{ textAlign: 'right' }}>Access Scope</th>
               </tr>
             </thead>
             <tbody>
               {filtered.map((mgr) => (
                 <tr key={mgr.id}>
-                  <td style={{ fontWeight: 600 }}>
-                    <div>{mgr.name}</div>
-                    <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{mgr.email}</div>
-                  </td>
-                  <td>{mgr.department}</td>
                   <td>
-                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <div className="avatar-chip" style={{ background: 'linear-gradient(135deg, #4c6bff, #1e293b)' }}>
+                        {mgr.name.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase()}
+                      </div>
+                      <div>
+                        <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{mgr.name}</div>
+                        <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{mgr.email}</div>
+                      </div>
+                    </div>
+                  </td>
+                  <td>
+                    <span className="status-pill neutral">{mgr.department}</span>
+                  </td>
+                  <td>
+                    <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
                       {(mgr.teams || []).map((t) => (
                         <span
                           key={t}
                           style={{
                             padding: '2px 8px',
-                            backgroundColor: 'var(--bg-surface)',
-                            border: '1px solid var(--border-medium)',
-                            borderRadius: 'var(--radius-sm)',
+                            background: 'var(--surface-frosted-subdued)',
+                            border: '1px solid var(--surface-border-subtle)',
+                            borderRadius: 'var(--radius-pill)',
                             fontSize: 11,
+                            fontWeight: 500,
+                            color: 'var(--text-secondary)',
                           }}
                         >
                           {t}
@@ -97,31 +127,40 @@ export const AdminManagersPage: React.FC = () => {
                     </div>
                   </td>
                   <td>
-                    <span style={{ fontWeight: 600, color: 'var(--primary)' }}>
-                      {(mgr.assigned_employee_ids || []).length} employees
-                    </span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <Users size={13} color="var(--text-muted)" />
+                      <span style={{ fontWeight: 700, color: 'var(--text-primary)' }}>
+                        {(mgr.assigned_employee_ids || []).length}
+                      </span>
+                      <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>members</span>
+                    </div>
                   </td>
-                  <td>{mgr.active_projects_count} projects</td>
                   <td>
-                    <span
-                      style={{
-                        padding: '3px 8px',
-                        backgroundColor: 'var(--success-bg)',
-                        color: 'var(--success)',
-                        borderRadius: 'var(--radius-full)',
-                        fontSize: 11,
-                        fontWeight: 600,
-                      }}
-                    >
-                      Team-Scoped
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <FolderKanban size={13} color="var(--color-secondary)" />
+                      <span style={{ fontWeight: 600 }}>{mgr.active_projects_count}</span>
+                      <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>projects</span>
+                    </div>
+                  </td>
+                  <td style={{ textAlign: 'right' }}>
+                    <span className="status-pill active" style={{ display: 'inline-flex', gap: 4 }}>
+                      <ShieldCheck size={12} />
+                      <span>Team-Scoped</span>
                     </span>
                   </td>
                 </tr>
               ))}
+              {filtered.length === 0 && (
+                <tr>
+                  <td colSpan={6} style={{ textAlign: 'center', padding: '2.5rem', color: 'var(--text-muted)' }}>
+                    No manager records match the search criteria.
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
       </div>
-    </div>
+    </motion.div>
   );
 };

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Clock, Settings, Save, RefreshCw, CheckCircle, AlertTriangle } from 'lucide-react';
+import { motion } from 'framer-motion';
+import { Clock, Settings, Save, RefreshCw, CheckCircle, AlertTriangle, CalendarCheck } from 'lucide-react';
 import { dataService } from '../../services/dataService';
 import type { AttendanceRecordItem, AttendanceRuleConfig } from '../../types/roles';
 
@@ -53,65 +54,82 @@ export const AdminAttendancePage: React.FC = () => {
   const absentCount = attendance.filter((a) => a.status === 'absent').length;
 
   return (
-    <div>
-      <div className="page-header">
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.25 }}
+      style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', width: '100%' }}
+    >
+      {/* Header */}
+      <div className="grid-operations-header">
         <div>
-          <h1 className="page-title">Attendance & Shift Scheduling</h1>
-          <p className="page-subtitle">
-            Organization-wide daily attendance ledger &bull; Automated grace period calculation
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)' }}>
+            <CalendarCheck size={14} color="var(--color-secondary)" />
+            <span>Attendance & Policy</span>
+          </div>
+          <h1 style={{ fontSize: 28, fontWeight: 800, color: 'var(--text-primary)', letterSpacing: '-0.03em', marginTop: 2 }}>
+            Attendance & Shift Scheduling
+          </h1>
+          <p style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 4 }}>
+            Organization-wide daily attendance ledger and automated grace period policy calculation
           </p>
         </div>
-        <div style={{ display: 'flex', gap: 10 }}>
-          <button className="btn btn-secondary" onClick={loadData}>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <button className="btn-pill btn-pill-secondary" onClick={loadData}>
             <RefreshCw size={14} />
             <span>Refresh</span>
           </button>
         </div>
       </div>
 
-      {/* Attendance Summary Cards */}
+      {/* Metric Cards */}
       <div className="metrics-grid">
         <div className="stat-card">
           <div className="stat-header">
-            <span>On Time Arrivals</span>
-            <CheckCircle size={15} color="var(--success)" />
+            <span>On-Time Arrivals</span>
+            <CheckCircle size={16} color="var(--status-success)" />
           </div>
-          <div className="stat-value" style={{ color: 'var(--success)' }}>{onTimeCount}</div>
-          <div className="stat-footer">Checked in within grace window</div>
+          <div className="stat-value" style={{ color: 'var(--status-success)' }}>{onTimeCount}</div>
+          <div className="stat-footer">Checked in within designated grace window</div>
         </div>
 
         <div className="stat-card">
           <div className="stat-header">
             <span>Late Arrivals</span>
-            <AlertTriangle size={15} color="var(--warning)" />
+            <AlertTriangle size={16} color="var(--status-warning)" />
           </div>
-          <div className="stat-value" style={{ color: lateCount > 0 ? 'var(--warning)' : 'var(--text-primary)' }}>
+          <div className="stat-value" style={{ color: lateCount > 0 ? 'var(--status-warning)' : 'var(--text-primary)' }}>
             {lateCount}
           </div>
-          <div className="stat-footer">Penalty rule evaluated</div>
+          <div className="stat-footer">Grace period exceeded &bull; Penalty evaluated</div>
         </div>
 
         <div className="stat-card">
           <div className="stat-header">
             <span>Absent / Inactive</span>
-            <Clock size={15} color="var(--danger)" />
+            <Clock size={16} color="var(--status-error)" />
           </div>
-          <div className="stat-value" style={{ color: absentCount > 0 ? 'var(--danger)' : 'var(--text-muted)' }}>
+          <div className="stat-value" style={{ color: absentCount > 0 ? 'var(--status-error)' : 'var(--text-muted)' }}>
             {absentCount}
           </div>
-          <div className="stat-footer">No telemetry received today</div>
+          <div className="stat-footer">No desktop agent heartbeat logged today</div>
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: 20 }}>
-        {/* Attendance Table */}
-        <div className="content-card">
+      {/* Two column layout: Ledger Table and Shift Rules */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(420px, 1fr))', gap: '1.5rem' }}>
+        {/* Attendance Ledger */}
+        <div className="frosted-card" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           <div className="content-card-title">
-            <span>Today's Attendance Ledger ({attendance.length} records)</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontSize: 16, fontWeight: 700 }}>Today's Attendance Ledger</span>
+              <span className="live-telemetry-badge">{attendance.length} records</span>
+            </div>
           </div>
 
-          <div style={{ overflowX: 'auto' }}>
-            <table className="data-table">
+          <div className="stitch-table-wrapper">
+            <table className="stitch-table">
               <thead>
                 <tr>
                   <th>Employee</th>
@@ -119,43 +137,45 @@ export const AdminAttendancePage: React.FC = () => {
                   <th>First Activity</th>
                   <th>Status</th>
                   <th>Late By</th>
-                  <th>Active Tracked</th>
+                  <th style={{ textAlign: 'right' }}>Active Tracked</th>
                 </tr>
               </thead>
               <tbody>
                 {attendance.map((rec) => (
                   <tr key={rec.id}>
-                    <td style={{ fontWeight: 600 }}>{rec.employee_name}</td>
+                    <td style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{rec.employee_name}</td>
                     <td>{rec.team_name}</td>
-                    <td style={{ fontFamily: 'monospace' }}>{rec.first_activity_at}</td>
                     <td>
-                      <span
-                        style={{
-                          fontSize: 11,
-                          fontWeight: 600,
-                          padding: '2px 8px',
-                          borderRadius: 4,
-                          backgroundColor:
-                            rec.status === 'on_time'
-                              ? 'var(--success-bg)'
-                              : rec.status === 'late'
-                              ? 'var(--warning-bg)'
-                              : 'var(--danger-bg)',
-                          color:
-                            rec.status === 'on_time'
-                              ? 'var(--success)'
-                              : rec.status === 'late'
-                              ? 'var(--warning)'
-                              : 'var(--danger)',
-                        }}
-                      >
-                        {(rec.status || '').toUpperCase()}
+                      <span style={{ fontFamily: 'monospace', fontSize: 11, color: 'var(--text-muted)' }}>
+                        {rec.first_activity_at}
                       </span>
                     </td>
-                    <td>{rec.late_minutes > 0 ? `${rec.late_minutes} mins` : '--'}</td>
-                    <td>{rec.active_hours}h</td>
+                    <td>
+                      <span
+                        className={`status-pill ${
+                          rec.status === 'on_time'
+                            ? 'active'
+                            : rec.status === 'late'
+                            ? 'late'
+                            : 'absent'
+                        }`}
+                      >
+                        {(rec.status || '').replace('_', ' ')}
+                      </span>
+                    </td>
+                    <td>{rec.late_minutes > 0 ? `${rec.late_minutes}m` : '--'}</td>
+                    <td style={{ textAlign: 'right', fontWeight: 700, color: 'var(--text-primary)' }}>
+                      {rec.active_hours}h
+                    </td>
                   </tr>
                 ))}
+                {attendance.length === 0 && (
+                  <tr>
+                    <td colSpan={6} style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>
+                      No attendance records logged for today.
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>
@@ -163,73 +183,75 @@ export const AdminAttendancePage: React.FC = () => {
 
         {/* Shift Rules Form */}
         {rules && (
-          <form className="content-card" onSubmit={handleSaveRules}>
+          <form className="frosted-card" onSubmit={handleSaveRules} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
             <div className="content-card-title">
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <Settings size={16} color="var(--primary)" />
-                <span>Attendance Calculation Rules</span>
+                <Settings size={18} color="var(--color-secondary)" />
+                <span style={{ fontSize: 16, fontWeight: 700 }}>Shift Calculation Policy</span>
               </div>
             </div>
 
             {saveMessage && (
               <div
                 style={{
-                  padding: '8px 12px',
-                  backgroundColor: 'var(--success-bg)',
-                  color: 'var(--success)',
-                  borderRadius: 'var(--radius-md)',
-                  marginBottom: 14,
+                  padding: '10px 14px',
+                  background: 'var(--status-success-bg)',
+                  color: 'var(--status-success)',
+                  borderRadius: 'var(--radius-card-sm)',
                   fontSize: 12,
+                  fontWeight: 600,
                 }}
               >
                 {saveMessage}
               </div>
             )}
 
-            <div className="form-group">
-              <label className="form-label">Default Shift Start Time</label>
+            <div className="stitch-form-group">
+              <label className="stitch-label">Shift Start Time</label>
               <input
                 type="time"
-                className="form-input"
+                className="stitch-input"
                 value={rules.work_start_time}
                 onChange={(e) => setRules({ ...rules, work_start_time: e.target.value })}
               />
             </div>
 
-            <div className="form-group">
-              <label className="form-label">Default Shift End Time</label>
+            <div className="stitch-form-group">
+              <label className="stitch-label">Shift End Time</label>
               <input
                 type="time"
-                className="form-input"
+                className="stitch-input"
                 value={rules.work_end_time}
                 onChange={(e) => setRules({ ...rules, work_end_time: e.target.value })}
               />
             </div>
 
-            <div className="form-group">
-              <label className="form-label">Grace Period Window (Minutes)</label>
+            <div className="stitch-form-group">
+              <label className="stitch-label">Grace Period Window (Minutes)</label>
               <input
                 type="number"
                 min="0"
                 max="60"
-                className="form-input"
+                className="stitch-input"
                 value={rules.grace_period_minutes}
                 onChange={(e) =>
                   setRules({ ...rules, grace_period_minutes: parseInt(e.target.value) || 0 })
                 }
               />
-              <span style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4, display: 'block' }}>
-                Employees clocking in within {rules.grace_period_minutes} mins of {rules.work_start_time} are counted On-Time.
+              <span style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
+                Employees checking in within {rules.grace_period_minutes} minutes of {rules.work_start_time} are counted on-time.
               </span>
             </div>
 
-            <button type="submit" className="btn btn-primary" disabled={isSavingRules}>
-              <Save size={15} />
-              <span>{isSavingRules ? 'Saving...' : 'Update Attendance Rules'}</span>
-            </button>
+            <div style={{ marginTop: 'auto', paddingTop: 8 }}>
+              <button type="submit" className="btn-pill btn-pill-primary" disabled={isSavingRules} style={{ width: '100%' }}>
+                <Save size={15} />
+                <span>{isSavingRules ? 'Saving Schedule...' : 'Deploy Shift Schedule Policy'}</span>
+              </button>
+            </div>
           </form>
         )}
       </div>
-    </div>
+    </motion.div>
   );
 };

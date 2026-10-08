@@ -176,6 +176,7 @@ impl ActivityBatcher {
         self.buffered_events.len() >= self.max_batch_size
     }
 
+    #[allow(dead_code)]
     pub fn pending_count(&self) -> usize {
         self.buffered_events.len()
     }

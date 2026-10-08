@@ -152,7 +152,7 @@ mod tests {
 
     #[test]
     fn test_config_resolution() {
-        let mut base_path = AgentConfig::resolve_db_path();
+        let base_path = AgentConfig::resolve_db_path();
         assert!(base_path.to_string_lossy().contains("agent_outbox.db"));
     }
 }

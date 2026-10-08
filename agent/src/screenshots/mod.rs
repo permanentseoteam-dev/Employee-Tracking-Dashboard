@@ -44,10 +44,11 @@ impl ScreenCaptureService {
         };
 
         unsafe {
+            const CAPTUREBLT: u32 = 0x40000000;
             let hwnd_desktop = GetDesktopWindow();
-            let mut hdc_screen = windows_sys::Win32::Graphics::Gdi::GetDC(hwnd_desktop);
+            let mut hdc_screen = windows_sys::Win32::Graphics::Gdi::GetDC(std::ptr::null_mut());
             if hdc_screen.is_null() {
-                hdc_screen = windows_sys::Win32::Graphics::Gdi::GetDC(std::ptr::null_mut());
+                hdc_screen = windows_sys::Win32::Graphics::Gdi::GetDC(hwnd_desktop);
             }
             if hdc_screen.is_null() {
                 return Err(AgentError::Windows("Failed to get desktop DC".into()));
@@ -61,20 +62,21 @@ impl ScreenCaptureService {
 
             let hdc_mem = CreateCompatibleDC(hdc_screen);
             if hdc_mem.is_null() {
-                ReleaseDC(hwnd_desktop, hdc_screen);
+                ReleaseDC(std::ptr::null_mut(), hdc_screen);
                 return Err(AgentError::Windows("Failed to create compatible memory DC".into()));
             }
 
             let hbitmap = CreateCompatibleBitmap(hdc_screen, width as i32, height as i32);
             if hbitmap.is_null() {
                 DeleteDC(hdc_mem);
-                ReleaseDC(hwnd_desktop, hdc_screen);
+                ReleaseDC(std::ptr::null_mut(), hdc_screen);
                 return Err(AgentError::Windows("Failed to create compatible bitmap".into()));
             }
 
             let old_bitmap = windows_sys::Win32::Graphics::Gdi::SelectObject(hdc_mem, hbitmap);
 
-            let blt_res = BitBlt(
+            // Try with CAPTUREBLT first (captures layered windows/cursor), fall back to standard SRCCOPY
+            let mut blt_res = BitBlt(
                 hdc_mem,
                 0,
                 0,
@@ -83,14 +85,28 @@ impl ScreenCaptureService {
                 hdc_screen,
                 0,
                 0,
-                SRCCOPY,
+                SRCCOPY | CAPTUREBLT,
             );
+
+            if blt_res == 0 {
+                blt_res = BitBlt(
+                    hdc_mem,
+                    0,
+                    0,
+                    width as i32,
+                    height as i32,
+                    hdc_screen,
+                    0,
+                    0,
+                    SRCCOPY,
+                );
+            }
 
             if blt_res == 0 {
                 windows_sys::Win32::Graphics::Gdi::SelectObject(hdc_mem, old_bitmap);
                 DeleteObject(hbitmap);
                 DeleteDC(hdc_mem);
-                ReleaseDC(hwnd_desktop, hdc_screen);
+                ReleaseDC(std::ptr::null_mut(), hdc_screen);
                 return Err(AgentError::Windows("BitBlt screen copy failed".into()));
             }
 

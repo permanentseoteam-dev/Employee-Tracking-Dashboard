@@ -12,6 +12,7 @@ import {
   CheckSquare,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { FocusSessionWidget } from '../components/timer/FocusSessionWidget';
 import type { AgentStatusDto, DbStats, SystemInfoDto } from '../types';
 
 interface DashboardPageProps {
@@ -28,8 +29,10 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
   onNavigateToTab,
 }) => {
   const { user } = useAuth();
-  const [timerSeconds, setTimerSeconds] = useState(19800); // 05:30:00
-  const [isTimerRunning, setIsTimerRunning] = useState(true);
+  const [timerSeconds, setTimerSeconds] = useState(0);
+  const [isTimerRunning, setIsTimerRunning] = useState(false);
+  const [isFocusSessionOpen, setIsFocusSessionOpen] = useState(false);
+  const [focusTargetMinutes, setFocusTargetMinutes] = useState(25);
 
   useEffect(() => {
     let interval: any;
@@ -40,10 +43,21 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
   }, [isTimerRunning]);
 
   const formatTimerDigits = (totalSecs: number) => {
-    const hrs = Math.floor(totalSecs / 3600).toString().padStart(2, '0');
-    const mins = Math.floor((totalSecs % 3600) / 60).toString().padStart(2, '0');
-    return `${hrs}.${mins}`;
+    if (totalSecs >= 3600) {
+      const hrs = Math.floor(totalSecs / 3600).toString().padStart(2, '0');
+      const mins = Math.floor((totalSecs % 3600) / 60).toString().padStart(2, '0');
+      return `${hrs}.${mins}`;
+    }
+    const mins = Math.floor(totalSecs / 60).toString().padStart(2, '0');
+    const secs = (totalSecs % 60).toString().padStart(2, '0');
+    return `${mins}.${secs}`;
   };
+
+  const targetSeconds = Math.max(60, focusTargetMinutes * 60);
+  const progressRatio = timerSeconds === 0 ? 0 : Math.min(1, Math.max(0, timerSeconds / targetSeconds));
+  // Circle radius is 42, circumference is 2 * PI * 42 ≈ 263.89 (strokeDasharray is 264)
+  // When timerSeconds is 0, offset is strictly 264 (0% drawn, no green bar).
+  const strokeDashoffset = timerSeconds === 0 ? 264 : Math.round(264 * (1 - progressRatio));
 
   return (
     <motion.div
@@ -197,13 +211,23 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
         {/* Time Tracking Circular Dial */}
         <div className="frosted-card" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', justifyContent: 'space-between' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
-            <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-muted)' }}>Work Timer</span>
+            <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-muted)' }}>Time Tracking</span>
             <button
               type="button"
-              className="btn-icon-circle accent"
-              onClick={() => onNavigateToTab('timer')}
+              className="btn-icon-circle"
+              style={{
+                background: '#c5e836',
+                color: '#1a2e05',
+                border: 'none',
+                boxShadow: '0 2px 8px rgba(197, 232, 54, 0.4)',
+                cursor: 'pointer',
+                width: 36,
+                height: 36,
+              }}
+              onClick={() => setIsFocusSessionOpen(true)}
+              title="Open Windows Focus Session"
             >
-              <ArrowUpRight size={16} />
+              <ArrowUpRight size={18} strokeWidth={2.4} />
             </button>
           </div>
 
@@ -215,7 +239,11 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                 cx="50"
                 cy="50"
                 r="42"
-                strokeDashoffset={isTimerRunning ? 90 : 180}
+                strokeDashoffset={strokeDashoffset}
+                style={{
+                  stroke: timerSeconds === 0 ? 'transparent' : 'var(--color-secondary, #566500)',
+                  transition: 'stroke-dashoffset 0.8s ease',
+                }}
               />
             </svg>
             <div className="timer-inner-content">
@@ -223,7 +251,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                 {formatTimerDigits(timerSeconds)}
               </span>
               <span style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--text-muted)' }}>
-                Session
+                WORK TIME
               </span>
             </div>
           </div>
@@ -233,21 +261,27 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
               type="button"
               className="btn-icon-circle"
               onClick={() => setIsTimerRunning(!isTimerRunning)}
+              title={isTimerRunning ? 'Pause timer' : 'Start timer'}
             >
               {isTimerRunning ? <Pause size={15} /> : <Play size={15} />}
             </button>
             <button
               type="button"
               className="btn-icon-circle"
-              style={{ background: 'var(--color-primary)', color: 'var(--color-on-primary)' }}
+              style={{ background: '#0f172a', color: '#ffffff', border: 'none' }}
               onClick={() => setIsTimerRunning(false)}
+              title="Stop timer"
             >
               <div style={{ width: 10, height: 10, background: 'currentColor', borderRadius: 2 }} />
             </button>
             <button
               type="button"
               className="btn-icon-circle"
-              onClick={() => setTimerSeconds(0)}
+              onClick={() => {
+                setTimerSeconds(0);
+                setIsTimerRunning(false);
+              }}
+              title="Reset timer to 00.00"
             >
               <RotateCcw size={15} />
             </button>
@@ -330,6 +364,21 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Windows 11 Focus Session Floating Widget */}
+      <FocusSessionWidget
+        isOpen={isFocusSessionOpen}
+        onClose={() => setIsFocusSessionOpen(false)}
+        timerSeconds={timerSeconds}
+        isTimerRunning={isTimerRunning}
+        onToggleTimer={() => setIsTimerRunning(!isTimerRunning)}
+        onResetTimer={() => {
+          setTimerSeconds(0);
+          setIsTimerRunning(false);
+        }}
+        targetMinutes={focusTargetMinutes}
+        onTargetMinutesChange={setFocusTargetMinutes}
+      />
     </motion.div>
   );
 };

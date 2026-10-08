@@ -15,6 +15,7 @@ import {
   LogOut,
   ChevronDown,
   DollarSign,
+  Award,
 } from 'lucide-react';
 import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
@@ -95,6 +96,22 @@ export const TopBar: React.FC<TopBarProps> = ({
   ]);
 
   const unreadCount = notifications.filter((n) => n.unread).length;
+  const [notificationFilter, setNotificationFilter] = useState<'all' | 'unread'>('all');
+
+  const filteredNotifications = notifications.filter((n) => {
+    if (notificationFilter === 'unread') return n.unread;
+    return true;
+  });
+
+  const handleToggleRead = (id: string) => {
+    setNotifications((prev) =>
+      prev.map((n) => (n.id === id ? { ...n, unread: !n.unread } : n))
+    );
+  };
+
+  const handleClearAll = () => {
+    setNotifications([]);
+  };
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -362,111 +379,391 @@ export const TopBar: React.FC<TopBarProps> = ({
           <AnimatePresence>
             {isNotificationsOpen && (
               <motion.div
-                initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                initial={{ opacity: 0, y: 8, scale: 0.96 }}
                 animate={{ opacity: 1, y: 0, scale: 1 }}
-                exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                transition={{ duration: 0.18 }}
+                exit={{ opacity: 0, y: 8, scale: 0.96 }}
+                transition={{ duration: 0.16 }}
                 style={{
                   position: 'absolute',
-                  top: 'calc(100% + 8px)',
+                  top: 'calc(100% + 10px)',
                   right: 0,
-                  width: 320,
-                  background: 'var(--surface-card)',
-                  backdropFilter: 'blur(20px)',
-                  borderRadius: 'var(--radius-card-sm)',
-                  border: '1px solid var(--surface-border)',
-                  boxShadow: 'var(--shadow-dropdown)',
-                  zIndex: 200,
+                  width: 390,
+                  maxWidth: 'calc(100vw - 32px)',
+                  background: theme === 'dark' ? '#0f172a' : '#ffffff',
+                  color: theme === 'dark' ? '#f8fafc' : '#0f172a',
+                  borderRadius: '16px',
+                  border: theme === 'dark' ? '1px solid rgba(255, 255, 255, 0.14)' : '1px solid #cbd5e1',
+                  boxShadow:
+                    theme === 'dark'
+                      ? '0 24px 60px -10px rgba(0, 0, 0, 0.85), 0 10px 24px -5px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.1)'
+                      : '0 20px 48px -8px rgba(15, 23, 42, 0.18), 0 8px 16px -4px rgba(15, 23, 42, 0.08), 0 0 0 1px rgba(15, 23, 42, 0.08)',
+                  zIndex: 9999,
                   overflow: 'hidden',
+                  display: 'flex',
+                  flexDirection: 'column',
                 }}
               >
+                {/* Header */}
                 <div
                   style={{
-                    padding: '12px 14px',
-                    borderBottom: '1px solid var(--surface-border-subtle)',
+                    padding: '14px 18px',
+                    background: theme === 'dark' ? '#1e293b' : '#f8fafc',
+                    borderBottom: theme === 'dark' ? '1px solid rgba(255, 255, 255, 0.1)' : '1px solid #e2e8f0',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'space-between',
                   }}
                 >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <Bell size={15} color="var(--color-secondary)" />
-                    <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>
-                      System Notifications
-                    </span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <div
+                      style={{
+                        width: 32,
+                        height: 32,
+                        borderRadius: 8,
+                        background: 'rgba(76, 107, 255, 0.15)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        color: '#4c6bff',
+                      }}
+                    >
+                      <Bell size={16} />
+                    </div>
+                    <div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <span style={{ fontSize: 14, fontWeight: 800, color: theme === 'dark' ? '#f8fafc' : '#0f172a' }}>
+                          Notifications
+                        </span>
+                        {unreadCount > 0 && (
+                          <span
+                            style={{
+                              fontSize: 10,
+                              fontWeight: 800,
+                              background: '#4c6bff',
+                              color: '#ffffff',
+                              padding: '2px 7px',
+                              borderRadius: 10,
+                              letterSpacing: '0.02em',
+                            }}
+                          >
+                            {unreadCount} NEW
+                          </span>
+                        )}
+                      </div>
+                      <div style={{ fontSize: 11, color: theme === 'dark' ? '#94a3b8' : '#64748b', marginTop: 1 }}>
+                        System alerts, telemetry & messages
+                      </div>
+                    </div>
                   </div>
+
                   {unreadCount > 0 && (
                     <button
                       type="button"
                       onClick={handleMarkAllRead}
                       style={{
-                        background: 'none',
+                        background: 'transparent',
                         border: 'none',
-                        color: 'var(--color-secondary)',
-                        fontSize: 11,
-                        fontWeight: 600,
+                        color: '#4c6bff',
+                        fontSize: 12,
+                        fontWeight: 700,
                         cursor: 'pointer',
                         display: 'flex',
                         alignItems: 'center',
                         gap: 4,
+                        padding: '4px 8px',
+                        borderRadius: 6,
+                        transition: 'all 0.15s ease',
                       }}
+                      title="Mark all as read"
                     >
-                      <CheckCheck size={13} />
+                      <CheckCheck size={14} />
                       <span>Mark all read</span>
                     </button>
                   )}
                 </div>
 
-                <div style={{ maxHeight: 280, overflowY: 'auto' }}>
-                  {notifications.map((n) => (
-                    <div
-                      key={n.id}
+                {/* Sub-header Filter Tabs */}
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    padding: '8px 16px',
+                    background: theme === 'dark' ? '#151f33' : '#f1f5f9',
+                    borderBottom: theme === 'dark' ? '1px solid rgba(255, 255, 255, 0.08)' : '1px solid #e2e8f0',
+                  }}
+                >
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <button
+                      type="button"
+                      onClick={() => setNotificationFilter('all')}
                       style={{
-                        padding: '10px 14px',
-                        borderBottom: '1px solid var(--surface-border-subtle)',
-                        background: n.unread ? 'var(--surface-frosted-subdued)' : 'transparent',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        gap: 2,
-                        transition: 'background 0.15s ease',
+                        border: 'none',
+                        background:
+                          notificationFilter === 'all'
+                            ? theme === 'dark'
+                              ? '#334155'
+                              : '#ffffff'
+                            : 'transparent',
+                        color:
+                          notificationFilter === 'all'
+                            ? theme === 'dark'
+                              ? '#ffffff'
+                              : '#0f172a'
+                            : theme === 'dark'
+                            ? '#94a3b8'
+                            : '#64748b',
+                        fontSize: 11,
+                        fontWeight: notificationFilter === 'all' ? 700 : 500,
+                        padding: '3px 10px',
+                        borderRadius: 6,
+                        cursor: 'pointer',
+                        boxShadow: notificationFilter === 'all' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
                       }}
                     >
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                          {n.type === 'payment' && (
-                            <div
-                              style={{
-                                width: 18,
-                                height: 18,
-                                borderRadius: '50%',
-                                background: 'rgba(16, 185, 129, 0.2)',
-                                color: '#10b981',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                flexShrink: 0,
-                              }}
-                            >
-                              <DollarSign size={11} />
-                            </div>
-                          )}
-                          <span
+                      All ({notifications.length})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setNotificationFilter('unread')}
+                      style={{
+                        border: 'none',
+                        background:
+                          notificationFilter === 'unread'
+                            ? theme === 'dark'
+                              ? '#334155'
+                              : '#ffffff'
+                            : 'transparent',
+                        color:
+                          notificationFilter === 'unread'
+                            ? theme === 'dark'
+                              ? '#ffffff'
+                              : '#0f172a'
+                            : theme === 'dark'
+                            ? '#94a3b8'
+                            : '#64748b',
+                        fontSize: 11,
+                        fontWeight: notificationFilter === 'unread' ? 700 : 500,
+                        padding: '3px 10px',
+                        borderRadius: 6,
+                        cursor: 'pointer',
+                        boxShadow: notificationFilter === 'unread' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+                      }}
+                    >
+                      Unread ({unreadCount})
+                    </button>
+                  </div>
+
+                  {notifications.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={handleClearAll}
+                      style={{
+                        border: 'none',
+                        background: 'transparent',
+                        color: theme === 'dark' ? '#94a3b8' : '#64748b',
+                        fontSize: 11,
+                        fontWeight: 500,
+                        cursor: 'pointer',
+                        padding: '2px 6px',
+                        borderRadius: 4,
+                      }}
+                    >
+                      Clear all
+                    </button>
+                  )}
+                </div>
+
+                {/* Notifications List */}
+                <div style={{ maxHeight: 340, overflowY: 'auto' }}>
+                  {filteredNotifications.length === 0 ? (
+                    <div
+                      style={{
+                        textAlign: 'center',
+                        padding: '36px 20px',
+                        color: theme === 'dark' ? '#94a3b8' : '#64748b',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        gap: 8,
+                      }}
+                    >
+                      <div
+                        style={{
+                          width: 44,
+                          height: 44,
+                          borderRadius: '50%',
+                          background: theme === 'dark' ? 'rgba(255,255,255,0.06)' : '#f1f5f9',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          color: '#10b981',
+                        }}
+                      >
+                        <CheckCheck size={22} />
+                      </div>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: theme === 'dark' ? '#f8fafc' : '#0f172a' }}>
+                        All caught up!
+                      </div>
+                      <div style={{ fontSize: 11, maxWidth: 220 }}>
+                        {notificationFilter === 'unread'
+                          ? 'No unread notifications at the moment.'
+                          : 'No system notifications currently stored.'}
+                      </div>
+                    </div>
+                  ) : (
+                    filteredNotifications.map((n) => {
+                      const getIconAndColors = () => {
+                        switch (n.type) {
+                          case 'payment':
+                            return {
+                              icon: <DollarSign size={13} />,
+                              bg: 'rgba(16, 185, 129, 0.16)',
+                              color: '#10b981',
+                              badgeText: 'Payroll',
+                            };
+                          case 'telemetry':
+                            return {
+                              icon: <Activity size={13} />,
+                              bg: 'rgba(76, 107, 255, 0.16)',
+                              color: '#4c6bff',
+                              badgeText: 'Telemetry',
+                            };
+                          case 'merit':
+                            return {
+                              icon: <Award size={13} />,
+                              bg: 'rgba(245, 158, 11, 0.16)',
+                              color: '#f59e0b',
+                              badgeText: 'Performance',
+                            };
+                          case 'security':
+                            return {
+                              icon: <Shield size={13} />,
+                              bg: 'rgba(139, 92, 246, 0.16)',
+                              color: '#8b5cf6',
+                              badgeText: 'Security',
+                            };
+                          case 'system':
+                          default:
+                            return {
+                              icon: <Radio size={13} />,
+                              bg: 'rgba(100, 116, 139, 0.16)',
+                              color: '#64748b',
+                              badgeText: 'System',
+                            };
+                        }
+                      };
+
+                      const meta = getIconAndColors();
+
+                      return (
+                        <div
+                          key={n.id}
+                          onClick={() => handleToggleRead(n.id)}
+                          style={{
+                            padding: '12px 16px',
+                            borderBottom:
+                              theme === 'dark'
+                                ? '1px solid rgba(255, 255, 255, 0.07)'
+                                : '1px solid #f1f5f9',
+                            background: n.unread
+                              ? theme === 'dark'
+                                ? 'rgba(76, 107, 255, 0.08)'
+                                : 'rgba(76, 107, 255, 0.04)'
+                              : 'transparent',
+                            display: 'flex',
+                            gap: 12,
+                            alignItems: 'flex-start',
+                            cursor: 'pointer',
+                            transition: 'background 0.15s ease',
+                            position: 'relative',
+                          }}
+                          title="Click to toggle read status"
+                        >
+                          {/* Type Icon Badge */}
+                          <div
                             style={{
-                              fontSize: 12,
-                              fontWeight: 700,
-                              color: n.type === 'payment' ? '#10b981' : 'var(--text-primary)',
+                              width: 30,
+                              height: 30,
+                              borderRadius: 8,
+                              background: meta.bg,
+                              color: meta.color,
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              flexShrink: 0,
+                              marginTop: 2,
                             }}
                           >
-                            {n.title}
-                          </span>
+                            {meta.icon}
+                          </div>
+
+                          {/* Text Content */}
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div
+                              style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                gap: 8,
+                                marginBottom: 2,
+                              }}
+                            >
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+                                <span
+                                  style={{
+                                    fontSize: 13,
+                                    fontWeight: 700,
+                                    color: theme === 'dark' ? '#f8fafc' : '#0f172a',
+                                    overflow: 'hidden',
+                                    textOverflow: 'ellipsis',
+                                    whiteSpace: 'nowrap',
+                                  }}
+                                >
+                                  {n.title}
+                                </span>
+                                {n.unread && (
+                                  <span
+                                    style={{
+                                      width: 6,
+                                      height: 6,
+                                      borderRadius: '50%',
+                                      background: '#4c6bff',
+                                      boxShadow: '0 0 6px #4c6bff',
+                                      flexShrink: 0,
+                                    }}
+                                  />
+                                )}
+                              </div>
+                              <span
+                                style={{
+                                  fontSize: 10,
+                                  fontWeight: 600,
+                                  color: theme === 'dark' ? '#94a3b8' : '#64748b',
+                                  flexShrink: 0,
+                                }}
+                              >
+                                {n.time}
+                              </span>
+                            </div>
+
+                            <p
+                              style={{
+                                margin: 0,
+                                fontSize: 12,
+                                fontWeight: 400,
+                                color: theme === 'dark' ? '#cbd5e1' : '#334155',
+                                lineHeight: 1.45,
+                                wordBreak: 'break-word',
+                              }}
+                            >
+                              {n.description}
+                            </p>
+                          </div>
                         </div>
-                        <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>{n.time}</span>
-                      </div>
-                      <span style={{ fontSize: 11, color: 'var(--text-secondary)', lineHeight: 1.4 }}>
-                        {n.description}
-                      </span>
-                    </div>
-                  ))}
+                      );
+                    })
+                  )}
                 </div>
               </motion.div>
             )}
@@ -537,23 +834,26 @@ export const TopBar: React.FC<TopBarProps> = ({
           <AnimatePresence>
             {isProfileOpen && (
               <motion.div
-                initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                initial={{ opacity: 0, y: 8, scale: 0.96 }}
                 animate={{ opacity: 1, y: 0, scale: 1 }}
-                exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                transition={{ duration: 0.18 }}
+                exit={{ opacity: 0, y: 8, scale: 0.96 }}
+                transition={{ duration: 0.16 }}
                 style={{
                   position: 'absolute',
-                  top: 'calc(100% + 8px)',
+                  top: 'calc(100% + 10px)',
                   right: 0,
-                  width: 260,
-                  background: 'var(--surface-card)',
-                  backdropFilter: 'blur(20px)',
-                  borderRadius: 'var(--radius-card-sm)',
-                  border: '1px solid var(--surface-border)',
-                  boxShadow: 'var(--shadow-dropdown)',
-                  zIndex: 200,
+                  width: 280,
+                  background: theme === 'dark' ? '#0f172a' : '#ffffff',
+                  color: theme === 'dark' ? '#f8fafc' : '#0f172a',
+                  borderRadius: '16px',
+                  border: theme === 'dark' ? '1px solid rgba(255, 255, 255, 0.14)' : '1px solid #cbd5e1',
+                  boxShadow:
+                    theme === 'dark'
+                      ? '0 24px 60px -10px rgba(0, 0, 0, 0.85), 0 10px 24px -5px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.1)'
+                      : '0 20px 48px -8px rgba(15, 23, 42, 0.18), 0 8px 16px -4px rgba(15, 23, 42, 0.08), 0 0 0 1px rgba(15, 23, 42, 0.08)',
+                  zIndex: 9999,
                   overflow: 'hidden',
-                  padding: '12px 14px',
+                  padding: '14px 16px',
                   display: 'flex',
                   flexDirection: 'column',
                   gap: 12,
@@ -575,10 +875,18 @@ export const TopBar: React.FC<TopBarProps> = ({
                     {userInitials}
                   </div>
                   <div style={{ overflow: 'hidden' }}>
-                    <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: theme === 'dark' ? '#f8fafc' : '#0f172a' }}>
                       {user.name}
                     </div>
-                    <div style={{ fontSize: 11, color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    <div
+                      style={{
+                        fontSize: 11,
+                        color: theme === 'dark' ? '#94a3b8' : '#64748b',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
                       {user.email}
                     </div>
                   </div>
@@ -587,10 +895,10 @@ export const TopBar: React.FC<TopBarProps> = ({
                 {/* Details list */}
                 <div
                   style={{
-                    padding: '8px 10px',
-                    borderRadius: 'var(--radius-card-sm)',
-                    background: 'var(--surface-frosted-subdued)',
-                    border: '1px solid var(--surface-border-subtle)',
+                    padding: '10px 12px',
+                    borderRadius: '10px',
+                    background: theme === 'dark' ? '#1e293b' : '#f8fafc',
+                    border: theme === 'dark' ? '1px solid rgba(255, 255, 255, 0.08)' : '1px solid #e2e8f0',
                     display: 'flex',
                     flexDirection: 'column',
                     gap: 6,
@@ -598,20 +906,20 @@ export const TopBar: React.FC<TopBarProps> = ({
                   }}
                 >
                   <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span style={{ color: 'var(--text-muted)' }}>Authority Role:</span>
-                    <span style={{ fontWeight: 700, textTransform: 'capitalize', color: 'var(--text-primary)' }}>
+                    <span style={{ color: theme === 'dark' ? '#94a3b8' : '#64748b' }}>Authority Role:</span>
+                    <span style={{ fontWeight: 700, textTransform: 'capitalize', color: theme === 'dark' ? '#f8fafc' : '#0f172a' }}>
                       {role}
                     </span>
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span style={{ color: 'var(--text-muted)' }}>Department:</span>
-                    <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
+                    <span style={{ color: theme === 'dark' ? '#94a3b8' : '#64748b' }}>Department:</span>
+                    <span style={{ fontWeight: 600, color: theme === 'dark' ? '#f8fafc' : '#0f172a' }}>
                       {user.department || 'Management'}
                     </span>
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span style={{ color: 'var(--text-muted)' }}>Security Level:</span>
-                    <span style={{ color: 'var(--status-success)', fontWeight: 700 }}>
+                    <span style={{ color: theme === 'dark' ? '#94a3b8' : '#64748b' }}>Security Level:</span>
+                    <span style={{ color: '#10b981', fontWeight: 700 }}>
                       DPAPI Verified
                     </span>
                   </div>

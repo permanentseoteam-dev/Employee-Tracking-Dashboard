@@ -44,6 +44,9 @@
   --shadow-card: 0 12px 32px -4px rgba(18, 20, 23, 0.04), 0 4px 12px rgba(0, 0, 0, 0.02);
   --shadow-elevated: 0 20px 40px -8px rgba(18, 20, 23, 0.08), 0 6px 16px rgba(0, 0, 0, 0.04);
   --shadow-pill: 0 4px 12px rgba(0, 0, 0, 0.06);
+  --surface-card: #ffffff;
+  --surface-card-elevated: #ffffff;
+  --shadow-dropdown: 0 20px 48px -10px rgba(15, 23, 42, 0.22), 0 10px 24px -5px rgba(15, 23, 42, 0.12), 0 0 0 1px rgba(15, 23, 42, 0.08);
 
   --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   --radius-pill: 9999px;
@@ -96,6 +99,9 @@
   --shadow-card: 0 16px 36px -4px rgba(0, 0, 0, 0.35);
   --shadow-elevated: 0 24px 48px -8px rgba(0, 0, 0, 0.5);
   --shadow-pill: 0 4px 14px rgba(0, 0, 0, 0.25);
+  --surface-card: #0f172a;
+  --surface-card-elevated: #1e293b;
+  --shadow-dropdown: 0 24px 56px -10px rgba(0, 0, 0, 0.8), 0 12px 28px -5px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.14);
 }
 
 /* Reset & Base Setup */

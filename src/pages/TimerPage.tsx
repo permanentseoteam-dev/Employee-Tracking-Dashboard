@@ -162,7 +162,11 @@ export const TimerPage: React.FC<TimerPageProps> = ({
               cy="50"
               r="42"
               strokeWidth="4"
-              strokeDashoffset={isRunning ? 70 : 180}
+              strokeDashoffset={secondsElapsed === 0 ? 264 : Math.round(264 * (1 - Math.min(1, secondsElapsed / (25 * 60))))}
+              style={{
+                stroke: secondsElapsed === 0 ? 'transparent' : 'var(--color-secondary)',
+                transition: 'stroke-dashoffset 0.8s ease',
+              }}
             />
           </svg>
 

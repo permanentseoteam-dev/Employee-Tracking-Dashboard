@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { dataService } from '../../services/dataService';
 import { useAuth } from '../../context/AuthContext';
+import { FocusSessionWidget } from '../../components/timer/FocusSessionWidget';
 import type { EmployeeRecord } from '../../types/roles';
 
 interface AdminDashboardPageProps {
@@ -40,8 +41,10 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({ onNaviga
 
   const [employees, setEmployees] = useState<EmployeeRecord[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
-  const [isTimerRunning, setIsTimerRunning] = useState(true);
-  const [timerSeconds, setTimerSeconds] = useState(20700); // 05:45:00
+  const [isTimerRunning, setIsTimerRunning] = useState(false);
+  const [timerSeconds, setTimerSeconds] = useState(0);
+  const [isFocusSessionOpen, setIsFocusSessionOpen] = useState(false);
+  const [focusTargetMinutes, setFocusTargetMinutes] = useState(25);
   const [selectedEmpIds, setSelectedEmpIds] = useState<string[]>([]);
 
   // Checklist items
@@ -84,10 +87,19 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({ onNaviga
   }, [isTimerRunning]);
 
   const formatTimerDigits = (totalSecs: number) => {
-    const hrs = Math.floor(totalSecs / 3600).toString().padStart(2, '0');
-    const mins = Math.floor((totalSecs % 3600) / 60).toString().padStart(2, '0');
-    return `${hrs}.${mins}`;
+    if (totalSecs >= 3600) {
+      const hrs = Math.floor(totalSecs / 3600).toString().padStart(2, '0');
+      const mins = Math.floor((totalSecs % 3600) / 60).toString().padStart(2, '0');
+      return `${hrs}.${mins}`;
+    }
+    const mins = Math.floor(totalSecs / 60).toString().padStart(2, '0');
+    const secs = (totalSecs % 60).toString().padStart(2, '0');
+    return `${mins}.${secs}`;
   };
+
+  const targetSeconds = Math.max(60, focusTargetMinutes * 60);
+  const progressRatio = timerSeconds === 0 ? 0 : Math.min(1, Math.max(0, timerSeconds / targetSeconds));
+  const strokeDashoffset = timerSeconds === 0 ? 264 : Math.round(264 * (1 - progressRatio));
 
   const toggleSelectEmp = (id: string) => {
     setSelectedEmpIds((prev) =>
@@ -273,11 +285,20 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({ onNaviga
             <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-muted)' }}>Time Tracking</span>
             <button
               type="button"
-              className="btn-icon-circle accent"
-              onClick={() => onNavigate('/admin/attendance')}
-              title="View Attendance Hours"
+              className="btn-icon-circle"
+              style={{
+                background: '#c5e836',
+                color: '#1a2e05',
+                border: 'none',
+                boxShadow: '0 2px 8px rgba(197, 232, 54, 0.4)',
+                cursor: 'pointer',
+                width: 36,
+                height: 36,
+              }}
+              onClick={() => setIsFocusSessionOpen(true)}
+              title="Open Windows Focus Session"
             >
-              <ArrowUpRight size={16} />
+              <ArrowUpRight size={18} strokeWidth={2.4} />
             </button>
           </div>
 
@@ -290,7 +311,11 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({ onNaviga
                 cx="50"
                 cy="50"
                 r="42"
-                strokeDashoffset={isTimerRunning ? 80 : 160}
+                strokeDashoffset={strokeDashoffset}
+                style={{
+                  stroke: timerSeconds === 0 ? 'transparent' : 'var(--color-secondary, #566500)',
+                  transition: 'stroke-dashoffset 0.8s ease',
+                }}
               />
             </svg>
             <div className="timer-inner-content">
@@ -298,7 +323,7 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({ onNaviga
                 {formatTimerDigits(timerSeconds)}
               </span>
               <span style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--text-muted)' }}>
-                Work Time
+                WORK TIME
               </span>
             </div>
           </div>
@@ -316,7 +341,7 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({ onNaviga
             <button
               type="button"
               className="btn-icon-circle"
-              style={{ background: 'var(--color-primary)', color: 'var(--color-on-primary)' }}
+              style={{ background: '#0f172a', color: '#ffffff', border: 'none' }}
               onClick={() => setIsTimerRunning(false)}
               title="Stop timer"
             >
@@ -325,8 +350,11 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({ onNaviga
             <button
               type="button"
               className="btn-icon-circle"
-              onClick={() => setTimerSeconds(0)}
-              title="Reset timer"
+              onClick={() => {
+                setTimerSeconds(0);
+                setIsTimerRunning(false);
+              }}
+              title="Reset timer to 00.00"
             >
               <RotateCcw size={15} />
             </button>
@@ -583,6 +611,21 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({ onNaviga
           </div>
         </div>
       </div>
+
+      {/* Windows 11 Focus Session Floating Widget */}
+      <FocusSessionWidget
+        isOpen={isFocusSessionOpen}
+        onClose={() => setIsFocusSessionOpen(false)}
+        timerSeconds={timerSeconds}
+        isTimerRunning={isTimerRunning}
+        onToggleTimer={() => setIsTimerRunning(!isTimerRunning)}
+        onResetTimer={() => {
+          setTimerSeconds(0);
+          setIsTimerRunning(false);
+        }}
+        targetMinutes={focusTargetMinutes}
+        onTargetMinutesChange={setFocusTargetMinutes}
+      />
     </motion.div>
   );
 };

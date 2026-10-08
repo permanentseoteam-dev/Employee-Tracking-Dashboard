@@ -9,6 +9,7 @@ import {
   Flame,
   CalendarCheck,
   FolderKanban,
+  DollarSign,
   Award,
   Settings,
   ShieldAlert,
@@ -55,6 +56,7 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({ currentRoute, onNavi
       items: [
         { label: 'Attendance & Rules', route: '/admin/attendance', icon: <CalendarCheck size={16} /> },
         { label: 'Projects & Folders', route: '/admin/projects', icon: <FolderKanban size={16} /> },
+        { label: 'Payroll & Salaries', route: '/admin/finance', icon: <DollarSign size={16} /> },
         { label: 'Performance & Stars', route: '/admin/performance', icon: <Award size={16} /> },
       ],
     },

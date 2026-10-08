@@ -19,6 +19,7 @@ import { AdminManagersPage } from './pages/admin/AdminManagersPage';
 import { AdminTeamsPage } from './pages/admin/AdminTeamsPage';
 import { AdminMonitoringPage } from './pages/admin/AdminMonitoringPage';
 import { AdminAttendancePage } from './pages/admin/AdminAttendancePage';
+import { AdminFinancePage } from './pages/admin/AdminFinancePage';
 import { AdminPerformancePage } from './pages/admin/AdminPerformancePage';
 import { AdminSettingsAuditPage } from './pages/admin/AdminSettingsAuditPage';
 
@@ -137,6 +138,8 @@ export const App: React.FC = () => {
         case '/admin/projects':
         case '/admin/tasks':
           return <ProjectWorkspace role="admin" />;
+        case '/admin/finance':
+          return <AdminFinancePage />;
         case '/admin/performance':
           return <AdminPerformancePage />;
         case '/admin/audit-logs':

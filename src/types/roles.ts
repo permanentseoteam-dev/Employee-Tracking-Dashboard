@@ -178,3 +178,44 @@ export interface HeatmapPoint {
   intensity: number;
   type: 'click' | 'move';
 }
+
+export interface EmployeeSalaryRecord {
+  id: string;
+  employee_id: string;
+  employee_name: string;
+  email: string;
+  department: string;
+  team_name: string;
+  base_salary: number; // e.g. 6200
+  currency: string; // e.g. 'USD'
+  pay_frequency: 'monthly' | 'bi-weekly' | 'hourly';
+  bonus_amount: number;
+  deduction_amount: number;
+  net_salary: number;
+  payment_status: 'paid' | 'pending' | 'processing' | 'scheduled';
+  next_pay_date: string;
+  bank_account_mask: string;
+  last_payment_date: string;
+  notes?: string;
+}
+
+export interface ConfidentialMessageItem {
+  id: string;
+  recipient_id: string;
+  recipient_name: string;
+  recipient_email: string;
+  sender_id: string;
+  sender_name: string;
+  sender_role: 'admin';
+  subject: string;
+  message_body: string;
+  salary_slip_reference?: {
+    month: string;
+    amount: number;
+    currency: string;
+    pay_status: string;
+  };
+  sent_at: string;
+  is_read: boolean;
+  priority: 'normal' | 'urgent' | 'confidential';
+}

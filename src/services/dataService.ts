@@ -13,6 +13,8 @@ import type {
   StarRuleItem,
   AttendanceRuleConfig,
   HeatmapPoint,
+  EmployeeSalaryRecord,
+  ConfidentialMessageItem,
 } from '../types/roles';
 import { supabase, isSupabaseConfigured } from './supabaseClient';
 
@@ -1271,6 +1273,401 @@ export const dataService = {
       managerId,
       `Assigned operational team scope: ${teamName}`
     );
+  },
+
+  // =========================================================================
+  // 15. Finance & Payroll (Admin Role Only)
+  // =========================================================================
+  getEmployeeSalaries: async (role: UserRole): Promise<EmployeeSalaryRecord[]> => {
+    if (role !== 'admin') {
+      throw new Error('403 Forbidden: Only Admin can access Employee Salaries and Finance records.');
+    }
+
+    const key = 'stitch_payroll_records';
+    let storedSalaries: EmployeeSalaryRecord[] = [];
+    try {
+      const raw = localStorage.getItem(key);
+      if (raw) storedSalaries = JSON.parse(raw);
+    } catch (e) {
+      console.error('Error parsing stored salaries:', e);
+    }
+
+    if (storedSalaries.length === 0) {
+      // Seed default salary roster for existing company employees
+      storedSalaries = [
+        {
+          id: 'sal-001',
+          employee_id: 'cccccccc-cccc-cccc-cccc-cccccccccccc',
+          employee_name: 'Arsal',
+          email: 'arsal@company.com',
+          department: 'Engineering',
+          team_name: 'Core Backend Team',
+          base_salary: 6200,
+          currency: 'USD',
+          pay_frequency: 'monthly',
+          bonus_amount: 450,
+          deduction_amount: 0,
+          net_salary: 6650,
+          payment_status: 'paid',
+          next_pay_date: '2026-11-01',
+          bank_account_mask: '•••• 4821',
+          last_payment_date: '2026-10-01',
+          notes: 'Senior Systems Engineer - Performance tier A+',
+        },
+        {
+          id: 'sal-002',
+          employee_id: 'emp-elena',
+          employee_name: 'Elena Vance',
+          email: 'elena.vance@company.com',
+          department: 'Engineering',
+          team_name: 'UI & Web Architecture',
+          base_salary: 5800,
+          currency: 'USD',
+          pay_frequency: 'monthly',
+          bonus_amount: 300,
+          deduction_amount: 0,
+          net_salary: 6100,
+          payment_status: 'processing',
+          next_pay_date: '2026-10-15',
+          bank_account_mask: '•••• 7731',
+          last_payment_date: '2026-09-30',
+          notes: 'Full-Stack Developer - Sprint 42 Lead',
+        },
+        {
+          id: 'sal-003',
+          employee_id: 'emp-marcus',
+          employee_name: 'Marcus Bell',
+          email: 'marcus.bell@company.com',
+          department: 'Engineering',
+          team_name: 'Mobile & Cloud Infrastructure',
+          base_salary: 5400,
+          currency: 'USD',
+          pay_frequency: 'monthly',
+          bonus_amount: 250,
+          deduction_amount: 0,
+          net_salary: 5650,
+          payment_status: 'paid',
+          next_pay_date: '2026-11-01',
+          bank_account_mask: '•••• 3349',
+          last_payment_date: '2026-10-01',
+          notes: 'Cloud DevOps Specialist',
+        },
+        {
+          id: 'sal-004',
+          employee_id: 'emp-sarah',
+          employee_name: 'Sarah Chen',
+          email: 'sarah.chen@company.com',
+          department: 'Product',
+          team_name: 'Core Backend Team',
+          base_salary: 7100,
+          currency: 'USD',
+          pay_frequency: 'monthly',
+          bonus_amount: 600,
+          deduction_amount: 0,
+          net_salary: 7700,
+          payment_status: 'scheduled',
+          next_pay_date: '2026-10-31',
+          bank_account_mask: '•••• 8820',
+          last_payment_date: '2026-09-30',
+          notes: 'Product Architect & Technical Lead',
+        },
+        {
+          id: 'sal-005',
+          employee_id: 'emp-david',
+          employee_name: 'David Kim',
+          email: 'david.kim@company.com',
+          department: 'Quality Assurance',
+          team_name: 'UI & Web Architecture',
+          base_salary: 4900,
+          currency: 'USD',
+          pay_frequency: 'monthly',
+          bonus_amount: 200,
+          deduction_amount: 0,
+          net_salary: 5100,
+          payment_status: 'paid',
+          next_pay_date: '2026-11-01',
+          bank_account_mask: '•••• 5519',
+          last_payment_date: '2026-10-01',
+          notes: 'Automation QA Specialist',
+        },
+        {
+          id: 'sal-006',
+          employee_id: 'emp-jessica',
+          employee_name: 'Jessica Lee',
+          email: 'jessica.lee@company.com',
+          department: 'Design',
+          team_name: 'UI & Web Architecture',
+          base_salary: 6600,
+          currency: 'USD',
+          pay_frequency: 'monthly',
+          bonus_amount: 500,
+          deduction_amount: 0,
+          net_salary: 7100,
+          payment_status: 'paid',
+          next_pay_date: '2026-11-01',
+          bank_account_mask: '•••• 9012',
+          last_payment_date: '2026-10-01',
+          notes: 'Principal Product & Interaction Designer',
+        },
+        {
+          id: 'sal-007',
+          employee_id: 'emp-michael',
+          employee_name: 'Michael Torres',
+          email: 'michael.torres@company.com',
+          department: 'Operations',
+          team_name: 'Mobile & Cloud Infrastructure',
+          base_salary: 5200,
+          currency: 'USD',
+          pay_frequency: 'monthly',
+          bonus_amount: 0,
+          deduction_amount: 0,
+          net_salary: 5200,
+          payment_status: 'pending',
+          next_pay_date: '2026-10-15',
+          bank_account_mask: '•••• 6641',
+          last_payment_date: '2026-09-30',
+          notes: 'Infrastructure Operations Associate',
+        },
+      ];
+      localStorage.setItem(key, JSON.stringify(storedSalaries));
+    }
+
+    // Synchronize with any other employees found in the organization
+    try {
+      const allEmps = await dataService.getEmployees('admin');
+      let updated = false;
+      allEmps.forEach((emp) => {
+        const exists = storedSalaries.some(
+          (s) => s.employee_id === emp.id || s.email.toLowerCase() === emp.email.toLowerCase()
+        );
+        if (!exists) {
+          storedSalaries.push({
+            id: `sal-${emp.id}`,
+            employee_id: emp.id,
+            employee_name: emp.name,
+            email: emp.email,
+            department: emp.department || 'Engineering',
+            team_name: emp.team_name || 'Core Team',
+            base_salary: 5500,
+            currency: 'USD',
+            pay_frequency: 'monthly',
+            bonus_amount: 0,
+            deduction_amount: 0,
+            net_salary: 5500,
+            payment_status: 'pending',
+            next_pay_date: '2026-11-01',
+            bank_account_mask: '•••• 0000',
+            last_payment_date: '2026-10-01',
+            notes: 'Active team member',
+          });
+          updated = true;
+        }
+      });
+      if (updated) {
+        localStorage.setItem(key, JSON.stringify(storedSalaries));
+      }
+    } catch {
+      // Continue with stored
+    }
+
+    return storedSalaries;
+  },
+
+  updateEmployeeSalary: async (
+    role: UserRole,
+    recordId: string,
+    updates: Partial<EmployeeSalaryRecord>
+  ): Promise<EmployeeSalaryRecord> => {
+    if (role !== 'admin') {
+      throw new Error('403 Forbidden: Only Admin can update employee salaries');
+    }
+
+    const key = 'stitch_payroll_records';
+    const salaries = await dataService.getEmployeeSalaries('admin');
+    const idx = salaries.findIndex((s) => s.id === recordId || s.employee_id === recordId);
+    if (idx === -1) {
+      throw new Error('Salary record not found');
+    }
+
+    const target = salaries[idx];
+    const newBase = updates.base_salary !== undefined ? updates.base_salary : target.base_salary;
+    const newBonus = updates.bonus_amount !== undefined ? updates.bonus_amount : target.bonus_amount;
+    const newDeduct = updates.deduction_amount !== undefined ? updates.deduction_amount : target.deduction_amount;
+    const newNet = Math.max(0, newBase + newBonus - newDeduct);
+
+    const updated: EmployeeSalaryRecord = {
+      ...target,
+      ...updates,
+      base_salary: newBase,
+      bonus_amount: newBonus,
+      deduction_amount: newDeduct,
+      net_salary: newNet,
+    };
+
+    salaries[idx] = updated;
+    localStorage.setItem(key, JSON.stringify(salaries));
+
+    dataService.logAction(
+      'Super Admin',
+      'admin',
+      'UPDATE_SALARY',
+      target.employee_name,
+      `Updated compensation: Base $${newBase}, Net $${newNet} (${updated.payment_status})`
+    );
+
+    return updated;
+  },
+
+  addEmployeeSalary: async (
+    role: UserRole,
+    newSalary: Omit<EmployeeSalaryRecord, 'id'>
+  ): Promise<EmployeeSalaryRecord> => {
+    if (role !== 'admin') {
+      throw new Error('403 Forbidden: Only Admin can add employee salary records');
+    }
+
+    const key = 'stitch_payroll_records';
+    const salaries = await dataService.getEmployeeSalaries('admin');
+    const net = Math.max(0, newSalary.base_salary + (newSalary.bonus_amount || 0) - (newSalary.deduction_amount || 0));
+
+    const record: EmployeeSalaryRecord = {
+      ...newSalary,
+      id: `sal-${Date.now()}`,
+      net_salary: net,
+    };
+
+    salaries.push(record);
+    localStorage.setItem(key, JSON.stringify(salaries));
+
+    dataService.logAction(
+      'Super Admin',
+      'admin',
+      'CREATE_SALARY_RECORD',
+      newSalary.employee_name,
+      `Configured salary $${newSalary.base_salary} ${newSalary.currency}`
+    );
+
+    return record;
+  },
+
+  // =========================================================================
+  // 16. Confidential Direct Messages (Admin to Specific Employee ONLY)
+  // =========================================================================
+  sendConfidentialMessage: async (
+    role: UserRole,
+    msg: Omit<ConfidentialMessageItem, 'id' | 'sent_at' | 'is_read'>
+  ): Promise<ConfidentialMessageItem> => {
+    if (role !== 'admin') {
+      throw new Error('403 Forbidden: Only Admin can send private direct compensation messages to employees.');
+    }
+
+    const key = 'stitch_confidential_messages';
+    let storedMessages: ConfidentialMessageItem[] = [];
+    try {
+      const raw = localStorage.getItem(key);
+      if (raw) storedMessages = JSON.parse(raw);
+    } catch (e) {
+      console.error(e);
+    }
+
+    const newMsg: ConfidentialMessageItem = {
+      ...msg,
+      id: `cmsg-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      sent_at: new Date().toISOString(),
+      is_read: false,
+    };
+
+    storedMessages.unshift(newMsg);
+    localStorage.setItem(key, JSON.stringify(storedMessages));
+
+    dataService.logAction(
+      'Super Admin',
+      'admin',
+      'SEND_CONFIDENTIAL_MESSAGE',
+      msg.recipient_name,
+      `Sent private direct message: "${msg.subject}" [Restricted exclusively to ${msg.recipient_name}]`
+    );
+
+    return newMsg;
+  },
+
+  getConfidentialMessages: async (
+    role: UserRole,
+    currentUserId: string,
+    currentUserEmail?: string,
+    currentUserName?: string
+  ): Promise<ConfidentialMessageItem[]> => {
+    // SECURITY CONSTRAINT: Managers are strictly forbidden from viewing private employee messages
+    if (role === 'manager') {
+      return [];
+    }
+
+    const key = 'stitch_confidential_messages';
+    let messages: ConfidentialMessageItem[] = [];
+    try {
+      const raw = localStorage.getItem(key);
+      if (raw) messages = JSON.parse(raw);
+    } catch (e) {
+      console.error(e);
+    }
+
+    // Default starter message for Arsal if no messages exist yet
+    if (messages.length === 0) {
+      messages = [
+        {
+          id: 'cmsg-init-01',
+          recipient_id: 'cccccccc-cccc-cccc-cccc-cccccccccccc',
+          recipient_name: 'Arsal',
+          recipient_email: 'arsal@company.com',
+          sender_id: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+          sender_name: 'Super Admin',
+          sender_role: 'admin',
+          subject: 'October 2026 Compensation & Performance Star Bonus Confirmation',
+          message_body: 'Dear Arsal,\n\nYour monthly compensation for October 2026 has been successfully processed and disbursed. In recognition of your excellent delivery on the Rust Native Agent v1.4 and consistent attendance punctuality, a $450 performance bonus has been credited.\n\nPlease review your pay slip breakdown. If you have any inquiries regarding deductions or upcoming review cycles, please reply directly.\n\nBest regards,\nExecutive Administration',
+          salary_slip_reference: {
+            month: 'October 2026',
+            amount: 6650,
+            currency: 'USD',
+            pay_status: 'Disbursed (Direct Deposit)',
+          },
+          sent_at: '2026-10-01T10:00:00.000Z',
+          is_read: false,
+          priority: 'confidential',
+        },
+      ];
+      localStorage.setItem(key, JSON.stringify(messages));
+    }
+
+    // Admin can review all confidential messages sent to employees
+    if (role === 'admin') {
+      return messages;
+    }
+
+    // Employee role: ONLY return messages addressed specifically to THIS employee
+    if (role === 'employee') {
+      return messages.filter((m) => {
+        const idMatch = currentUserId && (m.recipient_id === currentUserId || m.recipient_id === 'cccccccc-cccc-cccc-cccc-cccccccccccc');
+        const emailMatch = currentUserEmail && m.recipient_email?.toLowerCase() === currentUserEmail.toLowerCase();
+        const nameMatch = currentUserName && m.recipient_name?.toLowerCase().includes(currentUserName.toLowerCase());
+        const arsalFallback = (!currentUserEmail || currentUserEmail.includes('arsal')) && m.recipient_name?.toLowerCase().includes('arsal');
+        return idMatch || emailMatch || nameMatch || arsalFallback;
+      });
+    }
+
+    return [];
+  },
+
+  markConfidentialMessageRead: async (messageId: string): Promise<void> => {
+    const key = 'stitch_confidential_messages';
+    try {
+      const raw = localStorage.getItem(key);
+      if (!raw) return;
+      const messages: ConfidentialMessageItem[] = JSON.parse(raw);
+      const updated = messages.map((m) => (m.id === messageId ? { ...m, is_read: true } : m));
+      localStorage.setItem(key, JSON.stringify(updated));
+    } catch (e) {
+      console.error('Error marking message read:', e);
+    }
   },
 };
 

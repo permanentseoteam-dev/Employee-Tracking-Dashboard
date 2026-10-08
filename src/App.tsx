@@ -40,8 +40,17 @@ import { ErrorBoundary } from './components/ErrorBoundary';
 export const App: React.FC = () => {
   const { role, currentRoute, navigate } = useAuth();
 
-  // Employee State (Preserved for zero regression)
-  const [currentTab, setCurrentTab] = useState<NavTab>('dashboard');
+  // Employee State (Synchronized with URL route and browser history)
+  const getEmployeeTab = (route: string): NavTab => {
+    if (route.includes('/attendance')) return 'attendance';
+    if (route.includes('/tasks')) return 'tasks';
+    if (route.includes('/projects')) return 'projects';
+    if (route.includes('/performance')) return 'performance';
+    if (route.includes('/timer')) return 'timer';
+    return 'dashboard';
+  };
+
+  const currentTab = getEmployeeTab(currentRoute);
   const [activeTaskTitle, setActiveTaskTitle] = useState<string | null>(null);
 
   const [status, setStatus] = useState<AgentStatusDto>({
@@ -92,9 +101,13 @@ export const App: React.FC = () => {
     return () => clearInterval(timer);
   }, [fetchState]);
 
+  const handleTabChange = (tab: NavTab) => {
+    navigate(`/employee/${tab}`);
+  };
+
   const handleStartTask = (title: string) => {
     setActiveTaskTitle(title);
-    setCurrentTab('timer');
+    navigate('/employee/timer');
   };
 
   // =========================================================================
@@ -111,6 +124,7 @@ export const App: React.FC = () => {
           return <AdminManagersPage />;
         case '/admin/teams':
           return <AdminTeamsPage />;
+        case '/admin/monitoring':
         case '/admin/monitoring/live':
           return <AdminMonitoringPage initialSubTab="live" />;
         case '/admin/monitoring/screenshots':
@@ -226,7 +240,7 @@ export const App: React.FC = () => {
   }
 
   // =========================================================================
-  // Role: EMPLOYEE EXPERIENCE (Preserved exactly as existing)
+  // Role: EMPLOYEE EXPERIENCE (Preserved exactly with history support)
   // =========================================================================
   const renderEmployeeContent = () => {
     switch (currentTab) {
@@ -236,7 +250,7 @@ export const App: React.FC = () => {
             status={status}
             dbStats={dbStats}
             systemInfo={systemInfo}
-            onNavigateToTab={setCurrentTab}
+            onNavigateToTab={handleTabChange}
           />
         );
       case 'attendance':
@@ -260,7 +274,7 @@ export const App: React.FC = () => {
             status={status}
             dbStats={dbStats}
             systemInfo={systemInfo}
-            onNavigateToTab={setCurrentTab}
+            onNavigateToTab={handleTabChange}
           />
         );
     }
@@ -269,7 +283,7 @@ export const App: React.FC = () => {
   return (
     <AppShell
       currentTab={currentTab}
-      onTabChange={setCurrentTab}
+      onTabChange={handleTabChange}
       status={status}
       dbStats={dbStats}
       onRefresh={fetchState}

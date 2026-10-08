@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Settings, ShieldAlert, Save, RefreshCw, Terminal, Lock } from 'lucide-react';
 import { dataService } from '../../services/dataService';
+import { useAuth } from '../../context/AuthContext';
 import { api } from '../../services/tauriBridge';
 import type { AuditLogItem } from '../../types/roles';
 import type { AppConfig } from '../../types';
@@ -11,6 +12,7 @@ interface AdminSettingsAuditPageProps {
 }
 
 export const AdminSettingsAuditPage: React.FC<AdminSettingsAuditPageProps> = ({ initialView = 'all' }) => {
+  const { navigate } = useAuth();
   const [activeView, setActiveView] = useState<'all' | 'settings' | 'audit-logs'>(initialView);
   const [config, setConfig] = useState<AppConfig | null>(null);
   const [auditLogs, setAuditLogs] = useState<AuditLogItem[]>([]);
@@ -91,14 +93,20 @@ export const AdminSettingsAuditPage: React.FC<AdminSettingsAuditPageProps> = ({ 
             <button
               type="button"
               className={`nav-pill-item ${activeView === 'all' ? 'active' : ''}`}
-              onClick={() => setActiveView('all')}
+              onClick={() => {
+                setActiveView('all');
+                navigate('/admin/settings');
+              }}
             >
               <span>All Overview</span>
             </button>
             <button
               type="button"
               className={`nav-pill-item ${activeView === 'settings' ? 'active' : ''}`}
-              onClick={() => setActiveView('settings')}
+              onClick={() => {
+                setActiveView('settings');
+                navigate('/admin/settings');
+              }}
             >
               <Settings size={14} />
               <span>Settings & Rules</span>
@@ -106,7 +114,10 @@ export const AdminSettingsAuditPage: React.FC<AdminSettingsAuditPageProps> = ({ 
             <button
               type="button"
               className={`nav-pill-item ${activeView === 'audit-logs' ? 'active' : ''}`}
-              onClick={() => setActiveView('audit-logs')}
+              onClick={() => {
+                setActiveView('audit-logs');
+                navigate('/admin/audit-logs');
+              }}
             >
               <Terminal size={14} />
               <span>Audit Ledger ({auditLogs.length})</span>

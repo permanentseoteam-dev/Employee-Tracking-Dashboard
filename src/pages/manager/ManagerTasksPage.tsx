@@ -10,7 +10,7 @@ interface ManagerTasksPageProps {
 }
 
 export const ManagerTasksPage: React.FC<ManagerTasksPageProps> = ({ initialView = 'tasks' }) => {
-  const { user } = useAuth();
+  const { user, navigate } = useAuth();
   const [view, setView] = useState<'projects' | 'tasks'>(initialView);
   const [tasks, setTasks] = useState<TaskItem[]>([]);
   const [projects, setProjects] = useState<ProjectItem[]>([]);
@@ -182,7 +182,10 @@ export const ManagerTasksPage: React.FC<ManagerTasksPageProps> = ({ initialView 
             <button
               type="button"
               className={`nav-pill-item ${view === 'projects' ? 'active' : ''}`}
-              onClick={() => setView('projects')}
+              onClick={() => {
+                setView('projects');
+                navigate('/manager/projects');
+              }}
             >
               <FolderKanban size={14} />
               <span>Projects ({projects.length})</span>
@@ -190,7 +193,10 @@ export const ManagerTasksPage: React.FC<ManagerTasksPageProps> = ({ initialView 
             <button
               type="button"
               className={`nav-pill-item ${view === 'tasks' ? 'active' : ''}`}
-              onClick={() => setView('tasks')}
+              onClick={() => {
+                setView('tasks');
+                navigate('/manager/tasks');
+              }}
             >
               <CheckSquare size={14} />
               <span>Tasks ({tasks.length})</span>

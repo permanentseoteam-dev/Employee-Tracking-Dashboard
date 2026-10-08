@@ -30,7 +30,17 @@ export interface EmployeeRecord {
   current_task: string | null;
   stars: number;
   device_id: string;
+  device_name?: string;
+  os_version?: string;
   joined_at: string;
+  last_activity_at?: string;
+  key_press_count?: number;
+  mouse_move_count?: number;
+  mouse_click_count?: number;
+  active_window?: string;
+  latest_screenshot_url?: string;
+  latest_screenshot_time?: string;
+  is_recording?: boolean;
 }
 
 export interface ManagerRecord {

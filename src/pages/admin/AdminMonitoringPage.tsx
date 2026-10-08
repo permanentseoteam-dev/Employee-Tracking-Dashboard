@@ -12,6 +12,7 @@ import {
   Monitor,
 } from 'lucide-react';
 import { dataService } from '../../services/dataService';
+import { useAuth } from '../../context/AuthContext';
 import { MatrixHeatmap } from '../../components/telemetry/MatrixHeatmap';
 import type { ScreenshotItem, EmployeeRecord } from '../../types/roles';
 
@@ -20,6 +21,7 @@ interface AdminMonitoringPageProps {
 }
 
 export const AdminMonitoringPage: React.FC<AdminMonitoringPageProps> = ({ initialSubTab = 'live' }) => {
+  const { navigate } = useAuth();
   const [activeSubTab, setActiveSubTab] = useState<'live' | 'screenshots' | 'heatmaps'>(initialSubTab);
   const [screenshots, setScreenshots] = useState<ScreenshotItem[]>([]);
   const [employees, setEmployees] = useState<EmployeeRecord[]>([]);
@@ -92,7 +94,10 @@ export const AdminMonitoringPage: React.FC<AdminMonitoringPageProps> = ({ initia
             <button
               type="button"
               className={`nav-pill-item ${activeSubTab === 'live' ? 'active' : ''}`}
-              onClick={() => setActiveSubTab('live')}
+              onClick={() => {
+                setActiveSubTab('live');
+                navigate('/admin/monitoring/live');
+              }}
             >
               <Activity size={14} />
               <span>Live Feeds</span>
@@ -100,7 +105,10 @@ export const AdminMonitoringPage: React.FC<AdminMonitoringPageProps> = ({ initia
             <button
               type="button"
               className={`nav-pill-item ${activeSubTab === 'screenshots' ? 'active' : ''}`}
-              onClick={() => setActiveSubTab('screenshots')}
+              onClick={() => {
+                setActiveSubTab('screenshots');
+                navigate('/admin/monitoring/screenshots');
+              }}
             >
               <Camera size={14} />
               <span>Screenshots ({screenshots.length})</span>
@@ -108,7 +116,10 @@ export const AdminMonitoringPage: React.FC<AdminMonitoringPageProps> = ({ initia
             <button
               type="button"
               className={`nav-pill-item ${activeSubTab === 'heatmaps' ? 'active' : ''}`}
-              onClick={() => setActiveSubTab('heatmaps')}
+              onClick={() => {
+                setActiveSubTab('heatmaps');
+                navigate('/admin/monitoring/heatmaps');
+              }}
             >
               <Flame size={14} />
               <span>Heatmaps</span>

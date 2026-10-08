@@ -56,19 +56,63 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [role, setRole] = useState<UserRole>('employee');
-  const [user, setUser] = useState<UserProfile>(DEFAULT_PROFILES['employee']);
+  const getRouteFromHash = (): string => {
+    const raw = window.location.hash.replace(/^#\/?/, '/');
+    if (raw.startsWith('/admin') || raw.startsWith('/manager') || raw.startsWith('/employee')) {
+      return raw.startsWith('/') ? raw : `/${raw}`;
+    }
+    return '/employee/dashboard';
+  };
+
+  const getRoleFromPath = (path: string): UserRole => {
+    if (path.startsWith('/admin')) return 'admin';
+    if (path.startsWith('/manager')) return 'manager';
+    return 'employee';
+  };
+
+  const initialRoute = getRouteFromHash();
+  const initialRole = getRoleFromPath(initialRoute);
+
+  const [role, setRole] = useState<UserRole>(initialRole);
+  const [user, setUser] = useState<UserProfile>(DEFAULT_PROFILES[initialRole]);
   const [supabaseUser, setSupabaseUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
-  const [currentRoute, setCurrentRoute] = useState<string>(() => {
-    const hash = window.location.hash.replace('#', '');
-    if (hash.startsWith('/admin') || hash.startsWith('/manager') || hash.startsWith('/employee')) {
-      return hash;
-    }
-    return '/employee/dashboard';
-  });
+  const [currentRoute, setCurrentRoute] = useState<string>(initialRoute);
   const isConfigured = supabaseAuth.isConfigured();
+
+  // Listen to browser Back (<-) and Forward (->) button events
+  useEffect(() => {
+    const syncRouteFromLocation = () => {
+      const route = getRouteFromHash();
+      const targetRole = getRoleFromPath(route);
+
+      setRole((prevRole) => {
+        if (prevRole !== targetRole) {
+          setUser(DEFAULT_PROFILES[targetRole]);
+          return targetRole;
+        }
+        return prevRole;
+      });
+
+      setCurrentRoute(route);
+    };
+
+    window.addEventListener('hashchange', syncRouteFromLocation);
+    window.addEventListener('popstate', syncRouteFromLocation);
+
+    // Initial check
+    if (!window.location.hash) {
+      window.location.hash = initialRoute;
+    } else {
+      syncRouteFromLocation();
+    }
+
+    return () => {
+      window.removeEventListener('hashchange', syncRouteFromLocation);
+      window.removeEventListener('popstate', syncRouteFromLocation);
+    };
+  }, []);
 
   const syncSupabaseProfile = async (sUser: User | null) => {
     if (!sUser || !isConfigured) return;
@@ -129,20 +173,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setUser(DEFAULT_PROFILES[newRole]);
     const defaultRoute = `/${newRole}/dashboard`;
     setCurrentRoute(defaultRoute);
-    window.location.hash = defaultRoute;
+    if (window.location.hash !== `#${defaultRoute}`) {
+      window.location.hash = defaultRoute;
+    }
   };
 
   const navigate = (path: string) => {
-    if (path.startsWith('/admin') && role !== 'admin') {
-      alert(`403 Forbidden: Your current role [${role.toUpperCase()}] is not authorized to access Admin resources.`);
-      return;
+    const normalized = path.startsWith('/') ? path : `/${path}`;
+    const targetRole = getRoleFromPath(normalized);
+
+    if (targetRole !== role) {
+      setRole(targetRole);
+      setUser(DEFAULT_PROFILES[targetRole]);
     }
-    if ((path.startsWith('/admin') || path.startsWith('/manager')) && role === 'employee') {
-      alert(`403 Forbidden: Employee accounts cannot access management consoles.`);
-      return;
+
+    setCurrentRoute(normalized);
+    if (window.location.hash !== `#${normalized}`) {
+      window.location.hash = normalized;
     }
-    setCurrentRoute(path);
-    window.location.hash = path;
   };
 
   const signIn = async (email: string, password: string) => {

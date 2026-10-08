@@ -11,7 +11,7 @@ interface ManagerMonitoringPageProps {
 }
 
 export const ManagerMonitoringPage: React.FC<ManagerMonitoringPageProps> = ({ initialSubTab = 'live' }) => {
-  const { user } = useAuth();
+  const { user, navigate } = useAuth();
   const [activeSubTab, setActiveSubTab] = useState<'live' | 'screenshots' | 'heatmaps'>(initialSubTab);
   const [screenshots, setScreenshots] = useState<ScreenshotItem[]>([]);
   const [teamEmployees, setTeamEmployees] = useState<EmployeeRecord[]>([]);
@@ -93,7 +93,10 @@ export const ManagerMonitoringPage: React.FC<ManagerMonitoringPageProps> = ({ in
             <button
               type="button"
               className={`nav-pill-item ${activeSubTab === 'live' ? 'active' : ''}`}
-              onClick={() => setActiveSubTab('live')}
+              onClick={() => {
+                setActiveSubTab('live');
+                navigate('/manager/monitoring/live');
+              }}
             >
               <Activity size={14} />
               <span>Live Feeds</span>
@@ -101,7 +104,10 @@ export const ManagerMonitoringPage: React.FC<ManagerMonitoringPageProps> = ({ in
             <button
               type="button"
               className={`nav-pill-item ${activeSubTab === 'screenshots' ? 'active' : ''}`}
-              onClick={() => setActiveSubTab('screenshots')}
+              onClick={() => {
+                setActiveSubTab('screenshots');
+                navigate('/manager/monitoring/screenshots');
+              }}
             >
               <Camera size={14} />
               <span>Screenshots ({screenshots.length})</span>
@@ -109,7 +115,10 @@ export const ManagerMonitoringPage: React.FC<ManagerMonitoringPageProps> = ({ in
             <button
               type="button"
               className={`nav-pill-item ${activeSubTab === 'heatmaps' ? 'active' : ''}`}
-              onClick={() => setActiveSubTab('heatmaps')}
+              onClick={() => {
+                setActiveSubTab('heatmaps');
+                navigate('/manager/monitoring/heatmaps');
+              }}
             >
               <span>Heatmaps</span>
             </button>

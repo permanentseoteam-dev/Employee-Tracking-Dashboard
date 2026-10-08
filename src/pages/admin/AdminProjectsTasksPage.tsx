@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { FolderKanban, CheckSquare, RefreshCw, Search, Plus, X } from 'lucide-react';
 import { dataService } from '../../services/dataService';
+import { useAuth } from '../../context/AuthContext';
 import type { ProjectItem, TaskItem, EmployeeRecord, ManagerRecord } from '../../types/roles';
 
 interface AdminProjectsTasksPageProps {
@@ -9,6 +10,7 @@ interface AdminProjectsTasksPageProps {
 }
 
 export const AdminProjectsTasksPage: React.FC<AdminProjectsTasksPageProps> = ({ initialView = 'projects' }) => {
+  const { navigate } = useAuth();
   const [view, setView] = useState<'projects' | 'tasks'>(initialView);
   const [projects, setProjects] = useState<ProjectItem[]>([]);
   const [tasks, setTasks] = useState<TaskItem[]>([]);
@@ -171,7 +173,10 @@ export const AdminProjectsTasksPage: React.FC<AdminProjectsTasksPageProps> = ({ 
             <button
               type="button"
               className={`nav-pill-item ${view === 'projects' ? 'active' : ''}`}
-              onClick={() => setView('projects')}
+              onClick={() => {
+                setView('projects');
+                navigate('/admin/projects');
+              }}
             >
               <FolderKanban size={14} />
               <span>Projects ({projects.length})</span>
@@ -179,7 +184,10 @@ export const AdminProjectsTasksPage: React.FC<AdminProjectsTasksPageProps> = ({ 
             <button
               type="button"
               className={`nav-pill-item ${view === 'tasks' ? 'active' : ''}`}
-              onClick={() => setView('tasks')}
+              onClick={() => {
+                setView('tasks');
+                navigate('/admin/tasks');
+              }}
             >
               <CheckSquare size={14} />
               <span>Tasks ({tasks.length})</span>

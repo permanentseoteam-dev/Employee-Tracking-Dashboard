@@ -197,7 +197,7 @@ export const App: React.FC = () => {
           return <ManagerMonitoringPage initialSubTab="live" />;
         case '/manager/monitoring/recordings':
         case '/manager/recordings':
-          return <ManagerMonitoringPage initialSubTab="live" />;
+          return <ManagerMonitoringPage initialSubTab="recordings" />;
         case '/manager/monitoring/screenshots':
         case '/manager/screenshots':
           return <ManagerMonitoringPage initialSubTab="screenshots" />;

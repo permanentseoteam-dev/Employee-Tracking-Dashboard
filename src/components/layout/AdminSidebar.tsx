@@ -6,7 +6,6 @@ import {
   Building2,
   Activity,
   Camera,
-  Video,
   Flame,
   CalendarCheck,
   FolderKanban,
@@ -48,7 +47,6 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({ currentRoute, onNavi
       title: 'Live Telemetry',
       items: [
         { label: 'Live Monitoring', route: '/admin/monitoring/live', icon: <Activity size={16} /> },
-        { label: 'Live Recordings', route: '/admin/monitoring/recordings', icon: <Video size={16} /> },
         { label: 'Screen Captures', route: '/admin/monitoring/screenshots', icon: <Camera size={16} /> },
         { label: 'Mouse Heatmaps', route: '/admin/monitoring/heatmaps', icon: <Flame size={16} /> },
       ],
@@ -134,7 +132,12 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({ currentRoute, onNavi
               </span>
             )}
             {section.items.map((item) => {
-              const isActive = currentRoute === item.route;
+              const isActive =
+                currentRoute === item.route ||
+                (item.route === '/admin/monitoring/live' &&
+                  (currentRoute === '/admin/monitoring' ||
+                    currentRoute === '/admin/monitoring/live' ||
+                    currentRoute === '/admin/monitoring/recordings'));
               return (
                 <button
                   key={item.route}

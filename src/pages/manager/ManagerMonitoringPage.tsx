@@ -2,9 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Camera,
-  Flame,
   RefreshCw,
-  Calendar,
   Filter,
   X,
   Eye,
@@ -517,7 +515,7 @@ export const ManagerMonitoringPage: React.FC<ManagerMonitoringPageProps> = ({ in
 
       {/* 3. Heatmaps Tab */}
       {activeSubTab === 'heatmaps' && (
-        <MatrixHeatmap initialPreset="workforce" />
+        <MatrixHeatmap initialPreset="metrics" />
       )}
 
       {/* Interactive Live Screen Inspector & On-Demand Recording Modal */}

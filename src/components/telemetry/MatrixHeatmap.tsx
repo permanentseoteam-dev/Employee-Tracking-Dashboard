@@ -17,7 +17,6 @@ import {
   CheckCircle2,
 } from 'lucide-react';
 import { dataService } from '../../services/dataService';
-import type { EmployeeRecord } from '../../types/roles';
 
 export interface HeatmapMatrixDataset {
   id: string;

@@ -4,22 +4,13 @@ import {
   Camera,
   Flame,
   RefreshCw,
-  Calendar,
   Filter,
   X,
   Eye,
   Activity,
   Monitor,
   Video,
-  Radio,
-  Clock,
-  Laptop,
   CheckCircle2,
-  Sparkles,
-  Maximize2,
-  Play,
-  Square,
-  ShieldCheck,
 } from 'lucide-react';
 import { dataService } from '../../services/dataService';
 import { useAuth } from '../../context/AuthContext';
@@ -511,7 +502,7 @@ export const AdminMonitoringPage: React.FC<AdminMonitoringPageProps> = ({ initia
 
       {/* 3. Heatmaps Tab */}
       {activeSubTab === 'heatmaps' && (
-        <MatrixHeatmap initialPreset="benchmark" />
+        <MatrixHeatmap initialPreset="metrics" />
       )}
 
       {/* Interactive Live Screen Inspector & On-Demand Recording Modal */}

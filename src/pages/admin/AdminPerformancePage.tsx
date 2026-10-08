@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { RefreshCw, Star, Award, Zap, Plus, X } from 'lucide-react';
+import { RefreshCw, Star, Award, Zap, Plus, X, Flame } from 'lucide-react';
 import { dataService } from '../../services/dataService';
+import { MatrixHeatmap } from '../../components/telemetry/MatrixHeatmap';
 import type { StarRuleItem, EmployeeRecord } from '../../types/roles';
 
 export const AdminPerformancePage: React.FC = () => {
+  const [activeTab, setActiveTab] = useState<'rules' | 'heatmap'>('rules');
   const [starRules, setStarRules] = useState<StarRuleItem[]>([]);
   const [employees, setEmployees] = useState<EmployeeRecord[]>([]);
   
@@ -85,7 +87,26 @@ export const AdminPerformancePage: React.FC = () => {
           </p>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div className="stitch-nav-pills">
+            <button
+              type="button"
+              className={`nav-pill-item ${activeTab === 'rules' ? 'active' : ''}`}
+              onClick={() => setActiveTab('rules')}
+            >
+              <Award size={14} />
+              <span>Merit Rules & Stars</span>
+            </button>
+            <button
+              type="button"
+              className={`nav-pill-item ${activeTab === 'heatmap' ? 'active' : ''}`}
+              onClick={() => setActiveTab('heatmap')}
+            >
+              <Flame size={14} />
+              <span>Activity Heatmap</span>
+            </button>
+          </div>
+
           <button className="btn-pill btn-pill-secondary" onClick={loadData}>
             <RefreshCw size={14} />
             <span>Refresh</span>
@@ -97,7 +118,10 @@ export const AdminPerformancePage: React.FC = () => {
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(420px, 1fr))', gap: '1.5rem' }}>
+      {activeTab === 'heatmap' ? (
+        <MatrixHeatmap initialPreset="hourly" />
+      ) : (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(420px, 1fr))', gap: '1.5rem' }}>
         {/* Star Rules Configuration */}
         <div className="frosted-card" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           <div className="content-card-title">
@@ -205,6 +229,7 @@ export const AdminPerformancePage: React.FC = () => {
           </div>
         </div>
       </div>
+    )}
 
       {/* Award Stars Modal */}
       {isAwardOpen && (

@@ -2,7 +2,7 @@ import React from 'react';
 import { motion } from 'framer-motion';
 import { Keyboard, MousePointer, ShieldCheck, CheckCircle2, Star, Trophy, Activity } from 'lucide-react';
 import type { DbStats } from '../types';
-import { MatrixHeatmap } from '../components/telemetry/MatrixHeatmap';
+
 
 interface PerformancePageProps {
   dbStats: DbStats;
@@ -75,15 +75,77 @@ export const PerformancePage: React.FC<PerformancePageProps> = ({ dbStats }) => 
         </div>
       </div>
 
-      {/* Interactive Telemetry Heatmap Matrix */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingLeft: 4 }}>
-          <Activity size={18} color="var(--color-secondary)" />
-          <h2 style={{ fontSize: 18, fontWeight: 800, color: 'var(--text-primary)', margin: 0 }}>
-            Employee Workstation Activity & Cadence Heatmap
-          </h2>
+      {/* Personal Sprint Merit Achievements & Milestones */}
+      <div className="frosted-card" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+        <div className="content-card-title">
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Activity size={18} color="var(--color-secondary)" />
+            <span style={{ fontSize: 16, fontWeight: 700 }}>Personal Sprint Merit Achievements</span>
+          </div>
+          <span className="status-pill active" style={{ fontSize: 11, padding: '2px 10px' }}>
+            Verified Contributions
+          </span>
         </div>
-        <MatrixHeatmap initialPreset="hourly" />
+
+        <p style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+          Your individual sprint accomplishments and awarded stars based on deliverable milestones, clean code reviews, and on-time attendance.
+        </p>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1rem' }}>
+          <div
+            style={{
+              padding: '14px 16px',
+              borderRadius: 'var(--radius-card-sm)',
+              background: 'var(--surface-frosted-subdued)',
+              border: '1px solid var(--surface-border-subtle)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+            }}
+          >
+            <div>
+              <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--text-primary)' }}>Sprint Task Delivery</div>
+              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>Completed sprint deliverables ahead of target date</div>
+            </div>
+            <span style={{ fontWeight: 800, fontSize: 14, color: 'var(--status-success)' }}>+3 ⭐</span>
+          </div>
+
+          <div
+            style={{
+              padding: '14px 16px',
+              borderRadius: 'var(--radius-card-sm)',
+              background: 'var(--surface-frosted-subdued)',
+              border: '1px solid var(--surface-border-subtle)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+            }}
+          >
+            <div>
+              <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--text-primary)' }}>Punctual Check-In Streak</div>
+              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>On-time attendance verified 5 days in a row</div>
+            </div>
+            <span style={{ fontWeight: 800, fontSize: 14, color: 'var(--status-success)' }}>+2 ⭐</span>
+          </div>
+
+          <div
+            style={{
+              padding: '14px 16px',
+              borderRadius: 'var(--radius-card-sm)',
+              background: 'var(--surface-frosted-subdued)',
+              border: '1px solid var(--surface-border-subtle)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+            }}
+          >
+            <div>
+              <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--text-primary)' }}>Architecture & Code Review</div>
+              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>Exemplary peer review and bug prevention</div>
+            </div>
+            <span style={{ fontWeight: 800, fontSize: 14, color: 'var(--status-success)' }}>+2 ⭐</span>
+          </div>
+        </div>
       </div>
 
       {/* Aggregate Specification Table */}

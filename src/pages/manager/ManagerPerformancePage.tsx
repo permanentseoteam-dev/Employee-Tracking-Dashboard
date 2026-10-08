@@ -1,12 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { RefreshCw, Award, Star, Plus, X } from 'lucide-react';
+import { RefreshCw, Award, Star, Plus, X, Flame } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { dataService } from '../../services/dataService';
+import { MatrixHeatmap } from '../../components/telemetry/MatrixHeatmap';
 import type { EmployeeRecord } from '../../types/roles';
 
 export const ManagerPerformancePage: React.FC = () => {
   const { user } = useAuth();
+  const [activeTab, setActiveTab] = useState<'ledger' | 'heatmap'>('ledger');
   const [employees, setEmployees] = useState<EmployeeRecord[]>([]);
   
   // Award Stars Modal State
@@ -66,7 +68,26 @@ export const ManagerPerformancePage: React.FC = () => {
           </p>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div className="stitch-nav-pills">
+            <button
+              type="button"
+              className={`nav-pill-item ${activeTab === 'ledger' ? 'active' : ''}`}
+              onClick={() => setActiveTab('ledger')}
+            >
+              <Award size={14} />
+              <span>Team Merit Ledger</span>
+            </button>
+            <button
+              type="button"
+              className={`nav-pill-item ${activeTab === 'heatmap' ? 'active' : ''}`}
+              onClick={() => setActiveTab('heatmap')}
+            >
+              <Flame size={14} />
+              <span>Activity Heatmap</span>
+            </button>
+          </div>
+
           <button className="btn-pill btn-pill-secondary" onClick={loadData}>
             <RefreshCw size={14} />
             <span>Refresh</span>
@@ -78,8 +99,10 @@ export const ManagerPerformancePage: React.FC = () => {
         </div>
       </div>
 
-      {/* Main Table Card */}
-      <div className="frosted-card" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      {activeTab === 'heatmap' ? (
+        <MatrixHeatmap initialPreset="hourly" />
+      ) : (
+        <div className="frosted-card" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
         <div className="content-card-title">
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <span style={{ fontSize: 16, fontWeight: 700 }}>Team Output & Telemetry Summary</span>
@@ -150,6 +173,7 @@ export const ManagerPerformancePage: React.FC = () => {
           </table>
         </div>
       </div>
+    )}
 
       {/* Award Stars Modal */}
       {isAwardOpen && (

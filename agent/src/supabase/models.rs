@@ -36,11 +36,46 @@ pub struct ActivityAggregatePayload {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[allow(dead_code)]
 pub struct ScreenshotRecordPayload {
     pub employee_id: String,
     pub device_id: String,
     pub captured_at: DateTime<Utc>,
     pub storage_path: String,
     pub file_size_bytes: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ScreenshotDbPayload {
+    pub employee_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub device_id: Option<String>,
+    pub storage_path: String,
+    pub file_size_bytes: usize,
+    pub width: u32,
+    pub height: u32,
+    pub captured_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DeviceRegisterPayload {
+    pub employee_id: String,
+    pub device_name: String,
+    pub device_identifier: String,
+    pub os_version: String,
+    pub agent_version: String,
+    pub last_seen_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DeviceQueryItem {
+    pub id: String,
+    pub employee_id: String,
+    pub device_identifier: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EmployeeLookupItem {
+    pub id: String,
+    pub full_name: String,
+    pub email: String,
 }

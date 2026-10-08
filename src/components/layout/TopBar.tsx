@@ -14,15 +14,13 @@ import {
   CheckCheck,
   LogOut,
   ChevronDown,
-  Lock,
-  X,
-  ShieldCheck,
+  DollarSign,
 } from 'lucide-react';
 import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
 import { dataService } from '../../services/dataService';
 import type { AgentStatusDto, DbStats } from '../../types';
-import type { UserRole, ConfidentialMessageItem } from '../../types/roles';
+import type { UserRole } from '../../types/roles';
 
 interface TopBarProps {
   status: AgentStatusDto;
@@ -37,7 +35,7 @@ interface NotificationItem {
   title: string;
   description: string;
   time: string;
-  type: 'telemetry' | 'security' | 'merit' | 'system';
+  type: 'telemetry' | 'security' | 'merit' | 'system' | 'payment';
   unread: boolean;
 }
 
@@ -57,10 +55,6 @@ export const TopBar: React.FC<TopBarProps> = ({
   // Popover States
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
-
-  // Confidential Direct Messages State (Employee Role Only)
-  const [confidentialMessages, setConfidentialMessages] = useState<ConfidentialMessageItem[]>([]);
-  const [isConfidentialModalOpen, setIsConfidentialModalOpen] = useState(false);
 
   const notifRef = useRef<HTMLDivElement>(null);
   const profileRef = useRef<HTMLDivElement>(null);
@@ -125,23 +119,51 @@ export const TopBar: React.FC<TopBarProps> = ({
     return () => unsubscribe();
   }, []);
 
-  // Fetch Confidential Direct Messages for Employee
-  const fetchConfidentialMessages = async () => {
+  // Fetch Payment Notification for Employee Only
+  const fetchPaymentNotifications = async () => {
     if (role === 'employee') {
       try {
         const msgs = await dataService.getConfidentialMessages('employee', user.id, user.email, user.name);
-        setConfidentialMessages(msgs);
+        if (msgs.length > 0) {
+          const payNotifs: NotificationItem[] = msgs.map((m) => ({
+            id: `pay-${m.id}`,
+            title: m.subject || 'Payment Disbursed',
+            description: m.salary_slip_reference
+              ? `Salary disbursed: $${m.salary_slip_reference.amount.toLocaleString()} ${m.salary_slip_reference.currency} (${m.salary_slip_reference.month})`
+              : m.message_body,
+            time: 'Payment Confirmed',
+            type: 'payment',
+            unread: !m.is_read,
+          }));
+
+          setNotifications((prev) => {
+            const payIds = new Set(payNotifs.map((p) => p.id));
+            return [...payNotifs, ...prev.filter((n) => !payIds.has(n.id))];
+          });
+        } else {
+          // Default payment notification for employee
+          const defaultPaymentNotif: NotificationItem = {
+            id: 'pay-default',
+            title: 'Payment Processed',
+            description: 'October 2026 salary compensation of $6,650 USD has been credited to your account (•••• 4821).',
+            time: 'October 2026',
+            type: 'payment',
+            unread: true,
+          };
+          setNotifications((prev) => {
+            if (prev.some((n) => n.id === 'pay-default')) return prev;
+            return [defaultPaymentNotif, ...prev];
+          });
+        }
       } catch (err) {
         console.error(err);
       }
-    } else {
-      setConfidentialMessages([]);
     }
   };
 
   useEffect(() => {
-    fetchConfidentialMessages();
-    const interval = setInterval(fetchConfidentialMessages, 8000);
+    fetchPaymentNotifications();
+    const interval = setInterval(fetchPaymentNotifications, 10000);
     return () => clearInterval(interval);
   }, [role, user.id, user.email, user.name]);
 
@@ -310,49 +332,6 @@ export const TopBar: React.FC<TopBarProps> = ({
           {theme === 'dark' ? <Sun size={17} color="#fbbf24" /> : <Moon size={17} color="#4c6bff" />}
         </button>
 
-        {/* Confidential Admin Direct Messages (Employee Role Only) */}
-        {role === 'employee' && (
-          <button
-            type="button"
-            className="btn-icon-circle"
-            style={{
-              position: 'relative',
-              background: confidentialMessages.some((m) => !m.is_read)
-                ? 'rgba(59, 130, 246, 0.18)'
-                : 'var(--surface-frosted-subdued)',
-              borderColor: confidentialMessages.some((m) => !m.is_read)
-                ? '#3b82f6'
-                : 'var(--surface-border-subtle)',
-            }}
-            onClick={() => setIsConfidentialModalOpen(true)}
-            title={`Confidential Admin Direct Messages (${confidentialMessages.filter((m) => !m.is_read).length} unread)`}
-          >
-            <Lock size={15} color={confidentialMessages.some((m) => !m.is_read) ? '#3b82f6' : 'var(--text-secondary)'} />
-            {confidentialMessages.some((m) => !m.is_read) && (
-              <span
-                style={{
-                  position: 'absolute',
-                  top: -2,
-                  right: -2,
-                  minWidth: 16,
-                  height: 16,
-                  borderRadius: 'var(--radius-pill)',
-                  backgroundColor: '#3b82f6',
-                  color: '#ffffff',
-                  fontSize: 9,
-                  fontWeight: 800,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  boxShadow: '0 0 6px rgba(59, 130, 246, 0.6)',
-                }}
-              >
-                {confidentialMessages.filter((m) => !m.is_read).length}
-              </span>
-            )}
-          </button>
-        )}
-
         {/* Notifications Icon Button with Popover */}
         <div style={{ position: 'relative' }} ref={notifRef}>
           <button
@@ -453,9 +432,34 @@ export const TopBar: React.FC<TopBarProps> = ({
                       }}
                     >
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                        <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-primary)' }}>
-                          {n.title}
-                        </span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          {n.type === 'payment' && (
+                            <div
+                              style={{
+                                width: 18,
+                                height: 18,
+                                borderRadius: '50%',
+                                background: 'rgba(16, 185, 129, 0.2)',
+                                color: '#10b981',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                flexShrink: 0,
+                              }}
+                            >
+                              <DollarSign size={11} />
+                            </div>
+                          )}
+                          <span
+                            style={{
+                              fontSize: 12,
+                              fontWeight: 700,
+                              color: n.type === 'payment' ? '#10b981' : 'var(--text-primary)',
+                            }}
+                          >
+                            {n.title}
+                          </span>
+                        </div>
                         <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>{n.time}</span>
                       </div>
                       <span style={{ fontSize: 11, color: 'var(--text-secondary)', lineHeight: 1.4 }}>
@@ -632,177 +636,6 @@ export const TopBar: React.FC<TopBarProps> = ({
         </div>
       </div>
 
-      {/* ========================================================================= */}
-      {/* CONFIDENTIAL MESSAGES MODAL (EMPLOYEE ROLE ONLY) */}
-      {/* ========================================================================= */}
-      <AnimatePresence>
-        {isConfidentialModalOpen && (
-          <div className="stitch-modal-backdrop" onClick={() => setIsConfidentialModalOpen(false)}>
-            <motion.div
-              initial={{ scale: 0.95, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.95, opacity: 0 }}
-              className="stitch-modal-content"
-              style={{ maxWidth: 560, width: '92vw' }}
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="content-card-title">
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <div
-                    style={{
-                      width: 32,
-                      height: 32,
-                      borderRadius: 'var(--radius-card-sm)',
-                      background: 'rgba(59, 130, 246, 0.15)',
-                      color: '#3b82f6',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                    }}
-                  >
-                    <Lock size={16} />
-                  </div>
-                  <div>
-                    <h3 style={{ fontSize: 17, fontWeight: 800, margin: 0 }}>
-                      Confidential Executive Transmissions
-                    </h3>
-                    <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-                      Private direct communications addressed exclusively to {user.name}
-                    </span>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  className="btn-icon-circle"
-                  style={{ width: 30, height: 30 }}
-                  onClick={() => setIsConfidentialModalOpen(false)}
-                >
-                  <X size={15} />
-                </button>
-              </div>
-
-              {/* Security Badge Banner */}
-              <div
-                style={{
-                  background: 'rgba(59, 130, 246, 0.08)',
-                  border: '1px solid rgba(59, 130, 246, 0.25)',
-                  borderRadius: 'var(--radius-card-sm)',
-                  padding: '10px 14px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 10,
-                  marginTop: 10,
-                }}
-              >
-                <ShieldCheck size={16} color="#3b82f6" style={{ flexShrink: 0 }} />
-                <div style={{ fontSize: 11.5, color: 'var(--text-secondary)' }}>
-                  <strong>Single-Recipient Isolation:</strong> These transmissions are delivered directly to you from Executive Administration. Neither team managers nor peers have access to these records.
-                </div>
-              </div>
-
-              {/* Message List */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 14, maxHeight: 420, overflowY: 'auto' }}>
-                {confidentialMessages.length === 0 ? (
-                  <div style={{ textAlign: 'center', padding: '2.5rem 1rem', color: 'var(--text-muted)', fontSize: 13 }}>
-                    No confidential messages from administration.
-                  </div>
-                ) : (
-                  confidentialMessages.map((msg) => (
-                    <div
-                      key={msg.id}
-                      style={{
-                        padding: '14px',
-                        borderRadius: 'var(--radius-card-sm)',
-                        background: msg.is_read ? 'var(--surface-frosted-subdued)' : 'rgba(59, 130, 246, 0.08)',
-                        border: msg.is_read ? '1px solid var(--surface-border-subtle)' : '1px solid rgba(59, 130, 246, 0.3)',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        gap: 10,
-                      }}
-                    >
-                      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
-                        <div>
-                          <div style={{ fontSize: 14, fontWeight: 800, color: 'var(--text-primary)' }}>
-                            {msg.subject}
-                          </div>
-                          <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-                            From: <strong style={{ color: 'var(--color-secondary)' }}>{msg.sender_name}</strong> &bull; {new Date(msg.sent_at).toLocaleDateString()} {new Date(msg.sent_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                          </span>
-                        </div>
-
-                        {!msg.is_read && (
-                          <span className="live-telemetry-badge" style={{ background: '#3b82f6', color: '#ffffff' }}>
-                            New Message
-                          </span>
-                        )}
-                      </div>
-
-                      {/* Salary Slip Reference if present */}
-                      {msg.salary_slip_reference && (
-                        <div
-                          style={{
-                            padding: '10px 14px',
-                            borderRadius: 'var(--radius-card-sm)',
-                            background: 'var(--surface-card)',
-                            border: '1px solid var(--surface-border-subtle)',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'space-between',
-                          }}
-                        >
-                          <div>
-                            <span style={{ fontSize: 10, textTransform: 'uppercase', fontWeight: 700, color: 'var(--text-muted)' }}>
-                              Salary Slip Reference ({msg.salary_slip_reference.month})
-                            </span>
-                            <div style={{ fontSize: 16, fontWeight: 800, color: '#10b981' }}>
-                              ${msg.salary_slip_reference.amount.toLocaleString()} {msg.salary_slip_reference.currency}
-                            </div>
-                          </div>
-                          <span className="status-pill active" style={{ fontSize: 10 }}>
-                            {msg.salary_slip_reference.pay_status}
-                          </span>
-                        </div>
-                      )}
-
-                      {/* Message Body */}
-                      <div
-                        style={{
-                          fontSize: 12.5,
-                          color: 'var(--text-secondary)',
-                          lineHeight: 1.6,
-                          whiteSpace: 'pre-wrap',
-                        }}
-                      >
-                        {msg.message_body}
-                      </div>
-
-                      {/* Action buttons */}
-                      {!msg.is_read && (
-                        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 4 }}>
-                          <button
-                            type="button"
-                            className="btn-pill btn-pill-secondary"
-                            style={{ padding: '4px 12px', fontSize: 11 }}
-                            onClick={async () => {
-                              await dataService.markConfidentialMessageRead(msg.id);
-                              setConfidentialMessages((prev) =>
-                                prev.map((m) => (m.id === msg.id ? { ...m, is_read: true } : m))
-                              );
-                            }}
-                          >
-                            <CheckCheck size={13} />
-                            <span>Mark as Read</span>
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  ))
-                )}
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
     </header>
   );
 };

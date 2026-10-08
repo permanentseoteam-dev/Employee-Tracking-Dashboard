@@ -10,14 +10,9 @@ import {
   ArrowUpRight,
   Calendar,
   CheckSquare,
-  Lock,
-  CheckCheck,
-  DollarSign,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { dataService } from '../services/dataService';
 import type { AgentStatusDto, DbStats, SystemInfoDto } from '../types';
-import type { ConfidentialMessageItem } from '../types/roles';
 
 interface DashboardPageProps {
   status: AgentStatusDto;
@@ -43,15 +38,6 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
     }
     return () => clearInterval(interval);
   }, [isTimerRunning]);
-
-  // Confidential Admin Transmissions for this employee
-  const [confidentialMessages, setConfidentialMessages] = useState<ConfidentialMessageItem[]>([]);
-
-  useEffect(() => {
-    dataService.getConfidentialMessages('employee', user.id, user.email, user.name).then((msgs) => {
-      setConfidentialMessages(msgs);
-    });
-  }, [user.id, user.email, user.name]);
 
   const formatTimerDigits = (totalSecs: number) => {
     const hrs = Math.floor(totalSecs / 3600).toString().padStart(2, '0');
@@ -132,129 +118,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
         </div>
       </div>
 
-      {/* Confidential Direct Transmissions from Administration (Isolated to this employee) */}
-      {confidentialMessages.length > 0 && (
-        <div
-          className="frosted-card"
-          style={{
-            borderLeft: '4px solid #3b82f6',
-            background: 'linear-gradient(135deg, rgba(30, 41, 59, 0.45) 0%, rgba(15, 23, 42, 0.7) 100%)',
-            padding: '1.25rem 1.5rem',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: 12,
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <div
-                style={{
-                  width: 32,
-                  height: 32,
-                  borderRadius: 'var(--radius-card-sm)',
-                  background: 'rgba(59, 130, 246, 0.18)',
-                  color: '#3b82f6',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-              >
-                <Lock size={16} />
-              </div>
-              <div>
-                <h3 style={{ fontSize: 16, fontWeight: 800, margin: 0, color: 'var(--text-primary)' }}>
-                  Confidential Transmission from Executive Administration
-                </h3>
-                <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-                  Delivered exclusively to {user.name} &bull; Protected by Single-Recipient Security Scope
-                </span>
-              </div>
-            </div>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              {confidentialMessages.some((m) => !m.is_read) && (
-                <span className="live-telemetry-badge" style={{ background: '#3b82f6', color: '#ffffff' }}>
-                  {confidentialMessages.filter((m) => !m.is_read).length} Unread Note(s)
-                </span>
-              )}
-            </div>
-          </div>
-
-          {/* Active Message List */}
-          {confidentialMessages.map((msg) => (
-            <div
-              key={msg.id}
-              style={{
-                borderRadius: 'var(--radius-card-sm)',
-                background: 'var(--surface-frosted-subdued)',
-                border: msg.is_read ? '1px solid var(--surface-border-subtle)' : '1px solid rgba(59, 130, 246, 0.35)',
-                padding: '12px 16px',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: 10,
-              }}
-            >
-              <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
-                <div>
-                  <h4 style={{ fontSize: 14, fontWeight: 700, margin: 0, color: 'var(--text-primary)' }}>
-                    {msg.subject}
-                  </h4>
-                  <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-                    From: <strong style={{ color: 'var(--color-secondary)' }}>{msg.sender_name}</strong> &bull; {new Date(msg.sent_at).toLocaleDateString()}
-                  </span>
-                </div>
-                {!msg.is_read ? (
-                  <button
-                    type="button"
-                    className="btn-pill btn-pill-secondary"
-                    style={{ padding: '3px 10px', fontSize: 11 }}
-                    onClick={async () => {
-                      await dataService.markConfidentialMessageRead(msg.id);
-                      setConfidentialMessages((prev) =>
-                        prev.map((m) => (m.id === msg.id ? { ...m, is_read: true } : m))
-                      );
-                    }}
-                  >
-                    <CheckCheck size={12} />
-                    <span>Acknowledge</span>
-                  </button>
-                ) : (
-                  <span className="status-pill active" style={{ fontSize: 10 }}>Acknowledged</span>
-                )}
-              </div>
-
-              {msg.salary_slip_reference && (
-                <div
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    padding: '8px 12px',
-                    borderRadius: 'var(--radius-card-sm)',
-                    background: 'var(--surface-card)',
-                    border: '1px solid var(--surface-border-subtle)',
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <DollarSign size={16} color="#10b981" />
-                    <span style={{ fontSize: 12, fontWeight: 600 }}>
-                      Pay Slip ({msg.salary_slip_reference.month}):{' '}
-                      <strong style={{ color: '#10b981' }}>
-                        ${msg.salary_slip_reference.amount.toLocaleString()} {msg.salary_slip_reference.currency}
-                      </strong>
-                    </span>
-                  </div>
-                  <span className="live-telemetry-badge">{msg.salary_slip_reference.pay_status}</span>
-                </div>
-              )}
-
-              <p style={{ fontSize: 12.5, color: 'var(--text-secondary)', lineHeight: 1.6, margin: 0, whiteSpace: 'pre-wrap' }}>
-                {msg.message_body}
-              </p>
-            </div>
-          ))}
-        </div>
-      )}
 
       {/* 2. Middle Bento Row */}
       <div className="grid-telemetry-row">

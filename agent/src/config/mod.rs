@@ -1,7 +1,11 @@
-use crate::errors::{AgentError, AgentResult};
+use crate::errors::AgentResult;
 use rusqlite::Connection;
 use std::env;
 use std::path::PathBuf;
+
+pub const DEFAULT_SUPABASE_URL: &str = "https://isywkcymfzpgjerfuors.supabase.co";
+pub const DEFAULT_SUPABASE_ANON_KEY: &str = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlzeXdrY3ltZnpwZ2plcmZ1b3JzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTEzNDQwMzAsImV4cCI6MjEwNjkyMDAzMH0.b7GmU3Bz1zRB7sROsCchnohgZVb6LIyw8v_N_lNLDPs";
+pub const DEFAULT_EMPLOYEE_ID: &str = "cccccccc-cccc-cccc-cccc-cccccccccccc"; // Arsal
 
 #[derive(Debug, Clone)]
 pub struct AgentConfig {
@@ -22,22 +26,44 @@ pub struct AgentConfig {
 
 impl AgentConfig {
     pub fn load() -> AgentResult<Self> {
-        // Try loading .env from current directory, then parent directory
+        // 1. Try loading .env from directory containing current executable
+        if let Ok(exe_path) = std::env::current_exe() {
+            if let Some(exe_dir) = exe_path.parent() {
+                let _ = dotenvy::from_path(exe_dir.join(".env"));
+                let _ = dotenvy::from_path(exe_dir.join("agent_config.env"));
+            }
+        }
+
+        // 2. Try loading .env from current directory, then parent directory
         if dotenvy::dotenv().is_err() {
             let _ = dotenvy::from_path("../.env");
         }
 
+        // 3. Fallback to %LOCALAPPDATA%\EmployeeTracking\.env
+        if let Ok(local_app_data) = env::var("LOCALAPPDATA") {
+            let _ = dotenvy::from_path(PathBuf::from(local_app_data).join("EmployeeTracking").join(".env"));
+        }
+
+        // Credentials with embedded production fallbacks for zero-command double-click execution
         let supabase_url = env::var("VITE_SUPABASE_URL")
             .or_else(|_| env::var("SUPABASE_URL"))
-            .map_err(|_| AgentError::Config("Missing VITE_SUPABASE_URL or SUPABASE_URL in environment".into()))?;
+            .unwrap_or_else(|_| DEFAULT_SUPABASE_URL.to_string())
+            .trim_end_matches('/')
+            .to_string();
 
         let supabase_anon_key = env::var("VITE_SUPABASE_ANON_KEY")
             .or_else(|_| env::var("SUPABASE_ANON_KEY"))
-            .map_err(|_| AgentError::Config("Missing VITE_SUPABASE_ANON_KEY or SUPABASE_ANON_KEY in environment".into()))?;
+            .unwrap_or_else(|_| DEFAULT_SUPABASE_ANON_KEY.to_string());
 
         // Derive consistent device identifier without storing sensitive machine secrets
-        let hostname = env::var("COMPUTERNAME").unwrap_or_else(|_| "WIN-AGENT-01".to_string());
-        let username = env::var("USERNAME").unwrap_or_else(|_| "User".to_string());
+        let hostname = env::var("COMPUTERNAME")
+            .or_else(|_| env::var("HOSTNAME"))
+            .unwrap_or_else(|_| "DESKTOP-AGENT".to_string());
+
+        let username = env::var("USERNAME")
+            .or_else(|_| env::var("USER"))
+            .unwrap_or_else(|_| "User".to_string());
+
         let device_id = env::var("DEVICE_ID")
             .unwrap_or_else(|_| format!("WIN-{}-{}", hostname, username));
 
@@ -45,13 +71,22 @@ impl AgentConfig {
         let employee_id = env::var("AGENT_EMPLOYEE_ID")
             .or_else(|_| env::var("EMPLOYEE_ID"))
             .unwrap_or_else(|_| {
-                Self::read_employee_from_sqlite().unwrap_or_else(|| {
-                    // Default seeded employee ID for Arsal in Supabase
-                    "cccccccc-cccc-cccc-cccc-cccccccccccc".to_string()
+                Self::read_employee_from_local_config().unwrap_or_else(|| {
+                    Self::read_employee_from_sqlite().unwrap_or_else(|| {
+                        let u_lower = username.to_lowercase();
+                        if u_lower.contains("michael") || u_lower.contains("chen") {
+                            // Seeded employee ID for Michael Chen in Supabase
+                            "dddddddd-dddd-dddd-dddd-dddddddddddd".to_string()
+                        } else {
+                            // Seeded employee ID for Arsal in Supabase
+                            DEFAULT_EMPLOYEE_ID.to_string()
+                        }
+                    })
                 })
             });
 
         let idle_threshold_seconds = env::var("IDLE_THRESHOLD_SECS")
+            .or_else(|_| env::var("IDLE_THRESHOLD_SECONDS"))
             .ok()
             .and_then(|v| v.parse().ok())
             .unwrap_or(60);
@@ -63,6 +98,7 @@ impl AgentConfig {
 
         let heartbeat_interval_seconds = env::var("HEARTBEAT_INTERVAL_SECS")
             .or_else(|_| env::var("HEARTBEAT_SECS"))
+            .or_else(|_| env::var("HEARTBEAT_INTERVAL_SECONDS"))
             .ok()
             .and_then(|v| v.parse().ok())
             .unwrap_or(10);
@@ -121,6 +157,21 @@ impl AgentConfig {
         base.join("agent_outbox.db")
     }
 
+    fn read_employee_from_local_config() -> Option<String> {
+        let local_app_data = env::var("LOCALAPPDATA").ok()?;
+        let config_file = PathBuf::from(local_app_data)
+            .join("EmployeeTracking")
+            .join("config.json");
+
+        if !config_file.exists() {
+            return None;
+        }
+
+        let content = std::fs::read_to_string(config_file).ok()?;
+        let parsed: serde_json::Value = serde_json::from_str(&content).ok()?;
+        parsed.get("employee_id").and_then(|v| v.as_str()).map(|s| s.to_string())
+    }
+
     fn read_employee_from_sqlite() -> Option<String> {
         let local_app_data = env::var("LOCALAPPDATA").ok()?;
         let db_path = PathBuf::from(local_app_data)
@@ -153,7 +204,8 @@ mod tests {
 
     #[test]
     fn test_config_resolution() {
-        let base_path = AgentConfig::resolve_db_path();
-        assert!(base_path.to_string_lossy().contains("agent_outbox.db"));
+        let cfg = AgentConfig::load().expect("AgentConfig should load with built-in fallbacks");
+        assert!(cfg.supabase_url.starts_with("https://"));
+        assert!(!cfg.employee_id.is_empty());
     }
 }

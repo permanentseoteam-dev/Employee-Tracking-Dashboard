@@ -17,7 +17,7 @@ use identity::DeviceIdentity;
 use presence::{PresenceStateMachine, PresenceStatus};
 use screenshots::ScreenCaptureService;
 use storage::LocalStorage;
-use supabase::models::{PresenceUpsertPayload, ScreenshotRecordPayload};
+use supabase::models::{DeviceRegisterPayload, PresenceUpsertPayload, ScreenshotRecordPayload};
 use supabase::SupabaseClient;
 use windows::WindowsInputTracker;
 
@@ -25,43 +25,105 @@ use chrono::Utc;
 use std::time::Duration;
 use tokio::time::{interval, Instant};
 
-#[tokio::main]
-async fn main() -> AgentResult<()> {
+fn main() {
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build();
+
+    let result = match rt {
+        Ok(runtime) => runtime.block_on(run_agent()),
+        Err(e) => Err(errors::AgentError::General(format!("Failed to build Tokio async runtime: {}", e))),
+    };
+
+    if let Err(e) = result {
+        eprintln!("\n=======================================================================");
+        eprintln!("❌ [FATAL AGENT ERROR] Failed to start or maintain agent:");
+        eprintln!("   {}", e);
+        eprintln!("=======================================================================");
+        eprintln!("Press Enter to close this window...");
+        let mut input = String::new();
+        let _ = std::io::stdin().read_line(&mut input);
+        std::process::exit(1);
+    }
+}
+
+async fn run_agent() -> AgentResult<()> {
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "info,employee_windows_agent=debug".into()),
+                .unwrap_or_else(|_| "info,employee_windows_agent=info".into()),
         )
         .init();
 
-    tracing::info!("=========================================================");
-    tracing::info!("Starting Windows Native Employee Monitoring Agent (Rust)");
-    tracing::info!("=========================================================");
-
-    let config = AgentConfig::load().map_err(|e| {
+    // 1. Load configuration with zero-command defaults
+    let mut config = AgentConfig::load().map_err(|e| {
         tracing::error!("Configuration loading failed: {}", e);
         e
     })?;
 
     let identity = DeviceIdentity::get_or_create(Some(config.device_id.clone()));
     let storage = LocalStorage::new(&config.sqlite_db_path, config.max_local_queue_size)?;
-    let health_monitor = HealthMonitor::new(identity.device_id.clone(), config.employee_id.clone());
     let screen_service = ScreenCaptureService::new(config.screenshot_quality);
 
-    tracing::info!("Employee ID: {}", config.employee_id);
-    tracing::info!("Device ID:   {} ({})", identity.device_id, identity.device_name);
-    tracing::info!("OS Version:  {}", identity.os_version);
-    tracing::info!("Agent Ver:   {}", identity.agent_version);
-    tracing::info!("Supabase:    {}", config.supabase_url);
-    tracing::info!("Idle Limit:  {}s", config.idle_threshold_seconds);
-    tracing::info!("Screenshots: {} (interval: {}s, quality: {}%)", 
+    let supabase_client = SupabaseClient::new(&config.supabase_url, &config.supabase_anon_key)?;
+
+    // 2. Dynamic Employee & Device Identity Resolution (for user's PC and other PCs)
+    if let Some(assigned_emp) = supabase_client.lookup_assigned_employee(&identity.device_id).await {
+        tracing::info!("Found existing device assignment: employee_id={}", assigned_emp);
+        config.employee_id = assigned_emp;
+    } else {
+        let username = std::env::var("USERNAME").unwrap_or_default().to_lowercase();
+        if let Ok(employees) = supabase_client.lookup_employees().await {
+            for emp in &employees {
+                let email_lower = emp.email.to_lowercase();
+                let name_lower = emp.full_name.to_lowercase();
+                if (!username.is_empty()) && (email_lower.contains(&username) || name_lower.contains(&username)) {
+                    tracing::info!("Auto-detected employee from username '{}': {} ({})", username, emp.full_name, emp.id);
+                    config.employee_id = emp.id.clone();
+                    break;
+                }
+            }
+        }
+    }
+
+    let health_monitor = HealthMonitor::new(identity.device_id.clone(), config.employee_id.clone());
+
+    // 3. Register device in public.devices table
+    let device_reg = DeviceRegisterPayload {
+        employee_id: config.employee_id.clone(),
+        device_name: identity.device_name.clone(),
+        device_identifier: identity.device_id.clone(),
+        os_version: identity.os_version.clone(),
+        agent_version: identity.agent_version.clone(),
+        last_seen_at: Utc::now(),
+    };
+    if let Err(e) = supabase_client.register_device(&device_reg).await {
+        tracing::warn!("Device registration warning (non-fatal): {}", e);
+    } else {
+        tracing::info!("Workstation registered in Supabase devices table");
+    }
+
+    // 4. Print clean, reassuring ASCII banner for double-click execution
+    println!("\n=======================================================================");
+    println!("  🚀 EMPLOYEE TRACKING BACKGROUND AGENT (v{})", identity.agent_version);
+    println!("=======================================================================");
+    println!("  Central Vault:    {}", config.supabase_url);
+    println!("  Workstation:      {} ({})", identity.device_name, identity.device_id);
+    println!("  OS Environment:   {}", identity.os_version);
+    println!("  Assigned Profile: {}", config.employee_id);
+    println!("  Input Polling:    Every {}ms | Idle Limit: {}s", config.poll_interval_millis, config.idle_threshold_seconds);
+    println!("  Screenshots:      {} (Interval: {}s, Quality: {}%)", 
         if config.screenshots_enabled { "ENABLED" } else { "DISABLED" },
         config.screenshot_interval_seconds,
         config.screenshot_quality
     );
-    tracing::info!("Local DB:    {:?}", config.sqlite_db_path);
+    println!("  Local Outbox:     {:?}", config.sqlite_db_path);
+    println!("=======================================================================");
+    println!("  ✅ Status: ONLINE & MONITORING");
+    println!("  💡 You can safely minimize this console window while you work.");
+    println!("  🛑 To cleanly stop the agent, press Ctrl+C in this window.");
+    println!("=======================================================================\n");
 
-    let supabase_client = SupabaseClient::new(&config.supabase_url, &config.supabase_anon_key)?;
     let input_tracker = WindowsInputTracker::new(config.idle_threshold_seconds);
     let mut state_machine = PresenceStateMachine::new();
     let mut batcher = ActivityBatcher::new(
@@ -85,7 +147,7 @@ async fn main() -> AgentResult<()> {
         tracing::warn!("Initial presence sync warning (will retry in background loop): {}", e);
         health_monitor.record_error(&format!("Initial presence sync failed: {}", e));
     } else {
-        tracing::info!("Initial presence registered successfully as ACTIVE");
+        println!("[+] Workstation status synced: ONLINE (Active)");
         health_monitor.record_sync_success();
     }
 
@@ -98,8 +160,6 @@ async fn main() -> AgentResult<()> {
     let mut last_flush = Instant::now();
     // Trigger immediate screenshot upon agent startup so the dashboard immediately shows live view
     let mut last_screenshot = Instant::now() - screenshot_dur;
-
-    tracing::info!("Agent background loop running. Monitoring input & idle state...");
 
     loop {
         tokio::select! {
@@ -183,6 +243,8 @@ async fn main() -> AgentResult<()> {
                             let storage_clone = storage.clone();
                             let emp_id = config.employee_id.clone();
                             let dev_id = identity.device_id.clone();
+                            let width = captured.width;
+                            let height = captured.height;
 
                             tokio::spawn(async move {
                                 match supabase_clone.upload_screenshot_storage(&storage_path, captured.image_bytes.clone()).await {
@@ -194,15 +256,16 @@ async fn main() -> AgentResult<()> {
                                             storage_path,
                                             file_size_bytes: captured.image_bytes.len(),
                                         };
-                                        if let Err(e) = supabase_clone.insert_screenshot_record(&record).await {
+                                        if let Err(e) = supabase_clone.insert_screenshot_record(&record, width, height).await {
                                             tracing::warn!("Failed to log screenshot metadata to DB: {}", e);
                                         } else {
+                                            println!("[+] Screen capture synchronized with Supabase ({} bytes)", captured.image_bytes.len());
                                             tracing::info!("Screenshot uploaded & logged successfully ({} bytes)", captured.image_bytes.len());
                                         }
                                     }
                                     Err(e) => {
                                         tracing::warn!("Failed to upload screenshot to Supabase Storage: {}. Queuing locally.", e);
-                                        let _ = storage_clone.enqueue_screenshot(&captured.image_bytes, &format!("{{\"width\":{},\"height\":{}}}", captured.width, captured.height));
+                                        let _ = storage_clone.enqueue_screenshot(&captured.image_bytes, &format!("{{\"width\":{},\"height\":{}}}", width, height));
                                     }
                                 }
                             });
@@ -228,7 +291,7 @@ async fn main() -> AgentResult<()> {
             }
 
             _ = tokio::signal::ctrl_c() => {
-                tracing::info!("Received shutdown signal. Setting status to OFFLINE...");
+                println!("\n[!] Received shutdown signal (Ctrl+C). Setting status to OFFLINE...");
 
                 let offline_presence = PresenceUpsertPayload {
                     employee_id: config.employee_id.clone(),
@@ -241,7 +304,7 @@ async fn main() -> AgentResult<()> {
 
                 let _ = supabase_client.upsert_presence(&offline_presence).await;
                 let _ = batcher.flush().await;
-                tracing::info!("Agent shutdown clean. Exiting.");
+                println!("[+] Agent shutdown clean. Exiting.");
                 break;
             }
         }

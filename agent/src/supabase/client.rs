@@ -1,6 +1,7 @@
 use crate::errors::{AgentError, AgentResult};
 use crate::supabase::models::{
-    ActivityAggregatePayload, ActivityEventPayload, PresenceUpsertPayload, ScreenshotRecordPayload,
+    ActivityAggregatePayload, ActivityEventPayload, DeviceQueryItem, DeviceRegisterPayload,
+    EmployeeLookupItem, PresenceUpsertPayload, ScreenshotDbPayload, ScreenshotRecordPayload,
 };
 use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE};
 use reqwest::Client;
@@ -15,6 +16,9 @@ pub struct SupabaseClient {
     events_url: String,
     aggregates_url: String,
     screenshots_db_url: String,
+    screenshots_main_url: String,
+    devices_url: String,
+    employees_url: String,
 }
 
 impl SupabaseClient {
@@ -46,6 +50,9 @@ impl SupabaseClient {
         let events_url = format!("{}/rest/v1/activity_events", base);
         let aggregates_url = format!("{}/rest/v1/activity_aggregates", base);
         let screenshots_db_url = format!("{}/rest/v1/screenshot_records", base);
+        let screenshots_main_url = format!("{}/rest/v1/screenshots", base);
+        let devices_url = format!("{}/rest/v1/devices", base);
+        let employees_url = format!("{}/rest/v1/employees", base);
 
         Ok(Self {
             client,
@@ -54,7 +61,86 @@ impl SupabaseClient {
             events_url,
             aggregates_url,
             screenshots_db_url,
+            screenshots_main_url,
+            devices_url,
+            employees_url,
         })
+    }
+
+    /// Check if this device is already registered and mapped to an employee
+    pub async fn lookup_assigned_employee(&self, device_identifier: &str) -> Option<String> {
+        let url = format!(
+            "{}?device_identifier=eq.{}&select=id,employee_id,device_identifier&limit=1",
+            self.devices_url, device_identifier
+        );
+        if let Ok(resp) = self.client.get(&url).send().await {
+            if resp.status().is_success() {
+                if let Ok(items) = resp.json::<Vec<DeviceQueryItem>>().await {
+                    if let Some(first) = items.first() {
+                        if !first.employee_id.trim().is_empty() {
+                            return Some(first.employee_id.clone());
+                        }
+                    }
+                }
+            }
+        }
+        None
+    }
+
+    /// Retrieve all employees for automatic matching by Windows username
+    pub async fn lookup_employees(&self) -> AgentResult<Vec<EmployeeLookupItem>> {
+        let url = format!("{}?select=id,full_name,email", self.employees_url);
+        let resp = self.client.get(&url).send().await?;
+        if resp.status().is_success() {
+            let employees = resp.json::<Vec<EmployeeLookupItem>>().await.unwrap_or_default();
+            Ok(employees)
+        } else {
+            Ok(vec![])
+        }
+    }
+
+    /// Register or update device metadata in public.devices
+    pub async fn register_device(&self, payload: &DeviceRegisterPayload) -> AgentResult<()> {
+        let query_url = format!(
+            "{}?device_identifier=eq.{}&select=id&limit=1",
+            self.devices_url, payload.device_identifier
+        );
+
+        if let Ok(resp) = self.client.get(&query_url).send().await {
+            if resp.status().is_success() {
+                if let Ok(existing) = resp.json::<Vec<serde_json::Value>>().await {
+                    if let Some(first) = existing.first() {
+                        if let Some(id) = first.get("id").and_then(|v| v.as_str()) {
+                            let patch_url = format!("{}?id=eq.{}", self.devices_url, id);
+                            let update_body = serde_json::json!({
+                                "last_seen_at": payload.last_seen_at,
+                                "agent_version": payload.agent_version,
+                                "os_version": payload.os_version,
+                                "device_name": payload.device_name
+                            });
+                            let _ = self.client.patch(&patch_url).json(&update_body).send().await;
+                            return Ok(());
+                        }
+                    }
+                }
+            }
+        }
+
+        // If not existing, insert new row
+        let resp = self
+            .client
+            .post(&self.devices_url)
+            .json(&[payload])
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            tracing::warn!("Device registration response (status {}): {}", status, body);
+        }
+
+        Ok(())
     }
 
     /// Upsert employee presence record (merges on primary key employee_id, device_id)
@@ -152,9 +238,15 @@ impl SupabaseClient {
         Ok(())
     }
 
-    /// Insert screenshot metadata record in Supabase DB
+    /// Insert screenshot metadata record in Supabase DB (both screenshot_records and public.screenshots)
     #[allow(dead_code)]
-    pub async fn insert_screenshot_record(&self, payload: &ScreenshotRecordPayload) -> AgentResult<()> {
+    pub async fn insert_screenshot_record(
+        &self,
+        payload: &ScreenshotRecordPayload,
+        width: u32,
+        height: u32,
+    ) -> AgentResult<()> {
+        // 1. Insert into public.screenshot_records
         let resp = self
             .client
             .post(&self.screenshots_db_url)
@@ -165,11 +257,29 @@ impl SupabaseClient {
         if !resp.status().is_success() {
             let status = resp.status();
             let body = resp.text().await.unwrap_or_default();
-            return Err(AgentError::Supabase(format!(
-                "Failed to insert screenshot record (status {}): {}",
+            tracing::warn!(
+                "Failed to insert screenshot_records (status {}): {}",
                 status, body
-            )));
+            );
         }
+
+        // 2. Insert into public.screenshots (for live telemetry and card thumbnail real-time events)
+        let main_record = ScreenshotDbPayload {
+            employee_id: payload.employee_id.clone(),
+            device_id: None,
+            storage_path: payload.storage_path.clone(),
+            file_size_bytes: payload.file_size_bytes,
+            width,
+            height,
+            captured_at: payload.captured_at,
+        };
+
+        let _ = self
+            .client
+            .post(&self.screenshots_main_url)
+            .json(&[main_record])
+            .send()
+            .await;
 
         Ok(())
     }

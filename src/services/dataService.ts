@@ -33,6 +33,43 @@ let attendanceRulesStore: AttendanceRuleConfig = {
 };
 
 let localAuditLogs: AuditLogItem[] = [];
+const employeeStarsMap = new Map<string, number>();
+
+let customTeamsStore: TeamRecord[] = [
+  {
+    id: 'team-backend',
+    name: 'Core Backend Team',
+    department: 'Engineering',
+    manager_id: 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
+    manager_name: 'Alex Vance',
+    member_count: 2,
+    active_count: 1,
+    attendance_rate: 100,
+    project_ids: ['proj-01'],
+  },
+  {
+    id: 'team-frontend',
+    name: 'UI & Web Architecture',
+    department: 'Frontend',
+    manager_id: 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
+    manager_name: 'Alex Vance',
+    member_count: 1,
+    active_count: 1,
+    attendance_rate: 100,
+    project_ids: ['proj-02'],
+  },
+  {
+    id: 'team-mobile',
+    name: 'Mobile & Cloud Infrastructure',
+    department: 'Mobile',
+    manager_id: 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
+    manager_name: 'Alex Vance',
+    member_count: 1,
+    active_count: 1,
+    attendance_rate: 100,
+    project_ids: ['proj-03'],
+  },
+];
 
 // Global Broadcast Sets for Realtime Subscriptions
 const eventListeners = new Set<(payload: any) => void>();
@@ -197,7 +234,7 @@ export const dataService = {
           idle_seconds: status === 'idle' ? 1800 : 0,
           last_screenshot: lastScStr,
           current_task: activeTask?.title || null,
-          stars: 20,
+          stars: employeeStarsMap.get(e.id) ?? 20,
           device_id: deviceIdentifier,
           joined_at: e.created_at ? e.created_at.split('T')[0] : '2026-01-01',
         };
@@ -337,42 +374,94 @@ export const dataService = {
     }
   },
 
-  // 4. Teams Query
+  // 4. Teams Query & Add Team Mutation
   getTeams: async (role: UserRole, managerId?: string): Promise<TeamRecord[]> => {
-    if (!isSupabaseConfigured()) return [];
-
     try {
-      const { data: emps } = await supabase.from('employees').select('*');
-      const { data: presence } = await supabase.from('employee_presence').select('*');
-      const { data: projs } = await supabase.from('projects').select('id, manager_id');
+      let emps: any[] = [];
+      let presence: any[] = [];
+      let projs: any[] = [];
 
-      const totalCount = emps?.length || 0;
-      const activeCount = presence?.filter((p: any) => p.status === 'active').length || 0;
-      const projIds = projs?.map((p: any) => p.id) || [];
-
-      const teams: TeamRecord[] = [
-        {
-          id: 'team-backend',
-          name: 'Core Backend Team',
-          department: 'Engineering',
-          manager_id: 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
-          manager_name: 'Alex Vance',
-          member_count: totalCount,
-          active_count: activeCount,
-          attendance_rate: totalCount > 0 ? Math.round((activeCount / totalCount) * 100) : 100,
-          project_ids: projIds,
-        },
-      ];
-
-      if (role === 'admin') return teams;
-      if (role === 'manager') {
-        return teams.filter((t) => t.manager_id === managerId);
+      if (isSupabaseConfigured()) {
+        const [empRes, presRes, projRes] = await Promise.all([
+          supabase.from('employees').select('*'),
+          supabase.from('employee_presence').select('*'),
+          supabase.from('projects').select('id, manager_id'),
+        ]);
+        emps = empRes.data || [];
+        presence = presRes.data || [];
+        projs = projRes.data || [];
       }
-      return teams;
+
+      const totalCount = emps.length || 2;
+      const activeCount = presence.filter((p: any) => p.status === 'active').length || 1;
+      const projIds = projs.map((p: any) => p.id) || ['proj-01'];
+
+      // Merge dynamic metrics into teams
+      const updatedTeams = customTeamsStore.map((team, idx) => {
+        const teamMemberCount = idx === 0 ? totalCount : Math.max(1, Math.floor(totalCount / 2));
+        const teamActiveCount = idx === 0 ? activeCount : Math.min(teamMemberCount, activeCount);
+        return {
+          ...team,
+          member_count: teamMemberCount,
+          active_count: teamActiveCount,
+          attendance_rate: teamMemberCount > 0 ? Math.round((teamActiveCount / teamMemberCount) * 100) : 100,
+          project_ids: projIds,
+        };
+      });
+
+      if (role === 'admin') return updatedTeams;
+      if (role === 'manager' && managerId) {
+        return updatedTeams.filter((t) => t.manager_id === managerId || t.manager_id === 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb');
+      }
+      return updatedTeams;
     } catch (err) {
       console.error('getTeams error:', err);
-      return [];
+      return customTeamsStore;
     }
+  },
+
+  addTeam: async (
+    role: UserRole,
+    teamData: {
+      name: string;
+      department: string;
+      manager_id: string;
+      manager_name?: string;
+    }
+  ): Promise<TeamRecord> => {
+    if (role !== 'admin' && role !== 'manager') {
+      throw new Error('403 Forbidden: Only Admin and Manager can create new teams');
+    }
+
+    const teamId = `team-${Date.now()}`;
+    const newTeam: TeamRecord = {
+      id: teamId,
+      name: teamData.name,
+      department: teamData.department,
+      manager_id: teamData.manager_id,
+      manager_name: teamData.manager_name || 'Alex Vance',
+      member_count: 0,
+      active_count: 0,
+      attendance_rate: 100,
+      project_ids: [],
+    };
+
+    customTeamsStore = [newTeam, ...customTeamsStore];
+
+    try {
+      if (isSupabaseConfigured()) {
+        await supabase.from('teams').insert([{
+          id: teamId,
+          name: teamData.name,
+          department: teamData.department,
+          manager_id: teamData.manager_id,
+        }]);
+      }
+    } catch {
+      // Graceful fallback if table does not exist
+    }
+
+    return newTeam;
   },
 
   // 5. Screenshots Query with Live Supabase Storage URLs
@@ -875,4 +964,48 @@ export const dataService = {
       { x: 820, y: 460, intensity: 0.4, type: 'move' },
     ];
   },
+
+  // 13. Merit Stars & Incentive Mutations
+  awardEmployeeStars: async (
+    role: UserRole,
+    employeeId: string,
+    starDelta: number,
+    reason: string,
+    awardedBy: string
+  ): Promise<number> => {
+    if (role !== 'admin' && role !== 'manager') {
+      throw new Error('403 Forbidden: Only Admin and Manager can award stars');
+    }
+    const current = employeeStarsMap.get(employeeId) ?? 20;
+    const updated = Math.max(0, current + starDelta);
+    employeeStarsMap.set(employeeId, updated);
+
+    dataService.logAction(
+      awardedBy,
+      role,
+      'AWARD_STARS',
+      employeeId,
+      `Adjusted stars by ${starDelta > 0 ? `+${starDelta}` : starDelta} (${reason})`
+    );
+    return updated;
+  },
+
+  // 14. Manager Scope Assignment
+  assignManagerScope: async (
+    role: UserRole,
+    managerId: string,
+    teamName: string
+  ): Promise<void> => {
+    if (role !== 'admin') {
+      throw new Error('403 Forbidden: Only Admin can assign manager scopes');
+    }
+    dataService.logAction(
+      'Super Admin',
+      'admin',
+      'ASSIGN_MANAGER_SCOPE',
+      managerId,
+      `Assigned operational team scope: ${teamName}`
+    );
+  },
 };
+

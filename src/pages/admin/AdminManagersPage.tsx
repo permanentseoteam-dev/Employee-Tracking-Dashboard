@@ -1,17 +1,29 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Search, RefreshCw, UserCheck, ShieldCheck, FolderKanban, Users } from 'lucide-react';
+import { Search, RefreshCw, UserCheck, ShieldCheck, FolderKanban, Users, Plus, X } from 'lucide-react';
 import { dataService } from '../../services/dataService';
-import type { ManagerRecord } from '../../types/roles';
+import type { ManagerRecord, TeamRecord } from '../../types/roles';
 
 export const AdminManagersPage: React.FC = () => {
   const [managers, setManagers] = useState<ManagerRecord[]>([]);
+  const [teams, setTeams] = useState<TeamRecord[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
+
+  // Scope Modal State
+  const [isScopeModalOpen, setIsScopeModalOpen] = useState(false);
+  const [selectedMgrId, setSelectedMgrId] = useState('');
+  const [selectedTeamName, setSelectedTeamName] = useState('');
 
   const loadData = async () => {
     try {
-      const list = await dataService.getManagers('admin');
-      setManagers(list);
+      const [mgrList, teamList] = await Promise.all([
+        dataService.getManagers('admin'),
+        dataService.getTeams('admin'),
+      ]);
+      setManagers(mgrList);
+      setTeams(teamList);
+      if (mgrList.length > 0 && !selectedMgrId) setSelectedMgrId(mgrList[0].id);
+      if (teamList.length > 0 && !selectedTeamName) setSelectedTeamName(teamList[0].name);
     } catch (err) {
       console.error(err);
     }
@@ -20,6 +32,19 @@ export const AdminManagersPage: React.FC = () => {
   useEffect(() => {
     loadData();
   }, []);
+
+  const handleAssignScope = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedMgrId || !selectedTeamName) return;
+
+    try {
+      await dataService.assignManagerScope('admin', selectedMgrId, selectedTeamName);
+      setIsScopeModalOpen(false);
+      loadData();
+    } catch (err: any) {
+      alert(err.message);
+    }
+  };
 
   const filtered = (managers || []).filter((m) => {
     const name = m?.name || '';
@@ -54,6 +79,10 @@ export const AdminManagersPage: React.FC = () => {
           <button className="btn-pill btn-pill-secondary" onClick={loadData}>
             <RefreshCw size={14} />
             <span>Refresh</span>
+          </button>
+          <button className="btn-pill btn-pill-primary" onClick={() => setIsScopeModalOpen(true)}>
+            <Plus size={15} />
+            <span>Assign Scope</span>
           </button>
         </div>
       </div>
@@ -161,6 +190,73 @@ export const AdminManagersPage: React.FC = () => {
           </table>
         </div>
       </div>
+
+      {/* Assign Manager Scope Modal */}
+      {isScopeModalOpen && (
+        <div className="stitch-modal-backdrop" onClick={() => setIsScopeModalOpen(false)}>
+          <div className="stitch-modal-content" style={{ maxWidth: 440 }} onClick={(e) => e.stopPropagation()}>
+            <div className="content-card-title">
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <UserCheck size={18} color="var(--color-secondary)" />
+                <span style={{ fontSize: 17, fontWeight: 700 }}>Assign Manager Team Scope</span>
+              </div>
+              <button
+                type="button"
+                className="btn-icon-circle"
+                style={{ width: 30, height: 30 }}
+                onClick={() => setIsScopeModalOpen(false)}
+              >
+                <X size={15} />
+              </button>
+            </div>
+
+            <form onSubmit={handleAssignScope} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <div className="stitch-form-group">
+                <label className="stitch-label">Select Manager</label>
+                <select
+                  className="stitch-select"
+                  value={selectedMgrId}
+                  onChange={(e) => setSelectedMgrId(e.target.value)}
+                >
+                  {managers.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.name} ({m.department})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="stitch-form-group">
+                <label className="stitch-label">Assign Operational Team</label>
+                <select
+                  className="stitch-select"
+                  value={selectedTeamName}
+                  onChange={(e) => setSelectedTeamName(e.target.value)}
+                >
+                  {teams.map((t) => (
+                    <option key={t.id} value={t.name}>
+                      {t.name} ({t.department})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 10 }}>
+                <button
+                  type="button"
+                  className="btn-pill btn-pill-secondary"
+                  onClick={() => setIsScopeModalOpen(false)}
+                >
+                  Cancel
+                </button>
+                <button type="submit" className="btn-pill btn-pill-primary">
+                  Assign Scope
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </motion.div>
   );
 };

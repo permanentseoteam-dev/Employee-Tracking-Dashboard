@@ -1,21 +1,40 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Plus, RefreshCw, CheckSquare, X } from 'lucide-react';
+import { Plus, RefreshCw, CheckSquare, FolderKanban, X } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { dataService } from '../../services/dataService';
 import type { TaskItem, ProjectItem, EmployeeRecord } from '../../types/roles';
 
-export const ManagerTasksPage: React.FC = () => {
+interface ManagerTasksPageProps {
+  initialView?: 'projects' | 'tasks';
+}
+
+export const ManagerTasksPage: React.FC<ManagerTasksPageProps> = ({ initialView = 'tasks' }) => {
   const { user } = useAuth();
+  const [view, setView] = useState<'projects' | 'tasks'>(initialView);
   const [tasks, setTasks] = useState<TaskItem[]>([]);
   const [projects, setProjects] = useState<ProjectItem[]>([]);
   const [teamEmployees, setTeamEmployees] = useState<EmployeeRecord[]>([]);
+  
+  // Task Modal State
   const [isNewTaskOpen, setIsNewTaskOpen] = useState(false);
   const [newTitle, setNewTitle] = useState('');
   const [newAssignedEmpId, setNewAssignedEmpId] = useState('');
   const [newProjectId, setNewProjectId] = useState('');
   const [newPriority, setNewPriority] = useState<TaskItem['priority']>('medium');
   const [newDueDate, setNewDueDate] = useState('2026-10-15');
+
+  // Project Modal State
+  const [isNewProjOpen, setIsNewProjOpen] = useState(false);
+  const [newProjName, setNewProjName] = useState('');
+  const [newProjCode, setNewProjCode] = useState('');
+  const [newProjDueDate, setNewProjDueDate] = useState('2026-11-30');
+
+  useEffect(() => {
+    if (initialView) {
+      setView(initialView);
+    }
+  }, [initialView]);
 
   const loadData = async () => {
     try {
@@ -47,6 +66,44 @@ export const ManagerTasksPage: React.FC = () => {
       unsubscribe();
     };
   }, [user.id]);
+
+  const handleCreateProject = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newProjName.trim()) return;
+
+    try {
+      await dataService.createProject(
+        'manager',
+        {
+          name: newProjName.trim(),
+          code: newProjCode.trim().toUpperCase() || newProjName.substring(0, 4).toUpperCase(),
+          manager_id: user.id,
+          manager_name: user.name,
+          members_count: teamEmployees.length || 2,
+          status: 'active',
+          progress_percentage: 0,
+          total_tasks: 0,
+          due_date: newProjDueDate,
+        },
+        user.id
+      );
+
+      dataService.logAction(
+        user.name,
+        'manager',
+        'CREATE_TEAM_PROJECT',
+        newProjName,
+        'Manager created project for team'
+      );
+
+      setIsNewProjOpen(false);
+      setNewProjName('');
+      setNewProjCode('');
+      loadData();
+    } catch (err: any) {
+      alert(err.message);
+    }
+  };
 
   const handleCreateTask = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -120,139 +177,246 @@ export const ManagerTasksPage: React.FC = () => {
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          {/* Segmented View Switcher */}
+          <div className="stitch-nav-pills">
+            <button
+              type="button"
+              className={`nav-pill-item ${view === 'projects' ? 'active' : ''}`}
+              onClick={() => setView('projects')}
+            >
+              <FolderKanban size={14} />
+              <span>Projects ({projects.length})</span>
+            </button>
+            <button
+              type="button"
+              className={`nav-pill-item ${view === 'tasks' ? 'active' : ''}`}
+              onClick={() => setView('tasks')}
+            >
+              <CheckSquare size={14} />
+              <span>Tasks ({tasks.length})</span>
+            </button>
+          </div>
+
           <button className="btn-pill btn-pill-secondary" onClick={loadData}>
             <RefreshCw size={14} />
             <span>Refresh</span>
           </button>
-          <button className="btn-pill btn-pill-primary" onClick={() => setIsNewTaskOpen(true)}>
-            <Plus size={15} />
-            <span>Create Team Task</span>
-          </button>
+          
+          {view === 'projects' ? (
+            <button className="btn-pill btn-pill-primary" onClick={() => setIsNewProjOpen(true)}>
+              <Plus size={15} />
+              <span>Create Project</span>
+            </button>
+          ) : (
+            <button className="btn-pill btn-pill-primary" onClick={() => setIsNewTaskOpen(true)}>
+              <Plus size={15} />
+              <span>Create Team Task</span>
+            </button>
+          )}
         </div>
       </div>
 
-      {/* Projects summary */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '1.25rem' }}>
-        {projects.map((proj) => (
-          <div key={proj.id} className="frosted-card" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-              <div>
-                <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-primary)' }}>{proj.name}</div>
-                <div style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'monospace' }}>{proj.code}</div>
+      {/* Projects view */}
+      {view === 'projects' && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '1.25rem' }}>
+          {projects.map((proj) => (
+            <div key={proj.id} className="frosted-card" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                <div>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-primary)' }}>{proj.name}</div>
+                  <div style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'monospace' }}>{proj.code}</div>
+                </div>
+                <span className="live-telemetry-badge">{proj.progress_percentage}%</span>
               </div>
-              <span className="live-telemetry-badge">{proj.progress_percentage}%</span>
-            </div>
 
-            <div style={{ height: 6, background: 'var(--surface-border-subtle)', borderRadius: 'var(--radius-pill)', overflow: 'hidden' }}>
-              <div
-                style={{
-                  height: '100%',
-                  width: `${proj.progress_percentage}%`,
-                  background: 'var(--color-secondary)',
-                  borderRadius: 'var(--radius-pill)',
-                  transition: 'width 0.4s ease',
-                }}
-              />
-            </div>
+              <div style={{ height: 6, background: 'var(--surface-border-subtle)', borderRadius: 'var(--radius-pill)', overflow: 'hidden' }}>
+                <div
+                  style={{
+                    height: '100%',
+                    width: `${proj.progress_percentage}%`,
+                    background: 'var(--color-secondary)',
+                    borderRadius: 'var(--radius-pill)',
+                    transition: 'width 0.4s ease',
+                  }}
+                />
+              </div>
 
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: 'var(--text-muted)' }}>
-              <span>Tasks: <strong style={{ color: 'var(--text-primary)' }}>{proj.completed_tasks}</strong> / {proj.total_tasks}</span>
-              <span>Due: {proj.due_date}</span>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: 'var(--text-muted)' }}>
+                <span>Tasks: <strong style={{ color: 'var(--text-primary)' }}>{proj.completed_tasks}</strong> / {proj.total_tasks}</span>
+                <span>Due: {proj.due_date}</span>
+              </div>
             </div>
-          </div>
-        ))}
-      </div>
+          ))}
+          {projects.length === 0 && (
+            <div className="frosted-card" style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)', gridColumn: '1 / -1' }}>
+              No team projects found. Click "Create Project" to start one.
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Tasks Table */}
-      <div className="frosted-card">
-        <div className="content-card-title">
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ fontSize: 16, fontWeight: 700 }}>Active Team Tasks</span>
-            <span className="live-telemetry-badge">{tasks.length} items</span>
+      {view === 'tasks' && (
+        <div className="frosted-card">
+          <div className="content-card-title">
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontSize: 16, fontWeight: 700 }}>Active Team Tasks</span>
+              <span className="live-telemetry-badge">{tasks.length} items</span>
+            </div>
+          </div>
+
+          <div className="stitch-table-wrapper">
+            <table className="stitch-table">
+              <thead>
+                <tr>
+                  <th>Task Title</th>
+                  <th>Project</th>
+                  <th>Assigned Member</th>
+                  <th>Priority</th>
+                  <th>Status</th>
+                  <th>Tracked Hours</th>
+                  <th>Due Date</th>
+                  <th style={{ textAlign: 'right' }}>Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {tasks.map((task) => (
+                  <tr key={task.id}>
+                    <td style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{task.title}</td>
+                    <td style={{ color: 'var(--text-secondary)' }}>{task.project_name}</td>
+                    <td>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <div className="avatar-chip" style={{ width: 24, height: 24, fontSize: 10 }}>
+                          {task.employee_name.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase()}
+                        </div>
+                        <span>{task.employee_name}</span>
+                      </div>
+                    </td>
+                    <td>
+                      <span
+                        className={`status-pill ${
+                          task.priority === 'urgent'
+                            ? 'critical'
+                            : task.priority === 'high'
+                            ? 'late'
+                            : 'neutral'
+                        }`}
+                      >
+                        {task.priority}
+                      </span>
+                    </td>
+                    <td>
+                      <select
+                        className="stitch-select"
+                        style={{ padding: '4px 10px', fontSize: 11, width: 120 }}
+                        value={task.status}
+                        onChange={(e) => handleStatusChange(task.id, e.target.value as any)}
+                      >
+                        <option value="in_progress">In Progress</option>
+                        <option value="completed">Completed</option>
+                        <option value="todo">To Do</option>
+                        <option value="paused">Paused</option>
+                      </select>
+                    </td>
+                    <td style={{ fontFamily: 'monospace', fontWeight: 600 }}>
+                      {(((task.tracked_seconds || 0) / 3600)).toFixed(1)}h
+                    </td>
+                    <td style={{ fontSize: 12, color: 'var(--text-muted)' }}>{task.due_date}</td>
+                    <td style={{ textAlign: 'right' }}>
+                      {task.status !== 'completed' && (
+                        <button
+                          className="btn-pill btn-pill-secondary"
+                          style={{ padding: '3px 10px', fontSize: 11 }}
+                          onClick={() => handleStatusChange(task.id, 'completed')}
+                        >
+                          Mark Done
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+                {tasks.length === 0 && (
+                  <tr>
+                    <td colSpan={8} style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>
+                      No team tasks logged. Click "Create Team Task" to assign one.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
           </div>
         </div>
+      )}
 
-        <div className="stitch-table-wrapper">
-          <table className="stitch-table">
-            <thead>
-              <tr>
-                <th>Task Title</th>
-                <th>Project</th>
-                <th>Assigned Member</th>
-                <th>Priority</th>
-                <th>Status</th>
-                <th>Tracked Hours</th>
-                <th>Due Date</th>
-                <th style={{ textAlign: 'right' }}>Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {tasks.map((task) => (
-                <tr key={task.id}>
-                  <td style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{task.title}</td>
-                  <td style={{ color: 'var(--text-secondary)' }}>{task.project_name}</td>
-                  <td>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <div className="avatar-chip" style={{ width: 24, height: 24, fontSize: 10 }}>
-                        {task.employee_name.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase()}
-                      </div>
-                      <span>{task.employee_name}</span>
-                    </div>
-                  </td>
-                  <td>
-                    <span
-                      className={`status-pill ${
-                        task.priority === 'urgent'
-                          ? 'critical'
-                          : task.priority === 'high'
-                          ? 'late'
-                          : 'neutral'
-                      }`}
-                    >
-                      {task.priority}
-                    </span>
-                  </td>
-                  <td>
-                    <select
-                      className="stitch-select"
-                      style={{ padding: '4px 10px', fontSize: 11, width: 120 }}
-                      value={task.status}
-                      onChange={(e) => handleStatusChange(task.id, e.target.value as any)}
-                    >
-                      <option value="in_progress">In Progress</option>
-                      <option value="completed">Completed</option>
-                      <option value="todo">To Do</option>
-                      <option value="paused">Paused</option>
-                    </select>
-                  </td>
-                  <td style={{ fontFamily: 'monospace', fontWeight: 600 }}>
-                    {(((task.tracked_seconds || 0) / 3600)).toFixed(1)}h
-                  </td>
-                  <td style={{ fontSize: 12, color: 'var(--text-muted)' }}>{task.due_date}</td>
-                  <td style={{ textAlign: 'right' }}>
-                    {task.status !== 'completed' && (
-                      <button
-                        className="btn-pill btn-pill-secondary"
-                        style={{ padding: '3px 10px', fontSize: 11 }}
-                        onClick={() => handleStatusChange(task.id, 'completed')}
-                      >
-                        Mark Done
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              ))}
-              {tasks.length === 0 && (
-                <tr>
-                  <td colSpan={8} style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>
-                    No team tasks logged. Click "Create Team Task" to assign one.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+      {/* New Project Modal */}
+      {isNewProjOpen && (
+        <div className="stitch-modal-backdrop" onClick={() => setIsNewProjOpen(false)}>
+          <div className="stitch-modal-content" style={{ maxWidth: 480 }} onClick={(e) => e.stopPropagation()}>
+            <div className="content-card-title">
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <FolderKanban size={18} color="var(--color-secondary)" />
+                <span style={{ fontSize: 16, fontWeight: 700 }}>Create Team Project</span>
+              </div>
+              <button
+                type="button"
+                className="btn-icon-circle"
+                style={{ width: 30, height: 30 }}
+                onClick={() => setIsNewProjOpen(false)}
+              >
+                <X size={15} />
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateProject} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <div className="stitch-form-group">
+                <label className="stitch-label">Project Name</label>
+                <input
+                  type="text"
+                  required
+                  className="stitch-input"
+                  placeholder="e.g. Core Telemetry Service"
+                  value={newProjName}
+                  onChange={(e) => setNewProjName(e.target.value)}
+                />
+              </div>
+
+              <div className="stitch-form-group">
+                <label className="stitch-label">Project Code</label>
+                <input
+                  type="text"
+                  className="stitch-input"
+                  placeholder="e.g. TEL-CORE"
+                  value={newProjCode}
+                  onChange={(e) => setNewProjCode(e.target.value)}
+                />
+              </div>
+
+              <div className="stitch-form-group">
+                <label className="stitch-label">Target Due Date</label>
+                <input
+                  type="date"
+                  className="stitch-input"
+                  value={newProjDueDate}
+                  onChange={(e) => setNewProjDueDate(e.target.value)}
+                />
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 10 }}>
+                <button
+                  type="button"
+                  className="btn-pill btn-pill-secondary"
+                  onClick={() => setIsNewProjOpen(false)}
+                >
+                  Cancel
+                </button>
+                <button type="submit" className="btn-pill btn-pill-primary">
+                  Create Project
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* New Task Modal */}
       {isNewTaskOpen && (

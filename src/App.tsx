@@ -112,9 +112,11 @@ export const App: React.FC = () => {
         case '/admin/teams':
           return <AdminTeamsPage />;
         case '/admin/monitoring/live':
+          return <AdminMonitoringPage initialSubTab="live" />;
         case '/admin/monitoring/screenshots':
+          return <AdminMonitoringPage initialSubTab="screenshots" />;
         case '/admin/monitoring/heatmaps':
-          return <AdminMonitoringPage />;
+          return <AdminMonitoringPage initialSubTab="heatmaps" />;
         case '/admin/attendance':
           return <AdminAttendancePage />;
         case '/admin/projects':
@@ -124,8 +126,9 @@ export const App: React.FC = () => {
         case '/admin/performance':
           return <AdminPerformancePage />;
         case '/admin/audit-logs':
+          return <AdminSettingsAuditPage initialView="audit-logs" />;
         case '/admin/settings':
-          return <AdminSettingsAuditPage />;
+          return <AdminSettingsAuditPage initialView="settings" />;
         default:
           return <AdminDashboardPage onNavigate={navigate} />;
       }
@@ -170,14 +173,17 @@ export const App: React.FC = () => {
         case '/manager/team':
           return <ManagerTeamPage />;
         case '/manager/activity':
+          return <ManagerMonitoringPage initialSubTab="live" />;
         case '/manager/screenshots':
-          return <ManagerMonitoringPage />;
+          return <ManagerMonitoringPage initialSubTab="screenshots" />;
         case '/manager/attendance':
           return <ManagerAttendancePage />;
         case '/manager/projects':
+          return <ManagerTasksPage initialView="projects" />;
         case '/manager/tasks':
+          return <ManagerTasksPage initialView="tasks" />;
         case '/manager/documents':
-          return <ManagerTasksPage />;
+          return <ManagerTasksPage initialView="projects" />;
         case '/manager/performance':
           return <ManagerPerformancePage />;
         default:

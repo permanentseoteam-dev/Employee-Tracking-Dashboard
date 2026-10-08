@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { FolderKanban, CheckSquare, RefreshCw, Search } from 'lucide-react';
+import { FolderKanban, CheckSquare, RefreshCw, Search, Plus, X } from 'lucide-react';
 import { dataService } from '../../services/dataService';
-import type { ProjectItem, TaskItem } from '../../types/roles';
+import type { ProjectItem, TaskItem, EmployeeRecord, ManagerRecord } from '../../types/roles';
 
 interface AdminProjectsTasksPageProps {
   initialView?: 'projects' | 'tasks';
@@ -12,17 +12,47 @@ export const AdminProjectsTasksPage: React.FC<AdminProjectsTasksPageProps> = ({ 
   const [view, setView] = useState<'projects' | 'tasks'>(initialView);
   const [projects, setProjects] = useState<ProjectItem[]>([]);
   const [tasks, setTasks] = useState<TaskItem[]>([]);
+  const [employees, setEmployees] = useState<EmployeeRecord[]>([]);
+  const [managers, setManagers] = useState<ManagerRecord[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
 
+  // Create Project Modal State
+  const [isAddProjOpen, setIsAddProjOpen] = useState(false);
+  const [newProjName, setNewProjName] = useState('');
+  const [newProjCode, setNewProjCode] = useState('');
+  const [newProjManagerId, setNewProjManagerId] = useState('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb');
+  const [newProjDueDate, setNewProjDueDate] = useState('2026-11-30');
+
+  // Create Task Modal State
+  const [isAddTaskOpen, setIsAddTaskOpen] = useState(false);
+  const [newTaskTitle, setNewTaskTitle] = useState('');
+  const [newTaskProjId, setNewTaskProjId] = useState('');
+  const [newTaskEmpId, setNewTaskEmpId] = useState('');
+  const [newTaskPriority, setNewTaskPriority] = useState<TaskItem['priority']>('medium');
+  const [newTaskDueDate, setNewTaskDueDate] = useState('2026-10-20');
+
+  useEffect(() => {
+    if (initialView) {
+      setView(initialView);
+    }
+  }, [initialView]);
+
   const loadData = async () => {
     try {
-      const [pList, tList] = await Promise.all([
+      const [pList, tList, empList, mgrList] = await Promise.all([
         dataService.getProjects('admin'),
         dataService.getTasks('admin'),
+        dataService.getEmployees('admin'),
+        dataService.getManagers('admin'),
       ]);
       setProjects(pList);
       setTasks(tList);
+      setEmployees(empList);
+      setManagers(mgrList);
+      if (pList.length > 0 && !newTaskProjId) setNewTaskProjId(pList[0].id);
+      if (empList.length > 0 && !newTaskEmpId) setNewTaskEmpId(empList[0].id);
+      if (mgrList.length > 0 && !newProjManagerId) setNewProjManagerId(mgrList[0].id);
     } catch (err) {
       console.error(err);
     }
@@ -41,6 +71,64 @@ export const AdminProjectsTasksPage: React.FC<AdminProjectsTasksPageProps> = ({ 
       unsubscribe();
     };
   }, []);
+
+  const handleCreateProject = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newProjName.trim()) return;
+
+    const mgr = managers.find((m) => m.id === newProjManagerId);
+
+    try {
+      await dataService.createProject('admin', {
+        name: newProjName.trim(),
+        code: newProjCode.trim().toUpperCase() || newProjName.substring(0, 4).toUpperCase(),
+        manager_id: newProjManagerId,
+        manager_name: mgr?.name || 'Alex Vance',
+        members_count: 2,
+        status: 'active',
+        progress_percentage: 0,
+        total_tasks: 0,
+        due_date: newProjDueDate,
+      });
+
+      dataService.logAction('Super Admin', 'admin', 'CREATE_PROJECT', newProjName, 'Created organization project');
+      setIsAddProjOpen(false);
+      setNewProjName('');
+      setNewProjCode('');
+      loadData();
+    } catch (err: any) {
+      alert(err.message);
+    }
+  };
+
+  const handleCreateTask = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newTaskTitle.trim()) return;
+
+    const assignedEmp = employees.find((emp) => emp.id === newTaskEmpId);
+    const proj = projects.find((p) => p.id === newTaskProjId);
+
+    try {
+      await dataService.createTask('admin', {
+        title: newTaskTitle.trim(),
+        project_id: proj?.id || 'proj-01',
+        project_name: proj?.name || 'Assigned Project',
+        employee_id: assignedEmp?.id || 'emp-001',
+        employee_name: assignedEmp?.name || 'Team Member',
+        manager_id: assignedEmp?.manager_id || 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
+        priority: newTaskPriority,
+        status: 'in_progress',
+        due_date: newTaskDueDate,
+      });
+
+      dataService.logAction('Super Admin', 'admin', 'CREATE_TASK', newTaskTitle, `Assigned to ${assignedEmp?.name}`);
+      setIsAddTaskOpen(false);
+      setNewTaskTitle('');
+      loadData();
+    } catch (err: any) {
+      alert(err.message);
+    }
+  };
 
   const filteredTasks = (tasks || []).filter((t) => {
     const title = t?.title || '';
@@ -102,6 +190,18 @@ export const AdminProjectsTasksPage: React.FC<AdminProjectsTasksPageProps> = ({ 
             <RefreshCw size={14} />
             <span>Refresh</span>
           </button>
+
+          {view === 'projects' ? (
+            <button className="btn-pill btn-pill-primary" onClick={() => setIsAddProjOpen(true)}>
+              <Plus size={15} />
+              <span>Create Project</span>
+            </button>
+          ) : (
+            <button className="btn-pill btn-pill-primary" onClick={() => setIsAddTaskOpen(true)}>
+              <Plus size={15} />
+              <span>Create Task</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -251,6 +351,196 @@ export const AdminProjectsTasksPage: React.FC<AdminProjectsTasksPageProps> = ({ 
                 )}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {/* Create Project Modal */}
+      {isAddProjOpen && (
+        <div className="stitch-modal-backdrop" onClick={() => setIsAddProjOpen(false)}>
+          <div className="stitch-modal-content" style={{ maxWidth: 480 }} onClick={(e) => e.stopPropagation()}>
+            <div className="content-card-title">
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <FolderKanban size={18} color="var(--color-secondary)" />
+                <span style={{ fontSize: 17, fontWeight: 700 }}>Create New Project</span>
+              </div>
+              <button
+                type="button"
+                className="btn-icon-circle"
+                style={{ width: 30, height: 30 }}
+                onClick={() => setIsAddProjOpen(false)}
+              >
+                <X size={15} />
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateProject} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <div className="stitch-form-group">
+                <label className="stitch-label">Project Name</label>
+                <input
+                  type="text"
+                  required
+                  className="stitch-input"
+                  placeholder="e.g. Core Telemetry Service"
+                  value={newProjName}
+                  onChange={(e) => setNewProjName(e.target.value)}
+                />
+              </div>
+
+              <div className="stitch-form-group">
+                <label className="stitch-label">Project Code</label>
+                <input
+                  type="text"
+                  className="stitch-input"
+                  placeholder="e.g. CORE-TEL"
+                  value={newProjCode}
+                  onChange={(e) => setNewProjCode(e.target.value)}
+                />
+              </div>
+
+              <div className="stitch-form-group">
+                <label className="stitch-label">Project Lead Manager</label>
+                <select
+                  className="stitch-select"
+                  value={newProjManagerId}
+                  onChange={(e) => setNewProjManagerId(e.target.value)}
+                >
+                  {managers.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.name} ({m.department})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="stitch-form-group">
+                <label className="stitch-label">Target Due Date</label>
+                <input
+                  type="date"
+                  className="stitch-input"
+                  value={newProjDueDate}
+                  onChange={(e) => setNewProjDueDate(e.target.value)}
+                />
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 10 }}>
+                <button
+                  type="button"
+                  className="btn-pill btn-pill-secondary"
+                  onClick={() => setIsAddProjOpen(false)}
+                >
+                  Cancel
+                </button>
+                <button type="submit" className="btn-pill btn-pill-primary">
+                  Create Project
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Create Task Modal */}
+      {isAddTaskOpen && (
+        <div className="stitch-modal-backdrop" onClick={() => setIsAddTaskOpen(false)}>
+          <div className="stitch-modal-content" style={{ maxWidth: 480 }} onClick={(e) => e.stopPropagation()}>
+            <div className="content-card-title">
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <CheckSquare size={18} color="var(--color-secondary)" />
+                <span style={{ fontSize: 17, fontWeight: 700 }}>Create & Assign Task</span>
+              </div>
+              <button
+                type="button"
+                className="btn-icon-circle"
+                style={{ width: 30, height: 30 }}
+                onClick={() => setIsAddTaskOpen(false)}
+              >
+                <X size={15} />
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateTask} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <div className="stitch-form-group">
+                <label className="stitch-label">Task Title</label>
+                <input
+                  type="text"
+                  required
+                  className="stitch-input"
+                  placeholder="e.g. Optimize SQLite WAL checkpoint frequency"
+                  value={newTaskTitle}
+                  onChange={(e) => setNewTaskTitle(e.target.value)}
+                />
+              </div>
+
+              <div className="stitch-form-group">
+                <label className="stitch-label">Assign Project</label>
+                <select
+                  className="stitch-select"
+                  value={newTaskProjId}
+                  onChange={(e) => setNewTaskProjId(e.target.value)}
+                >
+                  {projects.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="stitch-form-group">
+                <label className="stitch-label">Assign Employee</label>
+                <select
+                  className="stitch-select"
+                  value={newTaskEmpId}
+                  onChange={(e) => setNewTaskEmpId(e.target.value)}
+                >
+                  {employees.map((emp) => (
+                    <option key={emp.id} value={emp.id}>
+                      {emp.name} ({emp.department})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <div className="stitch-form-group">
+                  <label className="stitch-label">Priority</label>
+                  <select
+                    className="stitch-select"
+                    value={newTaskPriority}
+                    onChange={(e) => setNewTaskPriority(e.target.value as any)}
+                  >
+                    <option value="urgent">Urgent</option>
+                    <option value="high">High</option>
+                    <option value="medium">Medium</option>
+                    <option value="low">Low</option>
+                  </select>
+                </div>
+
+                <div className="stitch-form-group">
+                  <label className="stitch-label">Due Date</label>
+                  <input
+                    type="date"
+                    className="stitch-input"
+                    value={newTaskDueDate}
+                    onChange={(e) => setNewTaskDueDate(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 10 }}>
+                <button
+                  type="button"
+                  className="btn-pill btn-pill-secondary"
+                  onClick={() => setIsAddTaskOpen(false)}
+                >
+                  Cancel
+                </button>
+                <button type="submit" className="btn-pill btn-pill-primary">
+                  Assign Task
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

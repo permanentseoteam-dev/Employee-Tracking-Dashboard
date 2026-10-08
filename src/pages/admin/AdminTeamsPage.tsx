@@ -1,16 +1,28 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Building2, RefreshCw, UserCheck } from 'lucide-react';
+import { Building2, RefreshCw, UserCheck, Plus, X } from 'lucide-react';
 import { dataService } from '../../services/dataService';
-import type { TeamRecord } from '../../types/roles';
+import type { TeamRecord, ManagerRecord } from '../../types/roles';
 
 export const AdminTeamsPage: React.FC = () => {
   const [teams, setTeams] = useState<TeamRecord[]>([]);
+  const [managers, setManagers] = useState<ManagerRecord[]>([]);
+  const [isAddTeamModalOpen, setIsAddTeamModalOpen] = useState(false);
+  const [teamName, setTeamName] = useState('');
+  const [teamDept, setTeamDept] = useState('Engineering');
+  const [teamManagerId, setTeamManagerId] = useState('mgr-001');
 
   const loadData = async () => {
     try {
-      const list = await dataService.getTeams('admin');
-      setTeams(list);
+      const [teamList, mgrList] = await Promise.all([
+        dataService.getTeams('admin'),
+        dataService.getManagers('admin'),
+      ]);
+      setTeams(teamList);
+      setManagers(mgrList);
+      if (mgrList.length > 0 && (!teamManagerId || teamManagerId === 'mgr-001')) {
+        setTeamManagerId(mgrList[0].id);
+      }
     } catch (err) {
       console.error(err);
     }
@@ -19,6 +31,36 @@ export const AdminTeamsPage: React.FC = () => {
   useEffect(() => {
     loadData();
   }, []);
+
+  const handleCreateTeam = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!teamName.trim()) return;
+
+    const mgr = managers.find((m) => m.id === teamManagerId);
+
+    try {
+      await dataService.addTeam('admin', {
+        name: teamName.trim(),
+        department: teamDept,
+        manager_id: teamManagerId,
+        manager_name: mgr?.name || 'Alex Vance',
+      });
+
+      dataService.logAction(
+        'Super Admin',
+        'admin',
+        'CREATE_TEAM',
+        teamName,
+        `Created operational unit in ${teamDept}`
+      );
+
+      setIsAddTeamModalOpen(false);
+      setTeamName('');
+      loadData();
+    } catch (err: any) {
+      alert(err.message);
+    }
+  };
 
   return (
     <motion.div
@@ -46,6 +88,10 @@ export const AdminTeamsPage: React.FC = () => {
           <button className="btn-pill btn-pill-secondary" onClick={loadData}>
             <RefreshCw size={14} />
             <span>Refresh</span>
+          </button>
+          <button className="btn-pill btn-pill-primary" onClick={() => setIsAddTeamModalOpen(true)}>
+            <Plus size={15} />
+            <span>Create Team</span>
           </button>
         </div>
       </div>
@@ -113,6 +159,85 @@ export const AdminTeamsPage: React.FC = () => {
           </div>
         ))}
       </div>
+
+      {/* Create Team Modal */}
+      {isAddTeamModalOpen && (
+        <div className="stitch-modal-backdrop" onClick={() => setIsAddTeamModalOpen(false)}>
+          <div className="stitch-modal-content" style={{ maxWidth: 480 }} onClick={(e) => e.stopPropagation()}>
+            <div className="content-card-title">
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Building2 size={18} color="var(--color-secondary)" />
+                <span style={{ fontSize: 17, fontWeight: 700 }}>Create New Operational Team</span>
+              </div>
+              <button
+                type="button"
+                className="btn-icon-circle"
+                style={{ width: 30, height: 30 }}
+                onClick={() => setIsAddTeamModalOpen(false)}
+              >
+                <X size={15} />
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateTeam} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <div className="stitch-form-group">
+                <label className="stitch-label">Team Name</label>
+                <input
+                  type="text"
+                  required
+                  className="stitch-input"
+                  placeholder="e.g. Platform Infrastructure"
+                  value={teamName}
+                  onChange={(e) => setTeamName(e.target.value)}
+                />
+              </div>
+
+              <div className="stitch-form-group">
+                <label className="stitch-label">Department</label>
+                <select
+                  className="stitch-select"
+                  value={teamDept}
+                  onChange={(e) => setTeamDept(e.target.value)}
+                >
+                  <option value="Engineering">Engineering</option>
+                  <option value="Frontend">Frontend</option>
+                  <option value="Mobile">Mobile</option>
+                  <option value="Security">Security & Compliance</option>
+                  <option value="Product">Product & Design</option>
+                </select>
+              </div>
+
+              <div className="stitch-form-group">
+                <label className="stitch-label">Assign Manager Lead</label>
+                <select
+                  className="stitch-select"
+                  value={teamManagerId}
+                  onChange={(e) => setTeamManagerId(e.target.value)}
+                >
+                  {managers.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.name} ({m.department})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 10 }}>
+                <button
+                  type="button"
+                  className="btn-pill btn-pill-secondary"
+                  onClick={() => setIsAddTeamModalOpen(false)}
+                >
+                  Cancel
+                </button>
+                <button type="submit" className="btn-pill btn-pill-primary">
+                  Create Team
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </motion.div>
   );
 };

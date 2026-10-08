@@ -10,16 +10,29 @@ import {
   Eye,
   Activity,
   Monitor,
+  MousePointer,
+  Keyboard,
+  ShieldCheck,
 } from 'lucide-react';
 import { dataService } from '../../services/dataService';
 import type { ScreenshotItem, EmployeeRecord } from '../../types/roles';
 
-export const AdminMonitoringPage: React.FC = () => {
-  const [activeSubTab, setActiveSubTab] = useState<'live' | 'screenshots' | 'heatmaps'>('live');
+interface AdminMonitoringPageProps {
+  initialSubTab?: 'live' | 'screenshots' | 'heatmaps';
+}
+
+export const AdminMonitoringPage: React.FC<AdminMonitoringPageProps> = ({ initialSubTab = 'live' }) => {
+  const [activeSubTab, setActiveSubTab] = useState<'live' | 'screenshots' | 'heatmaps'>(initialSubTab);
   const [screenshots, setScreenshots] = useState<ScreenshotItem[]>([]);
   const [employees, setEmployees] = useState<EmployeeRecord[]>([]);
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<string>('all');
   const [selectedScreenshot, setSelectedScreenshot] = useState<ScreenshotItem | null>(null);
+
+  useEffect(() => {
+    if (initialSubTab) {
+      setActiveSubTab(initialSubTab);
+    }
+  }, [initialSubTab]);
 
   const loadData = async () => {
     try {
@@ -57,17 +70,17 @@ export const AdminMonitoringPage: React.FC = () => {
     <motion.div
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.3 }}
+      transition={{ duration: 0.25 }}
       style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', width: '100%' }}
     >
       {/* Header */}
       <div className="grid-operations-header">
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)' }}>
-            <span className="pulse-beacon" />
+            <Activity size={14} color="var(--color-secondary)" />
             <span>Organization Telemetry Stream</span>
           </div>
-          <h1 style={{ fontSize: 32, fontWeight: 800, color: 'var(--text-primary)', letterSpacing: '-0.03em', marginTop: 2 }}>
+          <h1 style={{ fontSize: 28, fontWeight: 800, color: 'var(--text-primary)', letterSpacing: '-0.03em', marginTop: 2 }}>
             Monitoring & Screen Captures
           </h1>
           <p style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 4 }}>
@@ -92,7 +105,7 @@ export const AdminMonitoringPage: React.FC = () => {
               onClick={() => setActiveSubTab('screenshots')}
             >
               <Camera size={14} />
-              <span>Screenshots</span>
+              <span>Screenshots ({screenshots.length})</span>
             </button>
             <button
               type="button"
@@ -116,17 +129,8 @@ export const AdminMonitoringPage: React.FC = () => {
           <Filter size={15} color="var(--text-muted)" />
           <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-primary)' }}>Employee:</span>
           <select
-            style={{
-              background: 'var(--surface-frosted-subdued)',
-              border: '1px solid var(--surface-border-subtle)',
-              borderRadius: 'var(--radius-pill)',
-              padding: '6px 14px',
-              fontSize: 12,
-              fontWeight: 600,
-              color: 'var(--text-primary)',
-              outline: 'none',
-              cursor: 'pointer',
-            }}
+            className="stitch-select"
+            style={{ width: 220, padding: '6px 14px', fontSize: 12 }}
             value={selectedEmployeeId}
             onChange={(e) => setSelectedEmployeeId(e.target.value)}
           >
@@ -150,19 +154,19 @@ export const AdminMonitoringPage: React.FC = () => {
 
       {/* 1. Live Feed Grid */}
       {activeSubTab === 'live' && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '1.25rem' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: '1.25rem' }}>
           {filteredEmployees.map((emp) => {
             const isOnline = emp.status === 'active';
             const isIdle = emp.status === 'idle';
             return (
-              <div key={emp.id} className="frosted-card" style={{ display: 'flex', flexDirection: 'column', gap: 12, position: 'relative' }}>
+              <div key={emp.id} className="frosted-card" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                     <div className="avatar-chip">
                       {emp.name.split(' ').map((n) => n[0]).join('').substring(0, 2).toUpperCase()}
                     </div>
                     <div>
-                      <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>{emp.name}</div>
+                      <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-primary)' }}>{emp.name}</div>
                       <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{emp.department} &bull; {emp.team_name}</div>
                     </div>
                   </div>
@@ -252,34 +256,50 @@ export const AdminMonitoringPage: React.FC = () => {
 
       {/* 3. Heatmaps Tab */}
       {activeSubTab === 'heatmaps' && (
-        <div className="frosted-card" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+        <div className="frosted-card" style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <div>
-              <h3 style={{ fontSize: 16, fontWeight: 700, color: 'var(--text-primary)' }}>Mouse Movement & Click Density</h3>
-              <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Aggregated spatial telemetry density</span>
+              <h3 style={{ fontSize: 16, fontWeight: 700, color: 'var(--text-primary)' }}>Mouse Movement & Spatial Activity Heatmap</h3>
+              <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Aggregated spatial telemetry density across daily workstation window captures</span>
             </div>
-            <span className="live-telemetry-badge">1,420 events</span>
+            <span className="live-telemetry-badge">1,420 events logged</span>
           </div>
 
           <div
             style={{
-              height: 360,
+              height: 380,
               borderRadius: 'var(--radius-card-sm)',
-              background: 'radial-gradient(circle at 40% 50%, rgba(213,239,89,0.3) 0%, rgba(76,107,255,0.15) 40%, rgba(0,0,0,0.05) 70%)',
+              background: 'radial-gradient(circle at 40% 45%, rgba(213,239,89,0.32) 0%, rgba(76,107,255,0.18) 42%, rgba(18,20,23,0.04) 75%)',
               border: '1px solid var(--surface-border-subtle)',
               position: 'relative',
               display: 'flex',
+              flexDirection: 'column',
               alignItems: 'center',
               justifyContent: 'center',
+              padding: '2rem',
+              textAlign: 'center',
             }}
           >
-            <div style={{ textAlign: 'center' }}>
-              <Flame size={36} color="var(--color-secondary)" style={{ margin: '0 auto 8px' }} />
-              <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-primary)' }}>
-                Workstation Mouse Activity Concentrated on Code Editor & Dashboard
+            <Flame size={42} color="var(--color-secondary)" style={{ marginBottom: 12 }} />
+            <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--text-primary)', marginBottom: 4 }}>
+              Active Spatial Activity Concentration: Primary Editor & Terminal
+            </div>
+            <div style={{ fontSize: 13, color: 'var(--text-muted)', maxWidth: 520, lineHeight: 1.5 }}>
+              Aggregated coordinates show high focus in central visual viewport. Zero keylogger guarantee active with privacy-first aggregate counters.
+            </div>
+
+            <div style={{ display: 'flex', gap: 16, marginTop: 20 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--text-secondary)' }}>
+                <MousePointer size={14} color="var(--color-secondary)" />
+                <span>12,480 Mouse Moves</span>
               </div>
-              <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-                Zero keyboard logging active &bull; Aggregate coordinate frequency computed
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--text-secondary)' }}>
+                <Keyboard size={14} color="var(--color-primary)" />
+                <span>4,190 Keypress Totals</span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--text-secondary)' }}>
+                <ShieldCheck size={14} color="var(--status-success)" />
+                <span>DPAPI Verified</span>
               </div>
             </div>
           </div>

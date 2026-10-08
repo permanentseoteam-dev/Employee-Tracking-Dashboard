@@ -1,12 +1,18 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { RefreshCw, Star, Award, Zap } from 'lucide-react';
+import { RefreshCw, Star, Award, Zap, Plus, X } from 'lucide-react';
 import { dataService } from '../../services/dataService';
 import type { StarRuleItem, EmployeeRecord } from '../../types/roles';
 
 export const AdminPerformancePage: React.FC = () => {
   const [starRules, setStarRules] = useState<StarRuleItem[]>([]);
   const [employees, setEmployees] = useState<EmployeeRecord[]>([]);
+  
+  // Award Stars Modal State
+  const [isAwardOpen, setIsAwardOpen] = useState(false);
+  const [awardEmpId, setAwardEmpId] = useState('');
+  const [awardDelta, setAwardDelta] = useState(3);
+  const [awardReason, setAwardReason] = useState('Exemplary sprint contribution and code review quality');
 
   const loadData = async () => {
     try {
@@ -16,6 +22,9 @@ export const AdminPerformancePage: React.FC = () => {
       ]);
       setStarRules(rules);
       setEmployees(emps);
+      if (emps.length > 0 && !awardEmpId) {
+        setAwardEmpId(emps[0].id);
+      }
     } catch (err) {
       console.error(err);
     }
@@ -35,6 +44,19 @@ export const AdminPerformancePage: React.FC = () => {
         rule.name,
         `Status set to ${!rule.is_active ? 'Active' : 'Disabled'}`
       );
+      loadData();
+    } catch (err: any) {
+      alert(err.message);
+    }
+  };
+
+  const handleAwardStars = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!awardEmpId) return;
+
+    try {
+      await dataService.awardEmployeeStars('admin', awardEmpId, awardDelta, awardReason, 'Super Admin');
+      setIsAwardOpen(false);
       loadData();
     } catch (err: any) {
       alert(err.message);
@@ -67,6 +89,10 @@ export const AdminPerformancePage: React.FC = () => {
           <button className="btn-pill btn-pill-secondary" onClick={loadData}>
             <RefreshCw size={14} />
             <span>Refresh</span>
+          </button>
+          <button className="btn-pill btn-pill-primary" onClick={() => setIsAwardOpen(true)}>
+            <Plus size={15} />
+            <span>Award Stars</span>
           </button>
         </div>
       </div>
@@ -179,6 +205,87 @@ export const AdminPerformancePage: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* Award Stars Modal */}
+      {isAwardOpen && (
+        <div className="stitch-modal-backdrop" onClick={() => setIsAwardOpen(false)}>
+          <div className="stitch-modal-content" style={{ maxWidth: 440 }} onClick={(e) => e.stopPropagation()}>
+            <div className="content-card-title">
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Star size={18} color="#f59e0b" />
+                <span style={{ fontSize: 17, fontWeight: 700 }}>Award Merit Stars</span>
+              </div>
+              <button
+                type="button"
+                className="btn-icon-circle"
+                style={{ width: 30, height: 30 }}
+                onClick={() => setIsAwardOpen(false)}
+              >
+                <X size={15} />
+              </button>
+            </div>
+
+            <form onSubmit={handleAwardStars} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <div className="stitch-form-group">
+                <label className="stitch-label">Select Employee</label>
+                <select
+                  className="stitch-select"
+                  value={awardEmpId}
+                  onChange={(e) => setAwardEmpId(e.target.value)}
+                >
+                  {employees.map((emp) => (
+                    <option key={emp.id} value={emp.id}>
+                      {emp.name} ({emp.team_name}) — Current: ⭐ {emp.stars}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="stitch-form-group">
+                <label className="stitch-label">Merit Stars Amount</label>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  {[1, 2, 3, 5, 10].map((num) => (
+                    <button
+                      key={num}
+                      type="button"
+                      className={`btn-pill ${awardDelta === num ? 'btn-pill-primary' : 'btn-pill-secondary'}`}
+                      style={{ flex: 1, padding: '6px 0', fontSize: 12 }}
+                      onClick={() => setAwardDelta(num)}
+                    >
+                      +{num} ⭐
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="stitch-form-group">
+                <label className="stitch-label">Reason / Justification</label>
+                <textarea
+                  className="stitch-input"
+                  style={{ minHeight: 70, resize: 'vertical' }}
+                  required
+                  value={awardReason}
+                  onChange={(e) => setAwardReason(e.target.value)}
+                  placeholder="e.g. Exceptional leadership during sprint deployment"
+                />
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 10 }}>
+                <button
+                  type="button"
+                  className="btn-pill btn-pill-secondary"
+                  onClick={() => setIsAwardOpen(false)}
+                >
+                  Cancel
+                </button>
+                <button type="submit" className="btn-pill btn-pill-primary">
+                  Grant Stars
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </motion.div>
   );
 };

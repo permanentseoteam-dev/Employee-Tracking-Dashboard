@@ -6,11 +6,22 @@ import { api } from '../../services/tauriBridge';
 import type { AuditLogItem } from '../../types/roles';
 import type { AppConfig } from '../../types';
 
-export const AdminSettingsAuditPage: React.FC = () => {
+interface AdminSettingsAuditPageProps {
+  initialView?: 'all' | 'settings' | 'audit-logs';
+}
+
+export const AdminSettingsAuditPage: React.FC<AdminSettingsAuditPageProps> = ({ initialView = 'all' }) => {
+  const [activeView, setActiveView] = useState<'all' | 'settings' | 'audit-logs'>(initialView);
   const [config, setConfig] = useState<AppConfig | null>(null);
   const [auditLogs, setAuditLogs] = useState<AuditLogItem[]>([]);
   const [isSaving, setIsSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (initialView) {
+      setActiveView(initialView);
+    }
+  }, [initialView]);
 
   const loadData = async () => {
     try {
@@ -74,7 +85,34 @@ export const AdminSettingsAuditPage: React.FC = () => {
           </p>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          {/* View Toggle Switcher */}
+          <div className="stitch-nav-pills">
+            <button
+              type="button"
+              className={`nav-pill-item ${activeView === 'all' ? 'active' : ''}`}
+              onClick={() => setActiveView('all')}
+            >
+              <span>All Overview</span>
+            </button>
+            <button
+              type="button"
+              className={`nav-pill-item ${activeView === 'settings' ? 'active' : ''}`}
+              onClick={() => setActiveView('settings')}
+            >
+              <Settings size={14} />
+              <span>Settings & Rules</span>
+            </button>
+            <button
+              type="button"
+              className={`nav-pill-item ${activeView === 'audit-logs' ? 'active' : ''}`}
+              onClick={() => setActiveView('audit-logs')}
+            >
+              <Terminal size={14} />
+              <span>Audit Ledger ({auditLogs.length})</span>
+            </button>
+          </div>
+
           <button className="btn-pill btn-pill-secondary" onClick={loadData}>
             <RefreshCw size={14} />
             <span>Refresh</span>
@@ -82,12 +120,13 @@ export const AdminSettingsAuditPage: React.FC = () => {
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap: '1.5rem' }}>
-        {/* Monitoring Configuration */}
-        {config && (
-          <form className="frosted-card" onSubmit={handleSaveConfig} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-            <div className="content-card-title">
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+      {(activeView === 'all' || activeView === 'settings') && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap: '1.5rem' }}>
+          {/* Monitoring Configuration */}
+          {config && (
+            <form className="frosted-card" onSubmit={handleSaveConfig} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <div className="content-card-title">
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <Settings size={18} color="var(--color-secondary)" />
                 <span style={{ fontSize: 16, fontWeight: 700 }}>Global Telemetry & Screenshot Rules</span>
               </div>
@@ -196,9 +235,11 @@ export const AdminSettingsAuditPage: React.FC = () => {
           </div>
         </div>
       </div>
+      )}
 
       {/* Audit Logs Table */}
-      <div className="frosted-card">
+      {(activeView === 'all' || activeView === 'audit-logs') && (
+        <div className="frosted-card">
         <div className="content-card-title">
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <Terminal size={18} color="var(--color-secondary)" />
@@ -249,6 +290,7 @@ export const AdminSettingsAuditPage: React.FC = () => {
           </table>
         </div>
       </div>
+      )}
     </motion.div>
   );
 };

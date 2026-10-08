@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { RefreshCw, Award } from 'lucide-react';
+import { RefreshCw, Award, Star, Plus, X } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { dataService } from '../../services/dataService';
 import type { EmployeeRecord } from '../../types/roles';
@@ -8,11 +8,20 @@ import type { EmployeeRecord } from '../../types/roles';
 export const ManagerPerformancePage: React.FC = () => {
   const { user } = useAuth();
   const [employees, setEmployees] = useState<EmployeeRecord[]>([]);
+  
+  // Award Stars Modal State
+  const [isAwardOpen, setIsAwardOpen] = useState(false);
+  const [awardEmpId, setAwardEmpId] = useState('');
+  const [awardDelta, setAwardDelta] = useState(2);
+  const [awardReason, setAwardReason] = useState('Completed milestone tasks ahead of schedule');
 
   const loadData = async () => {
     try {
       const list = await dataService.getEmployees('manager', user.id);
       setEmployees(list);
+      if (list.length > 0 && !awardEmpId) {
+        setAwardEmpId(list[0].id);
+      }
     } catch (err) {
       console.error(err);
     }
@@ -21,6 +30,19 @@ export const ManagerPerformancePage: React.FC = () => {
   useEffect(() => {
     loadData();
   }, [user.id]);
+
+  const handleAwardStars = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!awardEmpId) return;
+
+    try {
+      await dataService.awardEmployeeStars('manager', awardEmpId, awardDelta, awardReason, user.name);
+      setIsAwardOpen(false);
+      loadData();
+    } catch (err: any) {
+      alert(err.message);
+    }
+  };
 
   return (
     <motion.div
@@ -48,6 +70,10 @@ export const ManagerPerformancePage: React.FC = () => {
           <button className="btn-pill btn-pill-secondary" onClick={loadData}>
             <RefreshCw size={14} />
             <span>Refresh</span>
+          </button>
+          <button className="btn-pill btn-pill-primary" onClick={() => setIsAwardOpen(true)}>
+            <Plus size={15} />
+            <span>Award Stars</span>
           </button>
         </div>
       </div>
@@ -124,6 +150,87 @@ export const ManagerPerformancePage: React.FC = () => {
           </table>
         </div>
       </div>
+
+      {/* Award Stars Modal */}
+      {isAwardOpen && (
+        <div className="stitch-modal-backdrop" onClick={() => setIsAwardOpen(false)}>
+          <div className="stitch-modal-content" style={{ maxWidth: 440 }} onClick={(e) => e.stopPropagation()}>
+            <div className="content-card-title">
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Star size={18} color="#f59e0b" />
+                <span style={{ fontSize: 17, fontWeight: 700 }}>Award Team Stars</span>
+              </div>
+              <button
+                type="button"
+                className="btn-icon-circle"
+                style={{ width: 30, height: 30 }}
+                onClick={() => setIsAwardOpen(false)}
+              >
+                <X size={15} />
+              </button>
+            </div>
+
+            <form onSubmit={handleAwardStars} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <div className="stitch-form-group">
+                <label className="stitch-label">Team Member</label>
+                <select
+                  className="stitch-select"
+                  value={awardEmpId}
+                  onChange={(e) => setAwardEmpId(e.target.value)}
+                >
+                  {employees.map((emp) => (
+                    <option key={emp.id} value={emp.id}>
+                      {emp.name} — Current: ⭐ {emp.stars}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="stitch-form-group">
+                <label className="stitch-label">Merit Stars Amount</label>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  {[1, 2, 3, 5].map((num) => (
+                    <button
+                      key={num}
+                      type="button"
+                      className={`btn-pill ${awardDelta === num ? 'btn-pill-primary' : 'btn-pill-secondary'}`}
+                      style={{ flex: 1, padding: '6px 0', fontSize: 12 }}
+                      onClick={() => setAwardDelta(num)}
+                    >
+                      +{num} ⭐
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="stitch-form-group">
+                <label className="stitch-label">Reason / Justification</label>
+                <textarea
+                  className="stitch-input"
+                  style={{ minHeight: 70, resize: 'vertical' }}
+                  required
+                  value={awardReason}
+                  onChange={(e) => setAwardReason(e.target.value)}
+                  placeholder="e.g. Great velocity and milestone delivery"
+                />
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 10 }}>
+                <button
+                  type="button"
+                  className="btn-pill btn-pill-secondary"
+                  onClick={() => setIsAwardOpen(false)}
+                >
+                  Cancel
+                </button>
+                <button type="submit" className="btn-pill btn-pill-primary">
+                  Award Stars
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </motion.div>
   );
 };

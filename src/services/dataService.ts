@@ -720,11 +720,52 @@ export const dataService = {
     managerId?: string,
     filterEmployeeId?: string
   ): Promise<ScreenshotItem[]> => {
+    // 1. Fetch live screenshots from Supabase
+    let liveScreenshots: ScreenshotItem[] = [];
+    if (isSupabaseConfigured()) {
+      try {
+        const { data: dbScreenshots } = await supabase
+          .from('screenshots')
+          .select('*')
+          .order('captured_at', { ascending: false })
+          .limit(30);
+
+        if (dbScreenshots && dbScreenshots.length > 0) {
+          liveScreenshots = dbScreenshots.map((s) => {
+            const { data: pubUrl } = supabase.storage.from('screenshots').getPublicUrl(s.storage_path);
+            const isArsal = s.employee_id === 'cccccccc-cccc-cccc-cccc-cccccccccccc' || s.employee_id === 'emp-001';
+            const empName = isArsal ? 'Arsal' : 'Michael Chen';
+            const empId = isArsal ? 'emp-001' : 'emp-002';
+            const d = new Date(s.captured_at);
+            const timeStr = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+            return {
+              id: s.id,
+              employee_id: empId,
+              employee_name: empName,
+              team_name: 'Core Backend Team',
+              captured_at: timeStr,
+              file_path: s.storage_path,
+              thumbnail_url: pubUrl?.publicUrl || '',
+              high_res_url: pubUrl?.publicUrl || '',
+              file_size_bytes: s.file_size_bytes || 134000,
+              activity_type: 'active' as const,
+              window_title: 'Development Workstation (Live Rust Agent Capture)',
+            };
+          });
+        }
+      } catch (e) {
+        console.warn('Could not sync live screenshots from Supabase:', e);
+      }
+    }
+
+    const combinedScreenshots = [...liveScreenshots, ...screenshotsStore];
+
     if (role === 'admin') {
       if (filterEmployeeId) {
-        return screenshotsStore.filter((s) => s.employee_id === filterEmployeeId);
+        return combinedScreenshots.filter((s) => s.employee_id === filterEmployeeId);
       }
-      return [...screenshotsStore];
+      return combinedScreenshots;
     }
 
     if (role === 'manager') {
@@ -738,13 +779,13 @@ export const dataService = {
         throw new Error('403 Forbidden: Cannot access screenshots outside assigned team');
       }
 
-      return screenshotsStore.filter((s) =>
+      return combinedScreenshots.filter((s) =>
         filterEmployeeId ? s.employee_id === filterEmployeeId : managerEmployees.includes(s.employee_id)
       );
     }
 
     // Employee
-    return screenshotsStore.filter((s) => s.employee_id === 'emp-001');
+    return combinedScreenshots.filter((s) => s.employee_id === 'emp-001');
   },
 
   // Attendance Access

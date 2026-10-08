@@ -1,5 +1,4 @@
 use crate::core::db::{Database, DbStats};
-use crate::core::error::AppResult;
 use crate::platform::PlatformService;
 use serde::Serialize;
 use tauri::State;

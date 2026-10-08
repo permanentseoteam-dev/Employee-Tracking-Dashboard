@@ -1,10 +1,15 @@
 -- ==============================================================================
--- SUPABASE POSTGRESQL SCHEMA FOR EMPLOYEE TRACKING SYSTEM
--- Run this in your Supabase Dashboard: SQL Editor -> New Query -> Run
+-- SUPABASE COMPLETE POSTGRESQL SCHEMA FOR EMPLOYEE TRACKING SYSTEM
+-- ==============================================================================
+-- INSTRUCTIONS:
+-- 1. Open your Supabase Dashboard: https://supabase.com/dashboard/project/isywkcymfzpgjerfuors
+-- 2. Go to "SQL Editor" on the left menu.
+-- 3. Click "New Query", paste this entire file content, and click "Run" (Ctrl+Enter).
 -- ==============================================================================
 
 -- 1. EXTENSIONS
 create extension if not exists "uuid-ossp";
+create extension if not exists pgcrypto;
 
 -- 2. TEAMS TABLE
 create table if not exists public.teams (
@@ -17,8 +22,8 @@ create table if not exists public.teams (
 
 -- 3. PROFILES TABLE (Mirrors and extends auth.users)
 create table if not exists public.profiles (
-    id uuid primary key references auth.users(id) on delete cascade,
-    email text not null,
+    id uuid primary key default gen_random_uuid(),
+    email text not null unique,
     full_name text not null default '',
     role text not null check (role in ('admin', 'manager', 'employee')) default 'employee',
     department text default 'Engineering',
@@ -114,7 +119,33 @@ create table if not exists public.screenshot_records (
 );
 create index if not exists idx_screenshots_employee on public.screenshot_records(employee_id, captured_at desc);
 
--- 10. AUTOMATIC PROFILE CREATION TRIGGER ON SIGNUP
+-- 10. EMPLOYEE PRESENCE TABLE
+create table if not exists public.employee_presence (
+    employee_id uuid not null references public.profiles(id) on delete cascade,
+    device_id text not null,
+    status text not null check (status in ('active', 'idle', 'offline')),
+    last_activity_at timestamptz not null default now(),
+    idle_since timestamptz,
+    updated_at timestamptz not null default now(),
+    primary key (employee_id, device_id)
+);
+create index if not exists idx_presence_status on public.employee_presence(status);
+create index if not exists idx_presence_updated on public.employee_presence(updated_at desc);
+
+-- 11. ACTIVITY EVENTS TABLE (Lightweight event stream)
+create table if not exists public.activity_events (
+    id uuid primary key default gen_random_uuid(),
+    employee_id uuid not null references public.profiles(id) on delete cascade,
+    device_id text not null,
+    event_type text not null, -- 'status_change', 'heartbeat', 'idle_start', 'active_resume'
+    occurred_at timestamptz not null default now(),
+    metadata jsonb default '{}'::jsonb,
+    created_at timestamptz not null default now()
+);
+create index if not exists idx_activity_events_emp_time on public.activity_events(employee_id, occurred_at desc);
+create index if not exists idx_activity_events_type on public.activity_events(event_type);
+
+-- 12. AUTOMATIC PROFILE CREATION TRIGGER ON AUTH SIGNUP
 create or replace function public.handle_new_user()
 returns trigger as $$
 begin
@@ -125,7 +156,11 @@ begin
         coalesce(new.raw_user_meta_data->>'full_name', split_part(new.email, '@', 1)),
         coalesce(new.raw_user_meta_data->>'role', 'employee')
     )
-    on conflict (id) do nothing;
+    on conflict (id) do update set
+        email = excluded.email,
+        full_name = coalesce(excluded.full_name, profiles.full_name),
+        role = coalesce(excluded.role, profiles.role),
+        updated_at = now();
     return new;
 end;
 $$ language plpgsql security definer;
@@ -135,7 +170,7 @@ create trigger on_auth_user_created
     after insert on auth.users
     for each row execute procedure public.handle_new_user();
 
--- 11. ENABLE ROW LEVEL SECURITY (RLS)
+-- 13. ENABLE ROW LEVEL SECURITY (RLS) & SET PERMISSIVE POLICIES
 alter table public.profiles enable row level security;
 alter table public.teams enable row level security;
 alter table public.projects enable row level security;
@@ -144,8 +179,10 @@ alter table public.task_sessions enable row level security;
 alter table public.activity_aggregates enable row level security;
 alter table public.attendance_records enable row level security;
 alter table public.screenshot_records enable row level security;
+alter table public.employee_presence enable row level security;
+alter table public.activity_events enable row level security;
 
--- Helper function to check if caller is an admin
+-- Helper functions for RLS
 create or replace function public.is_admin()
 returns boolean as $$
     select exists (
@@ -154,7 +191,6 @@ returns boolean as $$
     );
 $$ language sql security definer;
 
--- Helper function to check if caller is a manager
 create or replace function public.is_manager()
 returns boolean as $$
     select exists (
@@ -163,51 +199,89 @@ returns boolean as $$
     );
 $$ language sql security definer;
 
--- POLICIES: PROFILES
-create policy "Users can view own profile or admins/managers can view all"
-    on public.profiles for select
-    using (auth.uid() = id or public.is_manager());
+-- Drop existing policies if any to prevent conflicts
+drop policy if exists "Profiles select policy" on public.profiles;
+drop policy if exists "Profiles insert policy" on public.profiles;
+drop policy if exists "Profiles update policy" on public.profiles;
+drop policy if exists "Teams access policy" on public.teams;
+drop policy if exists "Projects access policy" on public.projects;
+drop policy if exists "Tasks access policy" on public.tasks;
+drop policy if exists "Task sessions access policy" on public.task_sessions;
+drop policy if exists "Activity aggregates access policy" on public.activity_aggregates;
+drop policy if exists "Attendance records access policy" on public.attendance_records;
+drop policy if exists "Screenshot records access policy" on public.screenshot_records;
+drop policy if exists "Employee presence access policy" on public.employee_presence;
+drop policy if exists "Activity events access policy" on public.activity_events;
 
-create policy "Users can update own profile"
-    on public.profiles for update
-    using (auth.uid() = id or public.is_admin());
+-- Policies allowing both authenticated users and anon development
+create policy "Profiles select policy" on public.profiles for select using (true);
+create policy "Profiles insert policy" on public.profiles for insert with check (true);
+create policy "Profiles update policy" on public.profiles for update using (true);
 
--- POLICIES: ACTIVITY & ATTENDANCE & SESSIONS
-create policy "Employees can insert their own telemetry"
-    on public.activity_aggregates for insert
-    with check (auth.uid() = employee_id);
+create policy "Teams access policy" on public.teams for all using (true) with check (true);
+create policy "Projects access policy" on public.projects for all using (true) with check (true);
+create policy "Tasks access policy" on public.tasks for all using (true) with check (true);
+create policy "Task sessions access policy" on public.task_sessions for all using (true) with check (true);
+create policy "Activity aggregates access policy" on public.activity_aggregates for all using (true) with check (true);
+create policy "Attendance records access policy" on public.attendance_records for all using (true) with check (true);
+create policy "Screenshot records access policy" on public.screenshot_records for all using (true) with check (true);
+create policy "Employee presence access policy" on public.employee_presence for all using (true) with check (true);
+create policy "Activity events access policy" on public.activity_events for all using (true) with check (true);
 
-create policy "Employees see own activity, managers/admins see team"
-    on public.activity_aggregates for select
-    using (auth.uid() = employee_id or public.is_manager());
-
-create policy "Employees can insert attendance"
-    on public.attendance_records for insert
-    with check (auth.uid() = employee_id);
-
-create policy "Employees see own attendance, managers/admins see all"
-    on public.attendance_records for select
-    using (auth.uid() = employee_id or public.is_manager());
-
-create policy "Task sessions access"
-    on public.task_sessions for all
-    using (auth.uid() = employee_id or public.is_manager())
-    with check (auth.uid() = employee_id or public.is_manager());
-
-create policy "Screenshot access"
-    on public.screenshot_records for all
-    using (auth.uid() = employee_id or public.is_manager())
-    with check (auth.uid() = employee_id);
-
--- 12. SCREENSHOT STORAGE BUCKET
+-- 14. SCREENSHOT STORAGE BUCKET
 insert into storage.buckets (id, name, public)
-values ('screenshots', 'screenshots', false)
+values ('screenshots', 'screenshots', true)
 on conflict (id) do nothing;
 
-create policy "Authenticated users can upload screenshots"
+drop policy if exists "Allow screenshot uploads" on storage.objects;
+create policy "Allow screenshot uploads"
     on storage.objects for insert
-    with check (bucket_id = 'screenshots' and auth.role() = 'authenticated');
+    with check (bucket_id = 'screenshots');
 
-create policy "Users can read screenshots based on role"
+drop policy if exists "Allow screenshot reads" on storage.objects;
+create policy "Allow screenshot reads"
     on storage.objects for select
-    using (bucket_id = 'screenshots' and (auth.uid()::text = (storage.foldername(name))[1] or public.is_manager()));
+    using (bucket_id = 'screenshots');
+
+-- 15. GRANT SCHEMA AND TABLE PERMISSIONS TO POSTGREST ROLES
+grant usage on schema public to postgres, anon, authenticated, service_role;
+grant all on all tables in schema public to postgres, anon, authenticated, service_role;
+grant all on all sequences in schema public to postgres, anon, authenticated, service_role;
+grant all on all routines in schema public to postgres, anon, authenticated, service_role;
+
+alter default privileges in schema public grant all on tables to postgres, anon, authenticated, service_role;
+alter default privileges in schema public grant all on sequences to postgres, anon, authenticated, service_role;
+alter default privileges in schema public grant all on routines to postgres, anon, authenticated, service_role;
+
+-- 16. SEED INITIAL SAMPLE DATA
+insert into public.teams (id, name)
+values 
+    ('11111111-1111-1111-1111-111111111111', 'Core Backend Team'),
+    ('22222222-2222-2222-2222-222222222222', 'Design & Web Platform'),
+    ('33333333-3333-3333-3333-333333333333', 'Security & Infrastructure')
+on conflict (id) do nothing;
+
+insert into public.profiles (id, email, full_name, role, department, team_id)
+values 
+    ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'admin@company.com', 'Admin User', 'admin', 'Operations', null),
+    ('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', 'alex.v@company.com', 'Alex Vance', 'manager', 'Engineering', '11111111-1111-1111-1111-111111111111'),
+    ('cccccccc-cccc-cccc-cccc-cccccccccccc', 'sarah.c@company.com', 'Sarah Connor', 'employee', 'Engineering', '11111111-1111-1111-1111-111111111111'),
+    ('dddddddd-dddd-dddd-dddd-dddddddddddd', 'michael.c@company.com', 'Michael Chen', 'employee', 'Engineering', '11111111-1111-1111-1111-111111111111')
+on conflict (id) do nothing;
+
+update public.teams set manager_id = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb' where id = '11111111-1111-1111-1111-111111111111';
+
+insert into public.projects (id, name, description, status, team_id)
+values
+    ('44444444-4444-4444-4444-444444444444', 'Desktop Agent v2', 'Native Windows background tracking agent', 'active', '11111111-1111-1111-1111-111111111111'),
+    ('55555555-5555-5555-5555-555555555555', 'Enterprise Dashboard', 'Admin & Manager real-time monitoring suite', 'active', '22222222-2222-2222-2222-222222222222')
+on conflict (id) do nothing;
+
+insert into public.tasks (id, project_id, title, description, assigned_to, status, priority, estimated_hours)
+values
+    ('66666666-6666-6666-6666-666666666666', '44444444-4444-4444-4444-444444444444', 'Implement SQLite outbox queue', 'Offline caching for telemetry events', 'cccccccc-cccc-cccc-cccc-cccccccccccc', 'in_progress', 'high', 16),
+    ('77777777-7777-7777-7777-777777777777', '55555555-5555-5555-5555-555555555555', 'Dark mode theme switcher', 'Modern glassmorphic palette', 'dddddddd-dddd-dddd-dddd-dddddddddddd', 'completed', 'medium', 8)
+on conflict (id) do nothing;
+
+-- 17. NOTIFY POSTGREST TO IMMEDIATELY RELOAD SCHEMA CACHE
+notify pgrst, 'reload schema';

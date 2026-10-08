@@ -54,7 +54,6 @@ impl MemoryLogBuffer {
     }
 }
 
-lazy_static_memory_buffer:
 static LOG_BUFFER: once_cell::sync::Lazy<Arc<MemoryLogBuffer>> =
     once_cell::sync::Lazy::new(|| Arc::new(MemoryLogBuffer::new(200)));
 
@@ -68,7 +67,9 @@ pub fn redact_sensitive_data(input: &str) -> String {
 
     // Redact Bearer tokens
     let bearer_prefix = "Bearer ";
-    while let Some(pos) = result.find(bearer_prefix) {
+    let mut start_idx = 0;
+    while let Some(rel_pos) = result[start_idx..].find(bearer_prefix) {
+        let pos = start_idx + rel_pos;
         let token_start = pos + bearer_prefix.len();
         let token_end = result[token_start..]
             .find(|c: char| c.is_whitespace() || c == '"' || c == '\'' || c == ',')
@@ -77,8 +78,9 @@ pub fn redact_sensitive_data(input: &str) -> String {
 
         if token_start < token_end {
             result.replace_range(token_start..token_end, "[REDACTED]");
+            start_idx = token_start + "[REDACTED]".len();
         } else {
-            break;
+            start_idx = token_start;
         }
     }
 

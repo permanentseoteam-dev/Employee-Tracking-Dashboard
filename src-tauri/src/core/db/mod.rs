@@ -1,6 +1,6 @@
 pub mod migrations;
 
-use crate::core::error::{AppError, AppResult};
+use crate::core::error::AppResult;
 use parking_lot::Mutex;
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};

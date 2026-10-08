@@ -7,7 +7,7 @@ edition = "2021"
 
 [lib]
 name = "tracking_dashboard_lib"
-crate-type = ["staticlib", "cdylib", "rlib"]
+crate-type = ["rlib", "staticlib"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }

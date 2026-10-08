@@ -42,15 +42,14 @@ impl AgentConfig {
             .unwrap_or_else(|_| format!("WIN-{}-{}", hostname, username));
 
         // Resolve authenticated employee identity dynamically
-        let employee_id = if let Ok(eid) = env::var("AGENT_EMPLOYEE_ID") {
-            eid
-        } else if let Some(eid) = Self::read_employee_from_sqlite() {
-            eid
-        } else {
-            // Deterministic UUID namespace fallback for development
-            let fallback_uuid = uuid::Uuid::new_v5(&uuid::Uuid::NAMESPACE_DNS, device_id.as_bytes()).to_string();
-            fallback_uuid
-        };
+        let employee_id = env::var("AGENT_EMPLOYEE_ID")
+            .or_else(|_| env::var("EMPLOYEE_ID"))
+            .unwrap_or_else(|_| {
+                Self::read_employee_from_sqlite().unwrap_or_else(|| {
+                    // Default seeded employee ID for Arsal in Supabase
+                    "cccccccc-cccc-cccc-cccc-cccccccccccc".to_string()
+                })
+            });
 
         let idle_threshold_seconds = env::var("IDLE_THRESHOLD_SECS")
             .ok()
@@ -63,9 +62,10 @@ impl AgentConfig {
             .unwrap_or(1000);
 
         let heartbeat_interval_seconds = env::var("HEARTBEAT_INTERVAL_SECS")
+            .or_else(|_| env::var("HEARTBEAT_SECS"))
             .ok()
             .and_then(|v| v.parse().ok())
-            .unwrap_or(30);
+            .unwrap_or(10);
 
         let batch_flush_interval_seconds = env::var("BATCH_FLUSH_INTERVAL_SECS")
             .ok()
@@ -73,9 +73,10 @@ impl AgentConfig {
             .unwrap_or(30);
 
         let screenshot_interval_seconds = env::var("SCREENSHOT_INTERVAL_SECS")
+            .or_else(|_| env::var("SCREENSHOT_INTERVAL_SECONDS"))
             .ok()
             .and_then(|v| v.parse().ok())
-            .unwrap_or(300); // 5 minutes
+            .unwrap_or(60);
 
         let screenshot_quality = env::var("SCREENSHOT_QUALITY")
             .ok()

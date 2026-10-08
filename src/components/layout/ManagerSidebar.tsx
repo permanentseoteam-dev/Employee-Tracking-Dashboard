@@ -4,7 +4,7 @@ import {
   Users,
   Activity,
   CalendarCheck,
-  CheckSquare,
+  FolderKanban,
   Award,
   ChevronLeft,
   ChevronRight,
@@ -26,7 +26,7 @@ export const ManagerSidebar: React.FC<ManagerSidebarProps> = ({ currentRoute, on
     { label: 'My Team Roster', route: '/manager/team', icon: <Users size={16} /> },
     { label: 'Live Telemetry', route: '/manager/monitoring', icon: <Activity size={16} /> },
     { label: 'Team Attendance', route: '/manager/attendance', icon: <CalendarCheck size={16} /> },
-    { label: 'Tasks & Projects', route: '/manager/tasks', icon: <CheckSquare size={16} /> },
+    { label: 'Projects & Folders', route: '/manager/projects', icon: <FolderKanban size={16} /> },
     { label: 'Performance & Stars', route: '/manager/performance', icon: <Award size={16} /> },
   ];
 

@@ -6,6 +6,8 @@ import type {
   ScreenshotItem,
   AttendanceRecordItem,
   ProjectItem,
+  ProjectFolder,
+  ProjectFolderFile,
   TaskItem,
   AuditLogItem,
   StarRuleItem,
@@ -744,6 +746,172 @@ export const dataService = {
       id: data.id,
       completed_tasks: 0,
     };
+  },
+
+  // 7b. Project Folders & Embedded Files
+  getProjectFolders: async (projectId: string): Promise<ProjectFolder[]> => {
+    try {
+      const raw = localStorage.getItem(`stitch_project_folders_${projectId}`);
+      if (raw) {
+        return JSON.parse(raw);
+      }
+    } catch (e) {
+      console.warn('Failed to parse folders from localStorage:', e);
+    }
+
+    // Default seeded folders with embedded files
+    const defaultFolders: ProjectFolder[] = [
+      {
+        id: `folder-specs-${projectId}`,
+        name: 'Specifications & Briefs',
+        project_id: projectId,
+        created_at: new Date(Date.now() - 86400000 * 3).toISOString().split('T')[0],
+        color: '#3b82f6',
+        files: [
+          {
+            id: `file-spec-1`,
+            name: 'Architecture_System_Spec.pdf',
+            size: 2450000,
+            size_formatted: '2.4 MB',
+            mime_type: 'application/pdf',
+            uploaded_at: '2026-10-05 09:30',
+            uploaded_by: 'Alex Vance',
+            data_url: '',
+            description: 'Core Rust agent daemon & Supabase sync schema specification',
+          },
+          {
+            id: `file-spec-2`,
+            name: 'Telemetry_Data_Model.json',
+            size: 42000,
+            size_formatted: '42 KB',
+            mime_type: 'application/json',
+            uploaded_at: '2026-10-06 14:15',
+            uploaded_by: 'Arsal',
+            data_url: '',
+            description: 'JSON schema for 60s aggregate window payload',
+          },
+        ],
+      },
+      {
+        id: `folder-assets-${projectId}`,
+        name: 'UI Designs & Wireframes',
+        project_id: projectId,
+        created_at: new Date(Date.now() - 86400000 * 2).toISOString().split('T')[0],
+        color: '#8b5cf6',
+        files: [
+          {
+            id: `file-asset-1`,
+            name: 'Desktop_Agent_Figma_Mockup.png',
+            size: 1120000,
+            size_formatted: '1.1 MB',
+            mime_type: 'image/png',
+            uploaded_at: '2026-10-07 11:20',
+            uploaded_by: 'Jessica Lee',
+            data_url: '',
+            description: 'Glassmorphic TopBar and telemetry widget preview',
+          },
+        ],
+      },
+      {
+        id: `folder-deliverables-${projectId}`,
+        name: 'Sprint Deliverables & Builds',
+        project_id: projectId,
+        created_at: new Date(Date.now() - 86400000 * 1).toISOString().split('T')[0],
+        color: '#10b981',
+        files: [
+          {
+            id: `file-build-1`,
+            name: 'EmployeeAgent-Setup.exe',
+            size: 5800000,
+            size_formatted: '5.8 MB',
+            mime_type: 'application/octet-stream',
+            uploaded_at: '2026-10-08 07:30',
+            uploaded_by: 'Super Admin',
+            data_url: '',
+            description: 'Compiled production Windows x64 binary setup installer',
+          },
+        ],
+      },
+    ];
+
+    try {
+      localStorage.setItem(`stitch_project_folders_${projectId}`, JSON.stringify(defaultFolders));
+    } catch (e) {
+      // Ignore storage quota
+    }
+    return defaultFolders;
+  },
+
+  createProjectFolder: async (projectId: string, name: string, color = '#3b82f6'): Promise<ProjectFolder> => {
+    const existing = await dataService.getProjectFolders(projectId);
+    const newFolder: ProjectFolder = {
+      id: `folder-${Date.now()}`,
+      name: name.trim(),
+      project_id: projectId,
+      created_at: new Date().toISOString().split('T')[0],
+      color,
+      files: [],
+    };
+    const updated = [newFolder, ...existing];
+    try {
+      localStorage.setItem(`stitch_project_folders_${projectId}`, JSON.stringify(updated));
+    } catch (e) {
+      console.warn('Failed to save folder:', e);
+    }
+    return newFolder;
+  },
+
+  deleteProjectFolder: async (projectId: string, folderId: string): Promise<void> => {
+    const existing = await dataService.getProjectFolders(projectId);
+    const updated = existing.filter((f) => f.id !== folderId);
+    try {
+      localStorage.setItem(`stitch_project_folders_${projectId}`, JSON.stringify(updated));
+    } catch (e) {
+      console.warn('Failed to delete folder:', e);
+    }
+  },
+
+  embedFileInFolder: async (
+    projectId: string,
+    folderId: string,
+    fileData: Omit<ProjectFolderFile, 'id' | 'uploaded_at'>
+  ): Promise<ProjectFolderFile> => {
+    const folders = await dataService.getProjectFolders(projectId);
+    const targetFolder = folders.find((f) => f.id === folderId);
+    if (!targetFolder) throw new Error('Target folder not found');
+
+    const newFile: ProjectFolderFile = {
+      id: `file-${Date.now()}`,
+      name: fileData.name,
+      size: fileData.size,
+      size_formatted: fileData.size_formatted,
+      mime_type: fileData.mime_type,
+      uploaded_at: new Date().toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }),
+      uploaded_by: fileData.uploaded_by || 'Current User',
+      data_url: fileData.data_url || '',
+      description: fileData.description || '',
+    };
+
+    targetFolder.files = [newFile, ...targetFolder.files];
+    try {
+      localStorage.setItem(`stitch_project_folders_${projectId}`, JSON.stringify(folders));
+    } catch (e) {
+      console.warn('Failed to embed file in localStorage:', e);
+    }
+    return newFile;
+  },
+
+  deleteFileFromFolder: async (projectId: string, folderId: string, fileId: string): Promise<void> => {
+    const folders = await dataService.getProjectFolders(projectId);
+    const targetFolder = folders.find((f) => f.id === folderId);
+    if (!targetFolder) return;
+
+    targetFolder.files = targetFolder.files.filter((f) => f.id !== fileId);
+    try {
+      localStorage.setItem(`stitch_project_folders_${projectId}`, JSON.stringify(folders));
+    } catch (e) {
+      console.warn('Failed to delete file from localStorage:', e);
+    }
   },
 
   // 8. Tasks Query & Mutations

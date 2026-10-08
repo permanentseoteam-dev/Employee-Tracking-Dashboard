@@ -94,10 +94,32 @@ export interface AttendanceRecordItem {
   idle_hours: number;
 }
 
+export interface ProjectFolderFile {
+  id: string;
+  name: string;
+  size: number;
+  size_formatted: string;
+  mime_type: string;
+  uploaded_at: string;
+  uploaded_by?: string;
+  data_url?: string;
+  description?: string;
+}
+
+export interface ProjectFolder {
+  id: string;
+  name: string;
+  project_id: string;
+  created_at: string;
+  color?: string;
+  files: ProjectFolderFile[];
+}
+
 export interface ProjectItem {
   id: string;
   name: string;
   code: string;
+  description?: string;
   manager_id: string;
   manager_name: string;
   members_count: number;
@@ -107,6 +129,7 @@ export interface ProjectItem {
   completed_tasks: number;
   due_date: string;
   documents?: { title: string; type: 'doc' | 'sheet'; url: string }[];
+  folders?: ProjectFolder[];
 }
 
 export interface TaskItem {

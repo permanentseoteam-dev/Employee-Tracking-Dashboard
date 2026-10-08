@@ -4,7 +4,6 @@ import {
   Users,
   Clock,
   Calendar,
-  Plus,
   ArrowUpRight,
   Download,
   Check,
@@ -18,6 +17,7 @@ import {
   Camera,
   Eye,
   Star,
+  FolderKanban,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { dataService } from '../../services/dataService';
@@ -111,10 +111,10 @@ export const ManagerDashboardPage: React.FC<ManagerDashboardPageProps> = ({ onNa
             <button
               type="button"
               className="btn-pill btn-pill-secondary"
-              onClick={() => onNavigate('/manager/tasks')}
+              onClick={() => onNavigate('/manager/projects')}
             >
-              <Plus size={15} />
-              <span>Assign Task</span>
+              <FolderKanban size={15} />
+              <span>Projects & Folders</span>
             </button>
             <button type="button" className="btn-pill btn-pill-secondary">
               <Calendar size={15} color="var(--text-muted)" />
@@ -178,7 +178,7 @@ export const ManagerDashboardPage: React.FC<ManagerDashboardPageProps> = ({ onNa
             <button
               type="button"
               className="btn-icon-circle"
-              onClick={() => onNavigate('/manager/tasks')}
+              onClick={() => onNavigate('/manager/projects')}
             >
               <ArrowUpRight size={17} />
             </button>

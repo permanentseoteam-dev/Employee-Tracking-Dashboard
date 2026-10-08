@@ -19,7 +19,6 @@ import { AdminManagersPage } from './pages/admin/AdminManagersPage';
 import { AdminTeamsPage } from './pages/admin/AdminTeamsPage';
 import { AdminMonitoringPage } from './pages/admin/AdminMonitoringPage';
 import { AdminAttendancePage } from './pages/admin/AdminAttendancePage';
-import { AdminProjectsTasksPage } from './pages/admin/AdminProjectsTasksPage';
 import { AdminPerformancePage } from './pages/admin/AdminPerformancePage';
 import { AdminSettingsAuditPage } from './pages/admin/AdminSettingsAuditPage';
 
@@ -28,8 +27,10 @@ import { ManagerDashboardPage } from './pages/manager/ManagerDashboardPage';
 import { ManagerTeamPage } from './pages/manager/ManagerTeamPage';
 import { ManagerMonitoringPage } from './pages/manager/ManagerMonitoringPage';
 import { ManagerAttendancePage } from './pages/manager/ManagerAttendancePage';
-import { ManagerTasksPage } from './pages/manager/ManagerTasksPage';
 import { ManagerPerformancePage } from './pages/manager/ManagerPerformancePage';
+
+// Project Workspace (Folders & File Embedding)
+import { ProjectWorkspace } from './components/projects/ProjectWorkspace';
 
 import { api } from './services/tauriBridge';
 import { useAuth } from './context/AuthContext';
@@ -38,7 +39,7 @@ import type { AgentStatusDto, DbStats, NavTab, SystemInfoDto } from './types';
 import { ErrorBoundary } from './components/ErrorBoundary';
 
 export const App: React.FC = () => {
-  const { role, currentRoute, navigate } = useAuth();
+  const { user, role, currentRoute, navigate } = useAuth();
 
   // Employee State (Synchronized with URL route and browser history)
   const getEmployeeTab = (route: string): NavTab => {
@@ -134,9 +135,8 @@ export const App: React.FC = () => {
         case '/admin/attendance':
           return <AdminAttendancePage />;
         case '/admin/projects':
-          return <AdminProjectsTasksPage initialView="projects" />;
         case '/admin/tasks':
-          return <AdminProjectsTasksPage initialView="tasks" />;
+          return <ProjectWorkspace role="admin" />;
         case '/admin/performance':
           return <AdminPerformancePage />;
         case '/admin/audit-logs':
@@ -199,11 +199,9 @@ export const App: React.FC = () => {
         case '/manager/attendance':
           return <ManagerAttendancePage />;
         case '/manager/projects':
-          return <ManagerTasksPage initialView="projects" />;
         case '/manager/tasks':
-          return <ManagerTasksPage initialView="tasks" />;
         case '/manager/documents':
-          return <ManagerTasksPage initialView="projects" />;
+          return <ProjectWorkspace role="manager" managerId={user?.id} />;
         case '/manager/performance':
           return <ManagerPerformancePage />;
         default:

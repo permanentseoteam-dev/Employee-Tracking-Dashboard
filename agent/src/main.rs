@@ -89,14 +89,15 @@ async fn main() -> AgentResult<()> {
         health_monitor.record_sync_success();
     }
 
-    let mut poll_interval = interval(Duration::from_millis(config.poll_interval_millis));
-    let mut last_heartbeat = Instant::now();
-    let mut last_flush = Instant::now();
-    let mut last_screenshot = Instant::now();
-
     let heartbeat_dur = Duration::from_secs(config.heartbeat_interval_seconds);
     let flush_dur = Duration::from_secs(config.batch_flush_interval_seconds);
     let screenshot_dur = Duration::from_secs(config.screenshot_interval_seconds);
+
+    let mut poll_interval = interval(Duration::from_millis(config.poll_interval_millis));
+    let mut last_heartbeat = Instant::now();
+    let mut last_flush = Instant::now();
+    // Trigger immediate screenshot upon agent startup so the dashboard immediately shows live view
+    let mut last_screenshot = Instant::now() - screenshot_dur;
 
     tracing::info!("Agent background loop running. Monitoring input & idle state...");
 

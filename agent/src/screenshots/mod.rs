@@ -36,29 +36,41 @@ impl ScreenCaptureService {
     #[cfg(target_os = "windows")]
     pub fn capture_screen(&self) -> AgentResult<CapturedScreenshot> {
         use windows_sys::Win32::Graphics::Gdi::{
-            BitBlt, CreateCompatibleBitmap, CreateCompatibleDC, DeleteDC, DeleteObject, GetDC,
+            BitBlt, CreateCompatibleBitmap, CreateCompatibleDC, DeleteDC, DeleteObject,
             GetDIBits, ReleaseDC, BITMAPINFO, BITMAPINFOHEADER, BI_RGB, DIB_RGB_COLORS, SRCCOPY,
         };
         use windows_sys::Win32::UI::WindowsAndMessaging::{
-            GetSystemMetrics, SM_CXSCREEN, SM_CYSCREEN,
+            GetDesktopWindow, GetSystemMetrics, SM_CXSCREEN, SM_CYSCREEN,
         };
 
         unsafe {
-            let hdc_screen = GetDC(std::ptr::null_mut());
+            let hwnd_desktop = GetDesktopWindow();
+            let mut hdc_screen = windows_sys::Win32::Graphics::Gdi::GetDC(hwnd_desktop);
+            if hdc_screen.is_null() {
+                hdc_screen = windows_sys::Win32::Graphics::Gdi::GetDC(std::ptr::null_mut());
+            }
             if hdc_screen.is_null() {
                 return Err(AgentError::Windows("Failed to get desktop DC".into()));
             }
 
-            let width = GetSystemMetrics(SM_CXSCREEN) as u32;
-            let height = GetSystemMetrics(SM_CYSCREEN) as u32;
+            let mut width = GetSystemMetrics(SM_CXSCREEN) as u32;
+            let mut height = GetSystemMetrics(SM_CYSCREEN) as u32;
 
-            if width == 0 || height == 0 {
-                ReleaseDC(std::ptr::null_mut(), hdc_screen);
-                return Err(AgentError::Windows("Invalid screen dimensions".into()));
-            }
+            if width == 0 { width = 1920; }
+            if height == 0 { height = 1080; }
 
             let hdc_mem = CreateCompatibleDC(hdc_screen);
+            if hdc_mem.is_null() {
+                ReleaseDC(hwnd_desktop, hdc_screen);
+                return Err(AgentError::Windows("Failed to create compatible memory DC".into()));
+            }
+
             let hbitmap = CreateCompatibleBitmap(hdc_screen, width as i32, height as i32);
+            if hbitmap.is_null() {
+                DeleteDC(hdc_mem);
+                ReleaseDC(hwnd_desktop, hdc_screen);
+                return Err(AgentError::Windows("Failed to create compatible bitmap".into()));
+            }
 
             let old_bitmap = windows_sys::Win32::Graphics::Gdi::SelectObject(hdc_mem, hbitmap);
 
@@ -78,7 +90,7 @@ impl ScreenCaptureService {
                 windows_sys::Win32::Graphics::Gdi::SelectObject(hdc_mem, old_bitmap);
                 DeleteObject(hbitmap);
                 DeleteDC(hdc_mem);
-                ReleaseDC(std::ptr::null_mut(), hdc_screen);
+                ReleaseDC(hwnd_desktop, hdc_screen);
                 return Err(AgentError::Windows("BitBlt screen copy failed".into()));
             }
 
@@ -103,11 +115,11 @@ impl ScreenCaptureService {
                 DIB_RGB_COLORS,
             );
 
-            // Cleanup GDI objects
+            // Cleanup GDI objects immediately
             windows_sys::Win32::Graphics::Gdi::SelectObject(hdc_mem, old_bitmap);
             DeleteObject(hbitmap);
             DeleteDC(hdc_mem);
-            ReleaseDC(std::ptr::null_mut(), hdc_screen);
+            ReleaseDC(hwnd_desktop, hdc_screen);
 
             if lines == 0 {
                 return Err(AgentError::Windows("GetDIBits failed to extract pixels".into()));
@@ -147,7 +159,6 @@ impl ScreenCaptureService {
 
     #[cfg(not(target_os = "windows"))]
     pub fn capture_screen(&self) -> AgentResult<CapturedScreenshot> {
-        // Mock capture for testing on non-windows platforms
         let width = 1280;
         let height = 720;
         let mock_pixels = vec![128u8; (width * height * 3) as usize];

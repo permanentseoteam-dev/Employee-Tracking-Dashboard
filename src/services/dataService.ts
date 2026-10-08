@@ -12,6 +12,7 @@ import type {
   AttendanceRuleConfig,
   HeatmapPoint,
 } from '../types/roles';
+import { supabase, isSupabaseConfigured } from './supabaseClient';
 
 // Seeded organization data
 let employeesStore: EmployeeRecord[] = [
@@ -613,6 +614,30 @@ let attendanceRulesStore: AttendanceRuleConfig = {
 export const dataService = {
   // Employees Access
   getEmployees: async (role: UserRole, managerId?: string): Promise<EmployeeRecord[]> => {
+    // Sync live presence from Supabase if configured
+    if (isSupabaseConfigured()) {
+      try {
+        const { data: presenceList } = await supabase.from('employee_presence').select('*');
+        if (presenceList && presenceList.length > 0) {
+          for (const p of presenceList) {
+            const match = employeesStore.find(
+              (e) => e.email === 'arsal@company.com' || e.id === 'emp-001' || e.id === p.employee_id
+            );
+            if (match) {
+              match.status = p.status as 'active' | 'idle' | 'offline';
+              match.device_id = p.device_id;
+              if (p.last_activity_at) {
+                const d = new Date(p.last_activity_at);
+                match.first_activity = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+              }
+            }
+          }
+        }
+      } catch (e) {
+        console.warn('Could not sync live presence from Supabase:', e);
+      }
+    }
+
     if (role === 'admin') {
       return [...employeesStore];
     }

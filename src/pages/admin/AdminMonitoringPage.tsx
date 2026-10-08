@@ -502,7 +502,7 @@ export const AdminMonitoringPage: React.FC<AdminMonitoringPageProps> = ({ initia
 
       {/* 3. Heatmaps Tab */}
       {activeSubTab === 'heatmaps' && (
-        <MatrixHeatmap initialPreset="metrics" />
+        <MatrixHeatmap initialPreset="hourly" />
       )}
 
       {/* Interactive Live Screen Inspector & On-Demand Recording Modal */}

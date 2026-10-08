@@ -80,7 +80,7 @@ export const PerformancePage: React.FC<PerformancePageProps> = ({ dbStats }) => 
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingLeft: 4 }}>
           <Activity size={18} color="var(--color-secondary)" />
           <h2 style={{ fontSize: 18, fontWeight: 800, color: 'var(--text-primary)', margin: 0 }}>
-            Personal Cadence & Benchmark Telemetry Matrix
+            Employee Workstation Activity & Cadence Heatmap
           </h2>
         </div>
         <MatrixHeatmap initialPreset="hourly" />

@@ -6,7 +6,6 @@ import {
   Info,
   Sliders,
   Maximize2,
-  Users,
   Calendar,
   Activity,
   User,
@@ -32,9 +31,9 @@ export interface HeatmapMatrixDataset {
   unit?: string;
 }
 
-// Default Seeded Employees
+// 8 Employees (replaces BERT, LSTM, Attn, GloVe, ELMo, ERNIE, RoBERTa, T5)
 const DEFAULT_EMPLOYEES = [
-  'Arsal (Dev)',
+  'Arsal',
   'Alex Vance',
   'Elena Vance',
   'Marcus Bell',
@@ -44,111 +43,68 @@ const DEFAULT_EMPLOYEES = [
   'Michael Torres',
 ];
 
-// Preset 1: Hourly Employee Activity Matrix (Tracking every employee by shift hour)
+// 8 Time slots (replaces CoLA, MNLI, MRPC, QNLI, QQP, RTE, SST-2, STS-B)
+const DEFAULT_TIME_SLOTS = [
+  '09:00',
+  '10:00',
+  '11:00',
+  '12:00',
+  '13:00',
+  '14:00',
+  '15:00',
+  '16:00',
+];
+
+// Preset 1: Hourly Employee Activity Matrix (Exact replica with Employee Names & Time)
 export const HOURLY_EMPLOYEE_ACTIVITY_PRESET: HeatmapMatrixDataset = {
   id: 'hourly-employee-activity',
-  title: 'Hourly Employee Activity Telemetry Matrix',
-  subtitle: 'Real-time workstation activity intensity (%) across every team member per shift hour',
-  xAxisLabel: 'Shift Hour',
-  yAxisLabel: 'Employee',
-  xLabels: ['09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00'],
+  title: 'Employee Activity Heatmap',
+  subtitle: 'Real-time telemetry and workstation activity intensity (%) per employee across shift hours',
+  xAxisLabel: 'TIME',
+  yAxisLabel: 'EMPLOYEE',
+  xLabels: DEFAULT_TIME_SLOTS,
   yLabels: DEFAULT_EMPLOYEES,
   data: [
-    [86.7, 92.4, 94.9, 32.1, 88.5, 96.7, 92.2, 70.3], // Arsal (Dev)
-    [65.6, 81.8, 88.5, 25.0, 82.8, 91.0, 85.0, 68.2], // Alex Vance
-    [75.5, 92.3, 93.9, 45.0, 92.6, 97.8, 93.0, 78.5], // Elena Vance
-    [60.5, 72.1, 70.1, 18.5, 65.4, 78.7, 60.6, 52.7], // Marcus Bell
-    [90.8, 95.4, 96.9, 55.0, 92.8, 98.5, 96.4, 88.0], // Sarah Chen
-    [67.6, 83.9, 74.3, 22.0, 75.0, 83.0, 72.8, 64.0], // David Kim
-    [88.2, 94.5, 96.0, 38.0, 90.0, 95.2, 93.4, 82.0], // Jessica Lee
-    [71.6, 86.0, 89.2, 30.0, 84.0, 92.0, 88.5, 74.0], // Michael Torres
+    [60.5, 86.7, 89.3, 92.7, 72.1, 70.1, 94.9, 87.6], // Arsal
+    [11.6, 65.6, 81.8, 74.6, 62.5, 57.4, 82.8, 70.3], // Alex Vance
+    [18.6, 67.6, 83.9, 74.3, 60.1, 58.4, 83.0, 72.8], // Elena Vance
+    [18.5, 65.4, 78.7, 70.8, 60.6, 52.7, 81.9, 64.4], // Marcus Bell
+    [32.1, 67.2, 84.7, 75.5, 61.1, 57.4, 89.3, 70.3], // Sarah Chen
+    [75.5, 92.3, 93.9, 97.3, 75.2, 92.6, 97.8, 93.0], // David Kim
+    [67.8, 90.8, 92.3, 95.4, 74.3, 88.2, 96.7, 92.2], // Jessica Lee
+    [71.6, 92.2, 92.8, 96.9, 75.1, 92.8, 97.5, 93.1], // Michael Torres
   ],
   minValue: 10,
   maxValue: 100,
   unit: '%',
 };
 
-// Preset 2: Weekly Employee Productivity & Cadence Matrix
+// Preset 2: Weekly Employee Productivity Matrix
 export const WEEKLY_EMPLOYEE_CADENCE_PRESET: HeatmapMatrixDataset = {
   id: 'weekly-employee-cadence',
   title: 'Weekly Employee Productivity & Engagement Matrix',
   subtitle: 'Aggregated daily active hours and task delivery throughput over the sprint week',
-  xAxisLabel: 'Sprint Day',
-  yAxisLabel: 'Employee',
-  xLabels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun', 'Sprint Avg'],
+  xAxisLabel: 'DAY',
+  yAxisLabel: 'EMPLOYEE',
+  xLabels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun', 'Avg'],
   yLabels: DEFAULT_EMPLOYEES,
   data: [
-    [94.2, 91.8, 96.5, 92.0, 88.7, 45.0, 15.0, 88.6], // Arsal
-    [92.0, 88.5, 82.3, 86.4, 95.0, 30.0, 10.0, 84.2], // Alex
-    [95.0, 91.0, 89.4, 88.0, 94.2, 40.0, 12.0, 87.5], // Elena
-    [62.4, 58.0, 54.2, 61.0, 68.5, 20.0,  5.0, 56.4], // Marcus
-    [99.0, 96.5, 95.2, 98.0, 98.5, 50.0, 20.0, 94.8], // Sarah
-    [88.4, 82.0, 79.5, 84.2, 86.0, 35.0, 10.0, 80.2], // David
-    [96.2, 93.0, 91.8, 94.5, 95.0, 42.0, 18.0, 91.4], // Jessica
-    [74.0, 71.5, 68.2, 70.0, 76.0, 25.0,  8.0, 68.5], // Michael
+    [94.2, 91.8, 96.5, 92.0, 88.7, 45.0, 15.0, 88.6],
+    [92.0, 88.5, 82.3, 86.4, 95.0, 30.0, 10.0, 84.2],
+    [95.0, 91.0, 89.4, 88.0, 94.2, 40.0, 12.0, 87.5],
+    [62.4, 58.0, 54.2, 61.0, 68.5, 20.0,  5.0, 56.4],
+    [99.0, 96.5, 95.2, 98.0, 98.5, 50.0, 20.0, 94.8],
+    [88.4, 82.0, 79.5, 84.2, 86.0, 35.0, 10.0, 80.2],
+    [96.2, 93.0, 91.8, 94.5, 95.0, 42.0, 18.0, 91.4],
+    [74.0, 71.5, 68.2, 70.0, 76.0, 25.0,  8.0, 68.5],
   ],
   minValue: 0,
   maxValue: 100,
   unit: '%',
 };
 
-// Preset 3: Multi-Factor Telemetry Metrics by Employee
-export const EMPLOYEE_TELEMETRY_METRICS_PRESET: HeatmapMatrixDataset = {
-  id: 'employee-telemetry-metrics',
-  title: 'Employee Multi-Factor Telemetry & Quality Matrix',
-  subtitle: 'Granular tracking of keyboard intensity, mouse interaction, focus ratio, punctuality, and star output',
-  xAxisLabel: 'Telemetry Metric',
-  yAxisLabel: 'Employee',
-  xLabels: ['Keyboard', 'Mouse Moves', 'Mouse Clicks', 'Active Time', 'Focus %', 'Task Vel', 'Punctuality', 'Stars'],
-  yLabels: DEFAULT_EMPLOYEES,
-  data: [
-    [96.4, 92.5, 89.0, 95.2, 91.0, 94.5, 98.0, 90.0], // Arsal
-    [88.2, 85.0, 82.0, 88.5, 85.4, 86.0, 95.0, 85.0], // Alex
-    [92.6, 94.0, 88.5, 92.0, 89.5, 91.0, 96.0, 88.0], // Elena
-    [65.4, 58.0, 52.0, 62.0, 55.0, 60.0, 70.0, 45.0], // Marcus
-    [98.5, 97.0, 96.0, 98.0, 96.5, 97.5, 99.0, 98.0], // Sarah
-    [83.0, 80.0, 76.0, 82.0, 79.0, 84.0, 88.0, 80.0], // David
-    [95.0, 93.0, 91.0, 94.0, 92.0, 93.0, 96.0, 92.0], // Jessica
-    [84.0, 81.0, 78.0, 80.0, 76.0, 79.0, 85.0, 60.0], // Michael
-  ],
-  minValue: 30,
-  maxValue: 100,
-  unit: 'pts',
-};
-
-// Preset 4: Single Employee Day-by-Hour Activity Matrix
-export function generateEmployeeDayHourPreset(employeeName: string): HeatmapMatrixDataset {
-  const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
-  const hours = ['09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00'];
-  
-  // Seed realistic workday pattern
-  const data: number[][] = [
-    [84.5, 91.2, 95.0, 35.0, 88.2, 94.0, 92.5, 78.0], // Mon
-    [88.0, 94.5, 96.2, 40.0, 91.0, 96.5, 95.0, 84.0], // Tue
-    [92.5, 96.0, 97.8, 42.0, 93.5, 98.0, 96.2, 88.5], // Wed
-    [86.0, 93.0, 94.5, 38.0, 89.0, 95.0, 91.0, 80.0], // Thu
-    [82.0, 89.5, 92.0, 30.0, 85.0, 90.5, 87.0, 72.0], // Fri
-    [25.0, 40.0, 45.0, 10.0, 20.0, 35.0, 30.0, 15.0], // Sat
-    [10.0, 15.0, 20.0,  5.0, 10.0, 18.0, 12.0,  8.0], // Sun
-  ];
-
-  return {
-    id: `employee-day-hour-${employeeName.toLowerCase().replace(/\s+/g, '-')}`,
-    title: `${employeeName} — Hourly Activity Heatmap`,
-    subtitle: `Detailed hour-by-hour telemetry and interaction intensity across the entire week`,
-    xAxisLabel: 'Shift Hour',
-    yAxisLabel: 'Workday',
-    xLabels: hours,
-    yLabels: days,
-    data,
-    minValue: 0,
-    maxValue: 100,
-    unit: '%',
-  };
-}
-
-// Magma Colormap matching reference visual
-// Low: deep dark purple/black -> Wine Magenta -> Vivid Coral/Red -> Warm Orange -> Peach Cream
+// Magma Colormap matching reference visual:
+// Deep dark purple/black -> Wine Magenta -> Vivid Coral/Red -> Warm Orange -> Apricot Cream
 export function getHeatmapColor(value: number, min = 10, max = 100): {
   bg: string;
   textColor: string;
@@ -198,9 +154,10 @@ export function getHeatmapColor(value: number, min = 10, max = 100): {
   }
 
   // Dark text on high values (peach / cream), white text on darker cells
+  // Exactly matching the reference image where 94.9, 87.6, 92.3, 97.8 have dark text
   const isLight = norm > 0.68;
-  const textColor = isLight ? '#2a1708' : '#ffffff';
-  const borderColor = `rgba(${Math.max(0, r - 20)}, ${Math.max(0, g - 20)}, ${Math.max(0, b - 20)}, 0.4)`;
+  const textColor = isLight ? '#1a1006' : '#ffffff';
+  const borderColor = '#ffffff';
 
   return {
     bg: `rgb(${r}, ${g}, ${b})`,
@@ -210,18 +167,15 @@ export function getHeatmapColor(value: number, min = 10, max = 100): {
 }
 
 interface MatrixHeatmapProps {
-  initialPreset?: 'hourly' | 'weekly' | 'metrics';
+  initialPreset?: 'hourly' | 'weekly';
   selectedEmployeeName?: string;
 }
 
 export const MatrixHeatmap: React.FC<MatrixHeatmapProps> = ({
   initialPreset = 'hourly',
-  selectedEmployeeName,
+  selectedEmployeeName: _selectedEmployeeName,
 }) => {
-  const [activeMode, setActiveMode] = useState<'hourly' | 'weekly' | 'metrics' | 'individual'>(
-    selectedEmployeeName ? 'individual' : initialPreset
-  );
-  const [selectedEmp, setSelectedEmp] = useState<string>(selectedEmployeeName || 'Arsal (Dev)');
+  const [activeMode, setActiveMode] = useState<'hourly' | 'weekly'>(initialPreset);
   const [employeesList, setEmployeesList] = useState<string[]>(DEFAULT_EMPLOYEES);
   const [showValues, setShowValues] = useState(true);
 
@@ -245,43 +199,20 @@ export const MatrixHeatmap: React.FC<MatrixHeatmapProps> = ({
 
   useEffect(() => {
     dataService.getEmployees('admin').then((emps) => {
-      if (emps && emps.length > 0) {
-        const names = emps.map((e) => e.name);
-        setEmployeesList(names);
-        if (!selectedEmp && names.length > 0) {
-          setSelectedEmp(names[0]);
-        }
+      if (emps && emps.length >= 8) {
+        setEmployeesList(emps.slice(0, 8).map((e) => e.name));
       }
     });
   }, []);
 
-  useEffect(() => {
-    if (selectedEmployeeName) {
-      setSelectedEmp(selectedEmployeeName);
-      setActiveMode('individual');
-    }
-  }, [selectedEmployeeName]);
+  const baseDataset = activeMode === 'weekly' 
+    ? WEEKLY_EMPLOYEE_CADENCE_PRESET 
+    : HOURLY_EMPLOYEE_ACTIVITY_PRESET;
 
-  // Determine current active dataset based on mode
-  let currentDataset: HeatmapMatrixDataset;
-  if (activeMode === 'individual') {
-    currentDataset = generateEmployeeDayHourPreset(selectedEmp);
-  } else if (activeMode === 'weekly') {
-    currentDataset = {
-      ...WEEKLY_EMPLOYEE_CADENCE_PRESET,
-      yLabels: employeesList.length === 8 ? employeesList : DEFAULT_EMPLOYEES,
-    };
-  } else if (activeMode === 'metrics') {
-    currentDataset = {
-      ...EMPLOYEE_TELEMETRY_METRICS_PRESET,
-      yLabels: employeesList.length === 8 ? employeesList : DEFAULT_EMPLOYEES,
-    };
-  } else {
-    currentDataset = {
-      ...HOURLY_EMPLOYEE_ACTIVITY_PRESET,
-      yLabels: employeesList.length === 8 ? employeesList : DEFAULT_EMPLOYEES,
-    };
-  }
+  const currentDataset: HeatmapMatrixDataset = {
+    ...baseDataset,
+    yLabels: employeesList,
+  };
 
   const handleExportCSV = () => {
     let csv = `${currentDataset.yAxisLabel}/${currentDataset.xAxisLabel},` + currentDataset.xLabels.join(',') + '\n';
@@ -294,7 +225,7 @@ export const MatrixHeatmap: React.FC<MatrixHeatmapProps> = ({
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `${currentDataset.id}-activity-heatmap.csv`;
+    a.download = `employee-activity-heatmap.csv`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -306,7 +237,7 @@ export const MatrixHeatmap: React.FC<MatrixHeatmapProps> = ({
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <Flame size={18} color="var(--color-secondary)" />
-            <h3 style={{ fontSize: 17, fontWeight: 800, color: 'var(--text-primary)', margin: 0 }}>
+            <h3 style={{ fontSize: 18, fontWeight: 800, color: 'var(--text-primary)', margin: 0 }}>
               {currentDataset.title}
             </h3>
           </div>
@@ -317,16 +248,16 @@ export const MatrixHeatmap: React.FC<MatrixHeatmapProps> = ({
 
         {/* Action Controls */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-          {/* Preset Mode Switcher */}
+          {/* View Mode Switcher */}
           <div className="stitch-nav-pills">
             <button
               type="button"
               className={`nav-pill-item ${activeMode === 'hourly' ? 'active' : ''}`}
               onClick={() => setActiveMode('hourly')}
-              title="Track every employee activity by shift hour"
+              title="Track employee activity by shift hour (Name vs Time)"
             >
               <Activity size={13} />
-              <span>Hourly Activity</span>
+              <span>Shift Time (09:00 - 16:00)</span>
             </button>
             <button
               type="button"
@@ -335,43 +266,9 @@ export const MatrixHeatmap: React.FC<MatrixHeatmapProps> = ({
               title="Weekly employee productivity matrix"
             >
               <Calendar size={13} />
-              <span>Weekly Cadence</span>
-            </button>
-            <button
-              type="button"
-              className={`nav-pill-item ${activeMode === 'metrics' ? 'active' : ''}`}
-              onClick={() => setActiveMode('metrics')}
-              title="Multi-factor employee telemetry"
-            >
-              <Users size={13} />
-              <span>Telemetry Metrics</span>
-            </button>
-            <button
-              type="button"
-              className={`nav-pill-item ${activeMode === 'individual' ? 'active' : ''}`}
-              onClick={() => setActiveMode('individual')}
-              title="Deep-dive single employee activity matrix"
-            >
-              <User size={13} />
-              <span>Single Employee</span>
+              <span>Weekly Cadence (Days)</span>
             </button>
           </div>
-
-          {/* Employee Selector (when in individual mode) */}
-          {activeMode === 'individual' && (
-            <select
-              className="stitch-select"
-              style={{ width: 170, padding: '5px 10px', fontSize: 12 }}
-              value={selectedEmp}
-              onChange={(e) => setSelectedEmp(e.target.value)}
-            >
-              {employeesList.map((name) => (
-                <option key={name} value={name}>
-                  {name}
-                </option>
-              ))}
-            </select>
-          )}
 
           {/* Toggle Values */}
           <button
@@ -399,13 +296,13 @@ export const MatrixHeatmap: React.FC<MatrixHeatmapProps> = ({
         </div>
       </div>
 
-      {/* Main Matrix and Colorbar Container */}
+      {/* Main Matrix and Colorbar Container (Clean, centered with exact screenshot aesthetics) */}
       <div
         style={{
           display: 'flex',
           justifyContent: 'center',
           alignItems: 'center',
-          padding: '1.75rem 1rem',
+          padding: '2rem 1.5rem',
           background: 'var(--surface-frosted-subdued)',
           borderRadius: 'var(--radius-card-sm)',
           border: '1px solid var(--surface-border-subtle)',
@@ -413,23 +310,23 @@ export const MatrixHeatmap: React.FC<MatrixHeatmapProps> = ({
           position: 'relative',
         }}
       >
-        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '2rem' }}>
-          {/* Matrix Table with Y labels (Employees), Cells, and X labels */}
+        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '2.5rem' }}>
+          {/* Matrix Table with Y labels (Employee Names), White-Bordered Cells, and X labels (Time) */}
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
             {/* Rows Container */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
               {currentDataset.yLabels.map((rowLabel, rIdx) => (
-                <div key={rowLabel} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  {/* Y Axis Label (Employee or Day) */}
+                <div key={rowLabel} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  {/* Y Axis Label (Employee Name on the left) */}
                   <div
                     style={{
-                      width: 120,
+                      width: 105,
                       textAlign: 'right',
-                      fontSize: 12.5,
-                      fontWeight: 700,
+                      fontSize: 13,
+                      fontWeight: 800,
                       color: 'var(--text-primary)',
                       fontFamily: 'Inter, system-ui, sans-serif',
-                      paddingRight: 6,
+                      paddingRight: 8,
                       userSelect: 'none',
                       whiteSpace: 'nowrap',
                       overflow: 'hidden',
@@ -440,8 +337,8 @@ export const MatrixHeatmap: React.FC<MatrixHeatmapProps> = ({
                     {rowLabel}
                   </div>
 
-                  {/* Row Cells */}
-                  <div style={{ display: 'flex', gap: 2 }}>
+                  {/* Row Cells with crisp white borders and rounded corners */}
+                  <div style={{ display: 'flex' }}>
                     {currentDataset.xLabels.map((colLabel, cIdx) => {
                       const val = currentDataset.data[rIdx]?.[cIdx] ?? 50;
                       const { bg, textColor } = getHeatmapColor(
@@ -455,8 +352,8 @@ export const MatrixHeatmap: React.FC<MatrixHeatmapProps> = ({
                       return (
                         <motion.div
                           key={`${rIdx}-${cIdx}`}
-                          whileHover={{ scale: 1.08, zIndex: 10 }}
-                          transition={{ duration: 0.12 }}
+                          whileHover={{ scale: 1.06, zIndex: 10 }}
+                          transition={{ duration: 0.1 }}
                           onMouseEnter={() =>
                             setHoveredCell({
                               row: rIdx,
@@ -479,22 +376,24 @@ export const MatrixHeatmap: React.FC<MatrixHeatmapProps> = ({
                             })
                           }
                           style={{
-                            width: 54,
-                            height: 44,
+                            width: 58,
+                            height: 48,
                             backgroundColor: bg,
                             color: textColor,
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'center',
-                            fontSize: 12.5,
-                            fontWeight: 700,
+                            fontSize: 13,
+                            fontWeight: 800,
                             fontFamily: 'Roboto, system-ui, monospace',
                             letterSpacing: '-0.02em',
                             cursor: 'pointer',
                             userSelect: 'none',
                             position: 'relative',
+                            border: '1.5px solid #ffffff',
+                            borderRadius: 4,
                             boxShadow: isHovered
-                              ? '0 4px 14px rgba(0,0,0,0.35), inset 0 0 0 1.5px #ffffff'
+                              ? '0 6px 16px rgba(0,0,0,0.4), inset 0 0 0 1.5px #ffffff'
                               : 'none',
                             transition: 'box-shadow 0.15s ease',
                           }}
@@ -508,24 +407,21 @@ export const MatrixHeatmap: React.FC<MatrixHeatmapProps> = ({
               ))}
             </div>
 
-            {/* X Axis Column Labels */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 8 }}>
-              <div style={{ width: 120 }} /> {/* Spacer for Y label alignment */}
-              <div style={{ display: 'flex', gap: 2 }}>
+            {/* X Axis Column Labels (Time on the bottom) */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 10 }}>
+              <div style={{ width: 105 }} /> {/* Spacer for Y label alignment */}
+              <div style={{ display: 'flex' }}>
                 {currentDataset.xLabels.map((colLabel) => (
                   <div
                     key={colLabel}
                     style={{
-                      width: 54,
+                      width: 58,
                       textAlign: 'center',
-                      fontSize: 11.5,
-                      fontWeight: 700,
+                      fontSize: 12,
+                      fontWeight: 800,
                       color: 'var(--text-primary)',
                       fontFamily: 'Inter, system-ui, sans-serif',
                       userSelect: 'none',
-                      whiteSpace: 'nowrap',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
                     }}
                     title={colLabel}
                   >
@@ -538,11 +434,11 @@ export const MatrixHeatmap: React.FC<MatrixHeatmapProps> = ({
             {/* X-Axis Dimension Name */}
             <div
               style={{
-                marginTop: 10,
+                marginTop: 12,
                 fontSize: 12,
-                fontWeight: 800,
-                color: 'var(--text-secondary)',
-                letterSpacing: '0.06em',
+                fontWeight: 900,
+                color: 'var(--text-primary)',
+                letterSpacing: '0.08em',
                 textTransform: 'uppercase',
               }}
             >
@@ -550,14 +446,14 @@ export const MatrixHeatmap: React.FC<MatrixHeatmapProps> = ({
             </div>
           </div>
 
-          {/* Colorbar Scale Legend (Exact visual replica of reference colorbar) */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          {/* Colorbar Scale Legend (Exact visual replica with magma gradient and ticks) */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             {/* Color Gradient Strip */}
             <div
               style={{
                 width: 18,
-                height: 350,
-                borderRadius: 2,
+                height: 384,
+                borderRadius: 3,
                 background: `linear-gradient(to top, 
                   rgb(17, 11, 40) 0%, 
                   rgb(58, 13, 84) 15%, 
@@ -576,12 +472,12 @@ export const MatrixHeatmap: React.FC<MatrixHeatmapProps> = ({
             {/* Scale Ticks */}
             <div
               style={{
-                height: 350,
+                height: 384,
                 display: 'flex',
                 flexDirection: 'column',
                 justifyContent: 'space-between',
                 fontSize: 11,
-                fontWeight: 700,
+                fontWeight: 800,
                 color: 'var(--text-secondary)',
                 fontFamily: 'Roboto, monospace',
                 userSelect: 'none',
@@ -619,13 +515,13 @@ export const MatrixHeatmap: React.FC<MatrixHeatmapProps> = ({
           <Info size={14} color="var(--color-secondary)" />
           {hoveredCell ? (
             <span>
-              Employee Activity: <strong>{hoveredCell.rowLabel}</strong> at <strong>{hoveredCell.colLabel}</strong> =
+              Activity for <strong>{hoveredCell.rowLabel}</strong> at <strong>{hoveredCell.colLabel}</strong>:
               <span style={{ marginLeft: 6, fontWeight: 800, color: 'var(--color-secondary)' }}>
                 {hoveredCell.val.toFixed(1)} {currentDataset.unit || '%'} Intensity
               </span>
             </span>
           ) : (
-            <span>Hover over any employee cell to inspect activity score, or click to open full workstation diagnostic telemetry.</span>
+            <span>Hover over any cell to inspect activity score, or click to open full workstation diagnostic telemetry.</span>
           )}
         </div>
 
@@ -649,7 +545,7 @@ export const MatrixHeatmap: React.FC<MatrixHeatmapProps> = ({
               <div className="content-card-title">
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <Maximize2 size={18} color="var(--color-secondary)" />
-                  <span style={{ fontSize: 17, fontWeight: 700 }}>Employee Telemetry Diagnostics</span>
+                  <span style={{ fontSize: 17, fontWeight: 700 }}>Workstation Telemetry Diagnostics</span>
                 </div>
                 <button
                   type="button"
@@ -675,7 +571,7 @@ export const MatrixHeatmap: React.FC<MatrixHeatmapProps> = ({
                 >
                   <div>
                     <div style={{ fontSize: 12, opacity: 0.85, fontWeight: 600 }}>Workstation Activity Intensity</div>
-                    <div style={{ fontSize: 30, fontWeight: 900, fontFamily: 'monospace' }}>
+                    <div style={{ fontSize: 32, fontWeight: 900, fontFamily: 'monospace' }}>
                       {selectedCell.val.toFixed(1)} {selectedCell.unit}
                     </div>
                   </div>
@@ -686,23 +582,27 @@ export const MatrixHeatmap: React.FC<MatrixHeatmapProps> = ({
                   <div className="frosted-card frosted-card-sm" style={{ padding: 10 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: 'var(--text-muted)' }}>
                       <User size={13} />
-                      <span>Employee</span>
+                      <span>Employee Name</span>
                     </div>
-                    <div style={{ fontWeight: 700, fontSize: 13, marginTop: 2 }}>{selectedCell.rowLabel}</div>
+                    <div style={{ fontWeight: 800, fontSize: 14, marginTop: 2, color: 'var(--text-primary)' }}>
+                      {selectedCell.rowLabel}
+                    </div>
                   </div>
 
                   <div className="frosted-card frosted-card-sm" style={{ padding: 10 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: 'var(--text-muted)' }}>
                       <Clock size={13} />
-                      <span>Interval / Slot</span>
+                      <span>Shift Time</span>
                     </div>
-                    <div style={{ fontWeight: 700, fontSize: 13, marginTop: 2 }}>{selectedCell.colLabel}</div>
+                    <div style={{ fontWeight: 800, fontSize: 14, marginTop: 2, color: 'var(--text-primary)' }}>
+                      {selectedCell.colLabel}
+                    </div>
                   </div>
 
                   <div className="frosted-card frosted-card-sm" style={{ padding: 10 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: 'var(--text-muted)' }}>
                       <Keyboard size={13} />
-                      <span>Est. Keypresses</span>
+                      <span>Active Keypresses</span>
                     </div>
                     <div style={{ fontWeight: 700, fontSize: 13, marginTop: 2 }}>
                       {Math.round(selectedCell.val * 34)} keys
@@ -712,7 +612,7 @@ export const MatrixHeatmap: React.FC<MatrixHeatmapProps> = ({
                   <div className="frosted-card frosted-card-sm" style={{ padding: 10 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: 'var(--text-muted)' }}>
                       <MousePointer size={13} />
-                      <span>Mouse Events</span>
+                      <span>Mouse Actions</span>
                     </div>
                     <div style={{ fontWeight: 700, fontSize: 13, marginTop: 2 }}>
                       {Math.round(selectedCell.val * 88)} actions
@@ -721,9 +621,9 @@ export const MatrixHeatmap: React.FC<MatrixHeatmapProps> = ({
                 </div>
 
                 <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 12px', background: 'var(--surface-frosted-subdued)', borderRadius: 'var(--radius-card-sm)', fontSize: 12 }}>
-                  <span style={{ color: 'var(--text-muted)' }}>Compliance Guarantee:</span>
+                  <span style={{ color: 'var(--text-muted)' }}>Privacy Guarantee:</span>
                   <span style={{ color: 'var(--status-success)', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 4 }}>
-                    <CheckCircle2 size={13} /> Zero Keylogging &bull; Aggregates Only
+                    <CheckCircle2 size={13} /> Zero Keylogging &bull; Aggregate Telemetry Only
                   </span>
                 </div>
 

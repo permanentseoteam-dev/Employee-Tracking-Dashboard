@@ -10,23 +10,31 @@ import {
   Monitor,
   Video,
   CheckCircle2,
+  Play,
+  Download,
+  Clock,
+  Search,
+  ShieldCheck,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { dataService } from '../../services/dataService';
 import { MatrixHeatmap } from '../../components/telemetry/MatrixHeatmap';
-import type { ScreenshotItem, EmployeeRecord } from '../../types/roles';
+import type { ScreenshotItem, EmployeeRecord, ScreenRecordingItem } from '../../types/roles';
 
 interface ManagerMonitoringPageProps {
-  initialSubTab?: 'live' | 'screenshots' | 'heatmaps';
+  initialSubTab?: 'live' | 'recordings' | 'screenshots' | 'heatmaps';
 }
 
 export const ManagerMonitoringPage: React.FC<ManagerMonitoringPageProps> = ({ initialSubTab = 'live' }) => {
   const { user, navigate } = useAuth();
-  const [activeSubTab, setActiveSubTab] = useState<'live' | 'screenshots' | 'heatmaps'>(initialSubTab);
+  const [activeSubTab, setActiveSubTab] = useState<'live' | 'recordings' | 'screenshots' | 'heatmaps'>(initialSubTab);
   const [screenshots, setScreenshots] = useState<ScreenshotItem[]>([]);
+  const [recordings, setRecordings] = useState<ScreenRecordingItem[]>([]);
   const [teamEmployees, setTeamEmployees] = useState<EmployeeRecord[]>([]);
   const [filterEmployeeId, setFilterEmployeeId] = useState<string>('all');
+  const [recordingSearch, setRecordingSearch] = useState<string>('');
   const [selectedScreenshot, setSelectedScreenshot] = useState<ScreenshotItem | null>(null);
+  const [selectedRecording, setSelectedRecording] = useState<ScreenRecordingItem | null>(null);
 
   // Live Screen Inspection & Recording Modal State
   const [selectedLiveEmployee, setSelectedLiveEmployee] = useState<EmployeeRecord | null>(null);
@@ -42,9 +50,14 @@ export const ManagerMonitoringPage: React.FC<ManagerMonitoringPageProps> = ({ in
 
   const loadData = async () => {
     try {
-      const [empList, scList] = await Promise.all([
+      const [empList, scList, recList] = await Promise.all([
         dataService.getEmployees('manager', user.id),
         dataService.getScreenshots(
+          'manager',
+          user.id,
+          filterEmployeeId === 'all' ? undefined : filterEmployeeId
+        ),
+        dataService.getScreenRecordings(
           'manager',
           user.id,
           filterEmployeeId === 'all' ? undefined : filterEmployeeId
@@ -52,6 +65,7 @@ export const ManagerMonitoringPage: React.FC<ManagerMonitoringPageProps> = ({ in
       ]);
       setTeamEmployees(empList);
       setScreenshots(scList);
+      setRecordings(recList);
 
       // Keep selected live employee updated in real time
       if (selectedLiveEmployee) {

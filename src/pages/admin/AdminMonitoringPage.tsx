@@ -11,23 +11,32 @@ import {
   Monitor,
   Video,
   CheckCircle2,
+  Play,
+  Download,
+  Clock,
+  Film,
+  Search,
+  ShieldCheck,
 } from 'lucide-react';
 import { dataService } from '../../services/dataService';
 import { useAuth } from '../../context/AuthContext';
 import { MatrixHeatmap } from '../../components/telemetry/MatrixHeatmap';
-import type { ScreenshotItem, EmployeeRecord } from '../../types/roles';
+import type { ScreenshotItem, EmployeeRecord, ScreenRecordingItem } from '../../types/roles';
 
 interface AdminMonitoringPageProps {
-  initialSubTab?: 'live' | 'screenshots' | 'heatmaps';
+  initialSubTab?: 'live' | 'recordings' | 'screenshots' | 'heatmaps';
 }
 
 export const AdminMonitoringPage: React.FC<AdminMonitoringPageProps> = ({ initialSubTab = 'live' }) => {
   const { navigate, user } = useAuth();
-  const [activeSubTab, setActiveSubTab] = useState<'live' | 'screenshots' | 'heatmaps'>(initialSubTab);
+  const [activeSubTab, setActiveSubTab] = useState<'live' | 'recordings' | 'screenshots' | 'heatmaps'>(initialSubTab);
   const [screenshots, setScreenshots] = useState<ScreenshotItem[]>([]);
+  const [recordings, setRecordings] = useState<ScreenRecordingItem[]>([]);
   const [employees, setEmployees] = useState<EmployeeRecord[]>([]);
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<string>('all');
+  const [recordingSearch, setRecordingSearch] = useState<string>('');
   const [selectedScreenshot, setSelectedScreenshot] = useState<ScreenshotItem | null>(null);
+  const [selectedRecording, setSelectedRecording] = useState<ScreenRecordingItem | null>(null);
 
   // Live Screen Inspection & Recording Modal State
   const [selectedLiveEmployee, setSelectedLiveEmployee] = useState<EmployeeRecord | null>(null);
@@ -43,12 +52,14 @@ export const AdminMonitoringPage: React.FC<AdminMonitoringPageProps> = ({ initia
 
   const loadData = async () => {
     try {
-      const [empList, scList] = await Promise.all([
+      const [empList, scList, recList] = await Promise.all([
         dataService.getEmployees('admin'),
         dataService.getScreenshots('admin', undefined, selectedEmployeeId === 'all' ? undefined : selectedEmployeeId),
+        dataService.getScreenRecordings('admin', undefined, selectedEmployeeId === 'all' ? undefined : selectedEmployeeId),
       ]);
       setEmployees(empList);
       setScreenshots(scList);
+      setRecordings(recList);
 
       // Keep selected live employee updated in real time
       if (selectedLiveEmployee) {
@@ -135,6 +146,15 @@ export const AdminMonitoringPage: React.FC<AdminMonitoringPageProps> = ({ initia
     selectedEmployeeId === 'all' ? true : e.id === selectedEmployeeId
   );
 
+  const filteredRecordings = recordings.filter((r) => {
+    const matchesEmp = selectedEmployeeId === 'all' ? true : r.employee_id === selectedEmployeeId;
+    const matchesSearch = recordingSearch === ''
+      ? true
+      : r.employee_name.toLowerCase().includes(recordingSearch.toLowerCase()) ||
+        r.active_window.toLowerCase().includes(recordingSearch.toLowerCase());
+    return matchesEmp && matchesSearch;
+  });
+
   const totalActiveCount = employees.filter((e) => e.status === 'active').length;
   const totalKeysAgg = employees.reduce((acc, e) => acc + (e.key_press_count || 0), 0);
   const totalMovesAgg = employees.reduce((acc, e) => acc + (e.mouse_move_count || 0), 0);
@@ -174,6 +194,17 @@ export const AdminMonitoringPage: React.FC<AdminMonitoringPageProps> = ({ initia
             >
               <Activity size={14} />
               <span>Live Feeds ({totalActiveCount} Active)</span>
+            </button>
+            <button
+              type="button"
+              className={`nav-pill-item ${activeSubTab === 'recordings' ? 'active' : ''}`}
+              onClick={() => {
+                setActiveSubTab('recordings');
+                navigate('/admin/monitoring/recordings');
+              }}
+            >
+              <Video size={14} />
+              <span>Live Recordings ({recordings.length})</span>
             </button>
             <button
               type="button"
@@ -447,7 +478,345 @@ export const AdminMonitoringPage: React.FC<AdminMonitoringPageProps> = ({ initia
         </div>
       )}
 
-      {/* 2. Screenshots Gallery Tab */}
+      {/* 2. Live Recordings Subtab (Stored in Supabase Vault & Activity Events) */}
+      {activeSubTab === 'recordings' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+          {/* Subtab Toolbar */}
+          <div
+            className="frosted-card frosted-card-sm"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              flexWrap: 'wrap',
+              gap: 12,
+              padding: '12px 18px',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  background: 'var(--surface-frosted-subdued)',
+                  padding: '6px 12px',
+                  borderRadius: 'var(--radius-pill)',
+                  border: '1px solid var(--surface-border-subtle)',
+                }}
+              >
+                <Search size={14} color="var(--text-muted)" />
+                <input
+                  type="text"
+                  placeholder="Search by window or employee..."
+                  value={recordingSearch}
+                  onChange={(e) => setRecordingSearch(e.target.value)}
+                  style={{
+                    border: 'none',
+                    background: 'transparent',
+                    color: 'var(--text-primary)',
+                    fontSize: 12,
+                    outline: 'none',
+                    width: 210,
+                  }}
+                />
+                {recordingSearch && (
+                  <button
+                    type="button"
+                    onClick={() => setRecordingSearch('')}
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+                  >
+                    <X size={12} color="var(--text-muted)" />
+                  </button>
+                )}
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--text-muted)' }}>
+                <Filter size={13} />
+                <span>Employee:</span>
+                <select
+                  value={selectedEmployeeId}
+                  onChange={(e) => setSelectedEmployeeId(e.target.value)}
+                  className="stitch-select"
+                  style={{ fontSize: 12, padding: '4px 10px' }}
+                >
+                  <option value="all">All Organization Employees</option>
+                  {employees.map((e) => (
+                    <option key={e.id} value={e.id}>
+                      {e.name} ({e.department})
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <span
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  fontSize: 11,
+                  fontWeight: 700,
+                  color: '#10b981',
+                  background: 'rgba(16, 185, 129, 0.12)',
+                  border: '1px solid rgba(16, 185, 129, 0.25)',
+                  padding: '4px 10px',
+                  borderRadius: 'var(--radius-pill)',
+                }}
+              >
+                <ShieldCheck size={13} />
+                <span>Supabase Vault Synchronized</span>
+              </span>
+
+              <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                Total: <strong>{filteredRecordings.length}</strong> session(s)
+              </span>
+            </div>
+          </div>
+
+          {/* Recordings Grid */}
+          {filteredRecordings.length === 0 ? (
+            <div
+              className="frosted-card"
+              style={{
+                textAlign: 'center',
+                padding: '3.5rem 1.5rem',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                gap: 12,
+              }}
+            >
+              <div
+                style={{
+                  width: 48,
+                  height: 48,
+                  borderRadius: '50%',
+                  background: 'rgba(76, 107, 255, 0.12)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: 'var(--color-primary)',
+                }}
+              >
+                <Video size={24} />
+              </div>
+              <h3 style={{ fontSize: 16, fontWeight: 700, margin: 0 }}>No screen recordings stored yet</h3>
+              <p style={{ fontSize: 12, color: 'var(--text-muted)', maxWidth: 420, margin: 0 }}>
+                Screen recordings are triggered on-demand to preserve employee privacy and bandwidth. Click "Record Screen" on any employee card in Live Feeds to capture a 10-second session.
+              </p>
+              <button
+                type="button"
+                className="btn-pill btn-pill-primary"
+                onClick={() => {
+                  setActiveSubTab('live');
+                  navigate('/admin/monitoring/live');
+                }}
+              >
+                <Activity size={13} />
+                <span>Go to Live Feeds to Record</span>
+              </button>
+            </div>
+          ) : (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(360px, 1fr))', gap: '1.25rem' }}>
+              {filteredRecordings.map((rec) => (
+                <div
+                  key={rec.id}
+                  className="frosted-card"
+                  style={{
+                    padding: 0,
+                    overflow: 'hidden',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    transition: 'all 0.2s ease',
+                  }}
+                >
+                  {/* Card Header */}
+                  <div
+                    style={{
+                      padding: '12px 14px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      borderBottom: '1px solid var(--surface-border-subtle)',
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <div
+                        style={{
+                          width: 32,
+                          height: 32,
+                          borderRadius: '50%',
+                          background: 'linear-gradient(135deg, #4c6bff, #7a5af8)',
+                          color: '#ffffff',
+                          fontSize: 12,
+                          fontWeight: 800,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                        }}
+                      >
+                        {rec.employee_name.slice(0, 2).toUpperCase()}
+                      </div>
+                      <div>
+                        <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--text-primary)' }}>
+                          {rec.employee_name}
+                        </div>
+                        <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>
+                          {rec.department} &bull; {rec.device_name || rec.device_id}
+                        </span>
+                      </div>
+                    </div>
+
+                    <span
+                      style={{
+                        fontSize: 10,
+                        fontWeight: 700,
+                        padding: '3px 8px',
+                        borderRadius: 'var(--radius-pill)',
+                        background: 'rgba(16, 185, 129, 0.14)',
+                        color: '#10b981',
+                        border: '1px solid rgba(16, 185, 129, 0.3)',
+                      }}
+                    >
+                      {rec.status === 'completed' ? 'Vault Archived' : 'Processing'}
+                    </span>
+                  </div>
+
+                  {/* Video Thumbnail / Preview Container */}
+                  <div
+                    style={{
+                      height: 200,
+                      position: 'relative',
+                      background: '#090d16',
+                      cursor: 'pointer',
+                      overflow: 'hidden',
+                    }}
+                    onClick={() => setSelectedRecording(rec)}
+                  >
+                    <img
+                      src={rec.thumbnail_url}
+                      alt={rec.active_window}
+                      style={{
+                        width: '100%',
+                        height: '100%',
+                        objectFit: 'cover',
+                        opacity: 0.8,
+                      }}
+                    />
+
+                    {/* Gradient Overlay */}
+                    <div
+                      style={{
+                        position: 'absolute',
+                        inset: 0,
+                        background: 'linear-gradient(to top, rgba(9,13,22,0.92) 0%, rgba(9,13,22,0.2) 60%)',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        justifyContent: 'space-between',
+                        padding: 12,
+                      }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span className="live-telemetry-badge" style={{ fontSize: 10, padding: '2px 8px' }}>
+                          <Clock size={11} /> {rec.duration_seconds}s Session
+                        </span>
+                        <span style={{ fontSize: 10, color: '#e2e8f0', background: 'rgba(0,0,0,0.6)', padding: '2px 6px', borderRadius: 4 }}>
+                          {new Date(rec.started_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                      </div>
+
+                      {/* Play Button Overlay */}
+                      <div
+                        style={{
+                          alignSelf: 'center',
+                          width: 46,
+                          height: 46,
+                          borderRadius: '50%',
+                          background: 'rgba(76, 107, 255, 0.85)',
+                          backdropFilter: 'blur(8px)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          color: '#ffffff',
+                          boxShadow: '0 0 16px rgba(76, 107, 255, 0.6)',
+                        }}
+                      >
+                        <Play size={20} fill="#ffffff" style={{ marginLeft: 2 }} />
+                      </div>
+
+                      {/* Window Title Banner */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <Monitor size={13} color="#38bdf8" />
+                        <span
+                          style={{
+                            fontSize: 11,
+                            fontWeight: 700,
+                            color: '#ffffff',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
+                          }}
+                        >
+                          {rec.active_window}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Card Footer */}
+                  <div
+                    style={{
+                      padding: '12px 14px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      background: 'var(--surface-frosted-subdued)',
+                      fontSize: 11,
+                    }}
+                  >
+                    <div>
+                      <span style={{ color: 'var(--text-muted)', display: 'block', fontSize: 10 }}>Recorded By</span>
+                      <strong style={{ color: 'var(--text-primary)' }}>{rec.recorded_by}</strong>
+                    </div>
+
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      <button
+                        type="button"
+                        className="btn-pill btn-pill-secondary"
+                        style={{ padding: '4px 10px', fontSize: 11 }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          const a = document.createElement('a');
+                          a.href = rec.video_url;
+                          a.download = `recording-${rec.employee_name}-${rec.id}.mp4`;
+                          a.click();
+                        }}
+                      >
+                        <Download size={12} />
+                        <span>Download</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        className="btn-pill btn-pill-primary"
+                        style={{ padding: '4px 12px', fontSize: 11 }}
+                        onClick={() => setSelectedRecording(rec)}
+                      >
+                        <Play size={12} fill="currentColor" />
+                        <span>Watch</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* 3. Screenshots Gallery Tab */}
       {activeSubTab === 'screenshots' && (
         <div>
           {screenshots.length === 0 ? (
@@ -495,6 +864,157 @@ export const AdminMonitoringPage: React.FC<AdminMonitoringPageProps> = ({ initia
                   </div>
                 </div>
               ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* 2.5 Screen Recordings Gallery Tab */}
+      {activeSubTab === 'recordings' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+          {/* Recordings search & info header */}
+          <div
+            className="frosted-card frosted-card-sm"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              flexWrap: 'wrap',
+              gap: 12,
+              padding: '10px 16px',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Film size={16} color="var(--color-secondary)" />
+              <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>
+                On-Demand & Automated Workstation Recordings
+              </span>
+              <span className="live-telemetry-badge">
+                <ShieldCheck size={11} /> Cryptographic Vault
+              </span>
+            </div>
+
+            <div className="stitch-search-pill" style={{ width: 240, padding: '4px 12px' }}>
+              <Search size={14} color="var(--text-muted)" />
+              <input
+                type="text"
+                placeholder="Filter recordings..."
+                value={recordingSearch}
+                onChange={(e) => setRecordingSearch(e.target.value)}
+                style={{ fontSize: 12 }}
+              />
+            </div>
+          </div>
+
+          {recordings.filter(r =>
+            r.employee_name.toLowerCase().includes(recordingSearch.toLowerCase()) ||
+            r.active_window.toLowerCase().includes(recordingSearch.toLowerCase())
+          ).length === 0 ? (
+            <div className="frosted-card" style={{ textAlign: 'center', padding: '3.5rem', color: 'var(--text-muted)' }}>
+              <Video size={40} style={{ margin: '0 auto 12px auto', opacity: 0.4 }} />
+              <h3 style={{ fontSize: 16, fontWeight: 700, color: 'var(--text-primary)' }}>No screen recordings found</h3>
+              <p style={{ fontSize: 13, marginTop: 4 }}>
+                Switch to Live Feeds and click "Record Screen" on any employee workstation to generate an on-demand recording.
+              </p>
+            </div>
+          ) : (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '1.25rem' }}>
+              {recordings
+                .filter(r =>
+                  r.employee_name.toLowerCase().includes(recordingSearch.toLowerCase()) ||
+                  r.active_window.toLowerCase().includes(recordingSearch.toLowerCase())
+                )
+                .map((rec) => (
+                  <div
+                    key={rec.id}
+                    className="frosted-card"
+                    style={{ padding: 0, overflow: 'hidden', cursor: 'pointer' }}
+                    onClick={() => setSelectedRecording(rec)}
+                  >
+                    <div style={{ height: 180, position: 'relative', background: '#0b1120' }}>
+                      {rec.thumbnail_url ? (
+                        <img
+                          src={rec.thumbnail_url}
+                          alt={rec.active_window}
+                          style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                        />
+                      ) : (
+                        <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>
+                          <Film size={36} />
+                        </div>
+                      )}
+
+                      {/* Play overlay button */}
+                      <div
+                        style={{
+                          position: 'absolute',
+                          inset: 0,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          background: 'rgba(0,0,0,0.35)',
+                        }}
+                      >
+                        <div
+                          style={{
+                            width: 44,
+                            height: 44,
+                            borderRadius: '50%',
+                            background: 'rgba(59, 130, 246, 0.9)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            color: '#fff',
+                            boxShadow: '0 4px 14px rgba(0,0,0,0.5)',
+                          }}
+                        >
+                          <Play size={20} fill="#fff" style={{ marginLeft: 2 }} />
+                        </div>
+                      </div>
+
+                      {/* Duration badge */}
+                      <div
+                        style={{
+                          position: 'absolute',
+                          bottom: 10,
+                          right: 10,
+                          background: 'rgba(0,0,0,0.75)',
+                          borderRadius: 4,
+                          padding: '2px 8px',
+                          fontSize: 11,
+                          fontWeight: 700,
+                          color: '#fff',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 4,
+                        }}
+                      >
+                        <Clock size={11} />
+                        <span>00:{rec.duration_seconds < 10 ? `0${rec.duration_seconds}` : rec.duration_seconds}</span>
+                      </div>
+
+                      <div style={{ position: 'absolute', top: 10, left: 10 }}>
+                        <span className="status-pill active" style={{ fontSize: 10, padding: '2px 8px' }}>
+                          {rec.trigger_type === 'on_demand' ? 'On-Demand' : 'Scheduled'}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>
+                          {rec.employee_name}
+                        </span>
+                        <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                          {new Date(rec.started_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                      </div>
+                      <div style={{ fontSize: 11, color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {rec.active_window}
+                      </div>
+                    </div>
+                  </div>
+                ))}
             </div>
           )}
         </div>
@@ -733,6 +1253,66 @@ export const AdminMonitoringPage: React.FC<AdminMonitoringPageProps> = ({ initia
                   alt={selectedScreenshot.window_title}
                   style={{ width: '100%', height: 'auto', display: 'block', maxHeight: '72vh', objectFit: 'contain' }}
                 />
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Video Recording Playback Lightbox Modal */}
+      <AnimatePresence>
+        {selectedRecording && (
+          <div className="stitch-modal-backdrop" onClick={() => setSelectedRecording(null)}>
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="stitch-modal-content"
+              style={{ maxWidth: 840, width: '92vw', padding: '1.25rem' }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+                <div>
+                  <h3 style={{ fontSize: 16, fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>
+                    {selectedRecording.employee_name} — Workstation Recording
+                  </h3>
+                  <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                    Triggered by {selectedRecording.recorded_by} • {selectedRecording.active_window}
+                  </span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  {selectedRecording.video_url && (
+                    <a
+                      href={selectedRecording.video_url}
+                      download={`recording-${selectedRecording.employee_name}.mp4`}
+                      className="btn-pill btn-pill-secondary"
+                      style={{ padding: '6px 12px', fontSize: 12 }}
+                    >
+                      <Download size={14} />
+                      <span>Download</span>
+                    </a>
+                  )}
+                  <button type="button" className="btn-icon-circle" onClick={() => setSelectedRecording(null)}>
+                    <X size={16} />
+                  </button>
+                </div>
+              </div>
+
+              <div style={{ borderRadius: 'var(--radius-card-sm)', overflow: 'hidden', background: '#000', maxHeight: 520, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                {selectedRecording.video_url && selectedRecording.video_url.endsWith('.mp4') ? (
+                  <video
+                    src={selectedRecording.video_url}
+                    controls
+                    autoPlay
+                    style={{ width: '100%', maxHeight: 520, objectFit: 'contain' }}
+                  />
+                ) : (
+                  <img
+                    src={selectedRecording.thumbnail_url || selectedRecording.video_url}
+                    alt={selectedRecording.active_window}
+                    style={{ width: '100%', maxHeight: 520, objectFit: 'contain' }}
+                  />
+                )}
               </div>
             </motion.div>
           </div>

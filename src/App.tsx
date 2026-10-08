@@ -129,6 +129,8 @@ export const App: React.FC = () => {
         case '/admin/monitoring':
         case '/admin/monitoring/live':
           return <AdminMonitoringPage initialSubTab="live" />;
+        case '/admin/monitoring/recordings':
+          return <AdminMonitoringPage initialSubTab="recordings" />;
         case '/admin/monitoring/screenshots':
           return <AdminMonitoringPage initialSubTab="screenshots" />;
         case '/admin/monitoring/heatmaps':
@@ -192,6 +194,9 @@ export const App: React.FC = () => {
         case '/manager/monitoring':
         case '/manager/monitoring/live':
         case '/manager/activity':
+          return <ManagerMonitoringPage initialSubTab="live" />;
+        case '/manager/monitoring/recordings':
+        case '/manager/recordings':
           return <ManagerMonitoringPage initialSubTab="live" />;
         case '/manager/monitoring/screenshots':
         case '/manager/screenshots':

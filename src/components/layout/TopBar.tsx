@@ -1,6 +1,8 @@
-import React from 'react';
-import { Search, Bell, Activity, RefreshCw } from 'lucide-react';
+import { Search, Bell, Activity, RefreshCw, Sun, Moon } from 'lucide-react';
+import { useTheme } from '../../context/ThemeContext';
+import { useAuth } from '../../context/AuthContext';
 import type { AgentStatusDto, DbStats } from '../../types';
+import type { UserRole } from '../../types/roles';
 
 interface TopBarProps {
   status: AgentStatusDto;
@@ -17,6 +19,9 @@ export const TopBar: React.FC<TopBarProps> = ({
   searchQuery,
   onSearchChange,
 }) => {
+  const { theme, toggleTheme } = useTheme();
+  const { user, role, switchRole } = useAuth();
+
   return (
     <header className="topbar">
       <div className="topbar-left">
@@ -25,6 +30,30 @@ export const TopBar: React.FC<TopBarProps> = ({
             <Activity size={14} />
           </div>
           <span>Tracking Agent</span>
+          <span
+            style={{
+              fontSize: 10,
+              fontWeight: 700,
+              padding: '2px 6px',
+              borderRadius: 4,
+              textTransform: 'uppercase',
+              letterSpacing: '0.4px',
+              backgroundColor:
+                role === 'admin'
+                  ? 'rgba(59, 130, 246, 0.2)'
+                  : role === 'manager'
+                  ? 'rgba(16, 185, 129, 0.2)'
+                  : 'rgba(148, 163, 184, 0.2)',
+              color:
+                role === 'admin'
+                  ? 'var(--primary)'
+                  : role === 'manager'
+                  ? 'var(--success)'
+                  : 'var(--text-secondary)',
+            }}
+          >
+            {role}
+          </span>
         </div>
       </div>
 
@@ -33,7 +62,13 @@ export const TopBar: React.FC<TopBarProps> = ({
           <Search size={15} color="var(--text-muted)" />
           <input
             type="text"
-            placeholder="Search tasks, attendance, projects..."
+            placeholder={
+              role === 'admin'
+                ? 'Search entire organization (employees, managers, teams, logs)...'
+                : role === 'manager'
+                ? 'Search team members, assigned tasks, projects...'
+                : 'Search tasks, attendance, projects...'
+            }
             value={searchQuery}
             onChange={(e) => onSearchChange(e.target.value)}
           />
@@ -41,6 +76,53 @@ export const TopBar: React.FC<TopBarProps> = ({
       </div>
 
       <div className="topbar-right">
+        {/* Role Switcher Pill Bar */}
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            backgroundColor: 'var(--bg-surface)',
+            borderRadius: 'var(--radius-md)',
+            padding: 2,
+            border: '1px solid var(--border-medium)',
+            gap: 2,
+          }}
+          title="Switch Active Role Session"
+        >
+          {(['admin', 'manager', 'employee'] as UserRole[]).map((r) => {
+            const isSelected = role === r;
+            return (
+              <button
+                key={r}
+                type="button"
+                onClick={() => switchRole(r)}
+                style={{
+                  padding: '3px 8px',
+                  fontSize: 11,
+                  fontWeight: isSelected ? 600 : 500,
+                  borderRadius: 'var(--radius-sm)',
+                  border: 'none',
+                  cursor: 'pointer',
+                  textTransform: 'capitalize',
+                  backgroundColor: isSelected
+                    ? r === 'admin'
+                      ? 'var(--primary)'
+                      : r === 'manager'
+                      ? 'var(--success)'
+                      : 'var(--border-medium)'
+                    : 'transparent',
+                  color: isSelected
+                    ? '#fff'
+                    : 'var(--text-secondary)',
+                  transition: 'all 0.15s ease',
+                }}
+              >
+                {r}
+              </button>
+            );
+          })}
+        </div>
+
         {/* Outbox synchronization indicator */}
         <div
           className="sync-status-badge"
@@ -68,30 +150,48 @@ export const TopBar: React.FC<TopBarProps> = ({
           <RefreshCw size={16} />
         </button>
 
+        {/* Light & Dark Mode Switcher */}
+        <button
+          className="icon-btn theme-toggle-btn"
+          onClick={toggleTheme}
+          title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+          aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+        >
+          {theme === 'dark' ? (
+            <Sun size={16} className="theme-toggle-icon sun" />
+          ) : (
+            <Moon size={16} className="theme-toggle-icon moon" />
+          )}
+        </button>
+
         {/* Notifications button */}
         <button
           className="icon-btn"
           title="Notifications"
           aria-label="Notifications"
-          onClick={() => {
-            alert('Notifications: No critical alerts. All local systems operational.');
-          }}
         >
           <Bell size={16} />
         </button>
 
-        {/* User profile button */}
+        {/* User profile chip */}
         <div
           className="user-profile-chip"
-          title="Logged In User"
-          onClick={() => {
-            alert('User profile: Active session linked with Windows Credential Vault.');
-          }}
+          title={`Active Session: ${user.name} (${user.role.toUpperCase()})`}
         >
-          <div className="user-avatar">EM</div>
+          <div
+            className="user-avatar"
+            style={{
+              backgroundColor:
+                role === 'admin' ? '#3b82f6' : role === 'manager' ? '#10b981' : '#64748b',
+            }}
+          >
+            {user.avatar}
+          </div>
           <div className="user-info-text">
-            <span className="user-name">Employee User</span>
-            <span className="user-role">Desktop Agent</span>
+            <span className="user-name">{user.name}</span>
+            <span className="user-role" style={{ textTransform: 'capitalize' }}>
+              {user.role} &bull; {user.department}
+            </span>
           </div>
         </div>
       </div>

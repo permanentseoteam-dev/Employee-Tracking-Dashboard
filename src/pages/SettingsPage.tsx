@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Save, RefreshCw, Terminal, Database } from 'lucide-react';
+import { Save, RefreshCw, Terminal, Database, Sun, Moon } from 'lucide-react';
 import { api } from '../services/tauriBridge';
+import { useTheme } from '../context/ThemeContext';
 import type { AppConfig, DbStats, LogEntry } from '../types';
 
 interface SettingsPageProps {
@@ -8,6 +9,7 @@ interface SettingsPageProps {
 }
 
 export const SettingsPage: React.FC<SettingsPageProps> = ({ dbStats }) => {
+  const { theme, setTheme } = useTheme();
   const [config, setConfig] = useState<AppConfig | null>(null);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [isSaving, setIsSaving] = useState(false);
@@ -180,51 +182,92 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ dbStats }) => {
           </form>
         )}
 
-        {/* Database Diagnostics */}
-        <div className="content-card">
-          <div className="content-card-title">
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <Database size={16} color="var(--primary)" />
-              <span>SQLite Database Health</span>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+          {/* Appearance & Theme Selector */}
+          <div className="content-card">
+            <div className="content-card-title">
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                {theme === 'dark' ? (
+                  <Moon size={16} color="var(--primary)" />
+                ) : (
+                  <Sun size={16} color="var(--warning)" />
+                )}
+                <span>Appearance & Theme</span>
+              </div>
+            </div>
+
+            <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 14 }}>
+              Toggle between Light and Dark interface modes.
+            </p>
+
+            <div style={{ display: 'flex', gap: 12 }}>
+              <button
+                type="button"
+                className={`btn ${theme === 'dark' ? 'btn-primary' : 'btn-secondary'}`}
+                onClick={() => setTheme('dark')}
+                style={{ flex: 1 }}
+              >
+                <Moon size={15} />
+                <span>Dark Mode</span>
+              </button>
+              <button
+                type="button"
+                className={`btn ${theme === 'light' ? 'btn-primary' : 'btn-secondary'}`}
+                onClick={() => setTheme('light')}
+                style={{ flex: 1 }}
+              >
+                <Sun size={15} />
+                <span>Light Mode</span>
+              </button>
             </div>
           </div>
 
-          <table className="data-table">
-            <tbody>
-              <tr>
-                <td>Schema Migration Version</td>
-                <td style={{ fontWeight: 600 }}>v{dbStats.schema_version}</td>
-              </tr>
-              <tr>
-                <td>Pending Outbox Items</td>
-                <td>{dbStats.pending_outbox_count}</td>
-              </tr>
-              <tr>
-                <td>Activity Telemetry Rows</td>
-                <td>{dbStats.activity_records_count}</td>
-              </tr>
-              <tr>
-                <td>Screenshot Records</td>
-                <td>{dbStats.screenshot_records_count}</td>
-              </tr>
-              <tr>
-                <td>Task Sessions Recorded</td>
-                <td>{dbStats.task_sessions_count}</td>
-              </tr>
-            </tbody>
-          </table>
+          {/* Database Diagnostics */}
+          <div className="content-card">
+            <div className="content-card-title">
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Database size={16} color="var(--primary)" />
+                <span>SQLite Database Health</span>
+              </div>
+            </div>
 
-          <div
-            style={{
-              marginTop: 16,
-              padding: 12,
-              backgroundColor: 'var(--bg-surface)',
-              borderRadius: 'var(--radius-md)',
-              fontSize: 12,
-              color: 'var(--text-muted)',
-            }}
-          >
-            WAL journaling and ACID guarantees are active. Credentials are sequestered in Windows Credential Vault.
+            <table className="data-table">
+              <tbody>
+                <tr>
+                  <td>Schema Migration Version</td>
+                  <td style={{ fontWeight: 600 }}>v{dbStats.schema_version}</td>
+                </tr>
+                <tr>
+                  <td>Pending Outbox Items</td>
+                  <td>{dbStats.pending_outbox_count}</td>
+                </tr>
+                <tr>
+                  <td>Activity Telemetry Rows</td>
+                  <td>{dbStats.activity_records_count}</td>
+                </tr>
+                <tr>
+                  <td>Screenshot Records</td>
+                  <td>{dbStats.screenshot_records_count}</td>
+                </tr>
+                <tr>
+                  <td>Task Sessions Recorded</td>
+                  <td>{dbStats.task_sessions_count}</td>
+                </tr>
+              </tbody>
+            </table>
+
+            <div
+              style={{
+                marginTop: 16,
+                padding: 12,
+                backgroundColor: 'var(--bg-surface)',
+                borderRadius: 'var(--radius-md)',
+                fontSize: 12,
+                color: 'var(--text-muted)',
+              }}
+            >
+              WAL journaling and ACID guarantees are active. Credentials are sequestered in Windows Credential Vault.
+            </div>
           </div>
         </div>
       </div>
@@ -243,7 +286,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ dbStats }) => {
 
         <div
           style={{
-            backgroundColor: '#070a0f',
+            backgroundColor: 'var(--bg-terminal, #070a0f)',
             padding: 12,
             borderRadius: 'var(--radius-md)',
             fontFamily: 'monospace',

@@ -19,6 +19,7 @@ pnpm-debug.log*
 # Environment & IDE
 .env
 .env.*
+!.env.example
 .vscode/
 .idea/
 *.suo

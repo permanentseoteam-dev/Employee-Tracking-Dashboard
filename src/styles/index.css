@@ -1,4 +1,5 @@
-:root {
+:root,
+[data-theme="dark"] {
   --bg-app: #0b0f17;
   --bg-sidebar: #0f172a;
   --bg-topbar: #0f172a;
@@ -6,6 +7,7 @@
   --bg-surface-hover: #27354a;
   --bg-card: #131c2e;
   --bg-card-border: #1e2d42;
+  --bg-terminal: #070a0f;
 
   --border-subtle: #1e293b;
   --border-medium: #334155;
@@ -38,6 +40,70 @@
 
   --sidebar-width: 240px;
   --topbar-height: 56px;
+}
+
+[data-theme="light"] {
+  --bg-app: #f4f6fa;
+  --bg-sidebar: #ffffff;
+  --bg-topbar: #ffffff;
+  --bg-surface: #f1f5f9;
+  --bg-surface-hover: #e2e8f0;
+  --bg-card: #ffffff;
+  --bg-card-border: #e2e8f0;
+  --bg-terminal: #0f172a;
+
+  --border-subtle: #e8ecf2;
+  --border-medium: #cbd5e1;
+  --border-focus: #2563eb;
+
+  --text-primary: #0f172a;
+  --text-secondary: #475569;
+  --text-muted: #64748b;
+  --text-inverse: #ffffff;
+
+  --primary: #2563eb;
+  --primary-hover: #1d4ed8;
+  --primary-light: rgba(37, 99, 235, 0.08);
+
+  --success: #059669;
+  --success-bg: rgba(5, 150, 105, 0.1);
+  --warning: #d97706;
+  --warning-bg: rgba(217, 119, 6, 0.1);
+  --danger: #dc2626;
+  --danger-bg: rgba(220, 38, 38, 0.1);
+
+  --shadow-sm: 0 1px 3px 0 rgba(0, 0, 0, 0.06), 0 1px 2px -1px rgba(0, 0, 0, 0.04);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.07), 0 2px 4px -2px rgba(0, 0, 0, 0.05);
+}
+
+/* Smooth color transitions between themes */
+body, .app-container, .topbar, .sidebar, .main-content, .stat-card, .content-card, .agent-status-panel, .search-box, .btn, .nav-item {
+  transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+}
+
+/* Theme Switcher Button */
+.theme-toggle-btn {
+  color: var(--text-secondary);
+  border-radius: var(--radius-md);
+}
+
+.theme-toggle-btn:hover {
+  color: var(--primary);
+  background-color: var(--bg-surface);
+}
+
+.theme-toggle-icon {
+  transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), color 0.2s ease;
+}
+
+.theme-toggle-btn:hover .theme-toggle-icon.sun {
+  transform: rotate(45deg) scale(1.1);
+  color: #f59e0b;
+}
+
+.theme-toggle-btn:hover .theme-toggle-icon.moon {
+  transform: rotate(-20deg) scale(1.1);
+  color: #3b82f6;
 }
 
 * {

@@ -15,19 +15,22 @@ import {
   Clock,
   Search,
   ShieldCheck,
+  Flame,
+  Keyboard,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { dataService } from '../../services/dataService';
 import { MatrixHeatmap } from '../../components/telemetry/MatrixHeatmap';
+import { KeyboardActivityView } from '../../components/telemetry/KeyboardActivityView';
 import type { ScreenshotItem, EmployeeRecord, ScreenRecordingItem } from '../../types/roles';
 
 interface ManagerMonitoringPageProps {
-  initialSubTab?: 'live' | 'recordings' | 'screenshots' | 'heatmaps';
+  initialSubTab?: 'heatmaps' | 'keyboard' | 'recordings' | 'live' | 'screenshots';
 }
 
-export const ManagerMonitoringPage: React.FC<ManagerMonitoringPageProps> = ({ initialSubTab = 'live' }) => {
+export const ManagerMonitoringPage: React.FC<ManagerMonitoringPageProps> = ({ initialSubTab = 'heatmaps' }) => {
   const { user, navigate } = useAuth();
-  const [activeSubTab, setActiveSubTab] = useState<'live' | 'recordings' | 'screenshots' | 'heatmaps'>(initialSubTab);
+  const [activeSubTab, setActiveSubTab] = useState<'heatmaps' | 'keyboard' | 'recordings' | 'live' | 'screenshots'>(initialSubTab);
   const [screenshots, setScreenshots] = useState<ScreenshotItem[]>([]);
   const [recordings, setRecordings] = useState<ScreenRecordingItem[]>([]);
   const [teamEmployees, setTeamEmployees] = useState<EmployeeRecord[]>([]);
@@ -198,14 +201,25 @@ export const ManagerMonitoringPage: React.FC<ManagerMonitoringPageProps> = ({ in
           <div className="stitch-nav-pills">
             <button
               type="button"
-              className={`nav-pill-item ${activeSubTab === 'live' ? 'active' : ''}`}
+              className={`nav-pill-item ${activeSubTab === 'heatmaps' ? 'active' : ''}`}
               onClick={() => {
-                setActiveSubTab('live');
-                navigate('/manager/monitoring/live');
+                setActiveSubTab('heatmaps');
+                navigate('/manager/monitoring/heatmaps');
               }}
             >
-              <Activity size={14} />
-              <span>Live Feeds ({totalActiveCount} Active)</span>
+              <Flame size={14} />
+              <span>Mouse Heatmaps</span>
+            </button>
+            <button
+              type="button"
+              className={`nav-pill-item ${activeSubTab === 'keyboard' ? 'active' : ''}`}
+              onClick={() => {
+                setActiveSubTab('keyboard');
+                navigate('/manager/monitoring/keyboard');
+              }}
+            >
+              <Keyboard size={14} />
+              <span>Keyboard Activity</span>
             </button>
             <button
               type="button"
@@ -217,27 +231,6 @@ export const ManagerMonitoringPage: React.FC<ManagerMonitoringPageProps> = ({ in
             >
               <Video size={14} />
               <span>Live Recordings ({recordings.length})</span>
-            </button>
-            <button
-              type="button"
-              className={`nav-pill-item ${activeSubTab === 'screenshots' ? 'active' : ''}`}
-              onClick={() => {
-                setActiveSubTab('screenshots');
-                navigate('/manager/monitoring/screenshots');
-              }}
-            >
-              <Camera size={14} />
-              <span>Screenshots ({screenshots.length})</span>
-            </button>
-            <button
-              type="button"
-              className={`nav-pill-item ${activeSubTab === 'heatmaps' ? 'active' : ''}`}
-              onClick={() => {
-                setActiveSubTab('heatmaps');
-                navigate('/manager/monitoring/heatmaps');
-              }}
-            >
-              <span>Heatmaps</span>
             </button>
           </div>
 
@@ -885,9 +878,27 @@ export const ManagerMonitoringPage: React.FC<ManagerMonitoringPageProps> = ({ in
         </div>
       )}
 
-      {/* 3. Heatmaps Tab */}
+      {/* 3. Mouse Heatmaps Tab */}
       {activeSubTab === 'heatmaps' && (
-        <MatrixHeatmap initialPreset="hourly" />
+        <MatrixHeatmap
+          initialPreset="hourly"
+          selectedEmployeeName={
+            filterEmployeeId === 'all'
+              ? undefined
+              : teamEmployees.find((e) => e.id === filterEmployeeId)?.name
+          }
+        />
+      )}
+
+      {/* 4. Keyboard Activity Tab */}
+      {activeSubTab === 'keyboard' && (
+        <KeyboardActivityView
+          selectedEmployeeName={
+            filterEmployeeId === 'all'
+              ? undefined
+              : teamEmployees.find((e) => e.id === filterEmployeeId)?.name
+          }
+        />
       )}
 
       {/* Interactive Live Screen Inspector & On-Demand Recording Modal */}

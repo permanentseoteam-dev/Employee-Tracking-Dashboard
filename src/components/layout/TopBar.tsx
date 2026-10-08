@@ -222,7 +222,7 @@ export const TopBar: React.FC<TopBarProps> = ({
   const userInitials =
     user?.avatar && !isAvatarUrl(user.avatar)
       ? user.avatar
-      : (user?.name || 'Admin User')
+      : (user?.name || 'Arsal')
           .split(' ')
           .map((n) => n[0])
           .join('')

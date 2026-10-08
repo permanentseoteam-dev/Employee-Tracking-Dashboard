@@ -412,7 +412,7 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({ onNaviga
         <div className="frosted-card" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between', position: 'relative', overflow: 'hidden' }}>
           <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', zIndex: 10 }}>
             <div>
-              <h2 style={{ fontSize: 16, fontWeight: 700, color: 'var(--text-primary)' }}>Alex Vance</h2>
+              <h2 style={{ fontSize: 16, fontWeight: 700, color: 'var(--text-primary)' }}>Arsal</h2>
               <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Operations & Engineering Lead</span>
             </div>
             <div style={{ display: 'flex', gap: 4 }}>
@@ -429,7 +429,7 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({ onNaviga
           <div style={{ position: 'relative', width: '100%', height: 180, display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0.75rem 0' }}>
             <div style={{ position: 'absolute', width: 140, height: 140, borderRadius: '50%', background: 'var(--color-secondary-container)', opacity: 0.4, filter: 'blur(20px)' }} />
             <div className="avatar-chip" style={{ width: 90, height: 90, fontSize: 28, zIndex: 10 }}>
-              AV
+              AR
             </div>
           </div>
 

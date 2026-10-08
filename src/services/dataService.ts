@@ -53,26 +53,9 @@ let screenRecordingsStore: ScreenRecordingItem[] = [
     video_url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4',
     thumbnail_url: 'https://images.unsplash.com/photo-1555066931-4365d14bab8c?auto=format&fit=crop&w=1200&q=80',
     trigger_type: 'on_demand',
-    recorded_by: 'Super Admin',
+    recorded_by: 'Arsal (Admin)',
     active_window: 'Visual Studio Code - Employee Tracking Dashboard',
     file_size_bytes: 2840120,
-    status: 'completed',
-  },
-  {
-    id: 'rec-1791458890120',
-    employee_id: 'dddddddd-dddd-dddd-dddd-dddddddddddd',
-    employee_name: 'Michael Chen',
-    department: 'Engineering',
-    device_id: 'WIN-LAPTOP-MICHAEL-02',
-    device_name: 'LAPTOP-MICHAEL',
-    started_at: new Date(Date.now() - 1000 * 60 * 42).toISOString(),
-    duration_seconds: 15,
-    video_url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4',
-    thumbnail_url: 'https://images.unsplash.com/photo-1517694712202-14dd9538aa97?auto=format&fit=crop&w=1200&q=80',
-    trigger_type: 'on_demand',
-    recorded_by: 'Alex Vance (Manager)',
-    active_window: 'Google Chrome - Supabase Console',
-    file_size_bytes: 3410500,
     status: 'completed',
   },
 ];
@@ -83,8 +66,8 @@ let customTeamsStore: TeamRecord[] = [
     name: 'Core Backend Team',
     department: 'Engineering',
     manager_id: 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
-    manager_name: 'Alex Vance',
-    member_count: 2,
+    manager_name: 'Arsal',
+    member_count: 1,
     active_count: 1,
     attendance_rate: 100,
     project_ids: ['proj-01'],
@@ -94,7 +77,7 @@ let customTeamsStore: TeamRecord[] = [
     name: 'UI & Web Architecture',
     department: 'Frontend',
     manager_id: 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
-    manager_name: 'Alex Vance',
+    manager_name: 'Arsal',
     member_count: 1,
     active_count: 1,
     attendance_rate: 100,
@@ -105,7 +88,7 @@ let customTeamsStore: TeamRecord[] = [
     name: 'Mobile & Cloud Infrastructure',
     department: 'Mobile',
     manager_id: 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
-    manager_name: 'Alex Vance',
+    manager_name: 'Arsal',
     member_count: 1,
     active_count: 1,
     attendance_rate: 100,
@@ -228,7 +211,12 @@ export const dataService = {
         supabase.from('users').select('id, full_name, email').eq('role', 'manager'),
       ]);
 
-      const empRows = empRes.data || [];
+      const rawEmpRows = empRes.data || [];
+      // Only keep Arsal and filter out any dummy users
+      const filteredEmpRows = rawEmpRows.filter((e: any) =>
+        (e.full_name?.toLowerCase().includes('arsal') || e.email?.toLowerCase().includes('arsal'))
+      );
+      const empRows = filteredEmpRows.length > 0 ? filteredEmpRows : rawEmpRows;
       if (empRows.length === 0) return [];
 
       const presenceRows = presRes.data || [];
@@ -267,9 +255,7 @@ export const dataService = {
           latestEvent?.metadata?.window ||
           latestEvent?.metadata?.window_title ||
           activeTask?.title ||
-          (e.full_name?.toLowerCase().includes('arsal')
-            ? 'Visual Studio Code - Employee-Tracking-Dashboard'
-            : 'Google Chrome - Supabase Operations Console');
+          'Visual Studio Code - Employee-Tracking-Dashboard';
 
         // 5. Latest Screenshot
         const empScreenshots = screenshotRows.filter((s: any) => s.employee_id === e.id || s.employee_id === e.user_id);
@@ -302,13 +288,13 @@ export const dataService = {
 
         return {
           id: e.id,
-          name: e.full_name || 'Employee',
-          email: e.email,
+          name: e.full_name || 'Arsal',
+          email: e.email || 'arsal@company.com',
           department: e.department || 'Engineering',
           team_id: 'team-backend',
           team_name: e.department ? `${e.department} Team` : 'Core Backend Team',
           manager_id: e.manager_id || 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
-          manager_name: mgr?.full_name || 'Alex Vance',
+          manager_name: mgr?.full_name || 'Arsal (Manager)',
           status,
           attendance_status: status === 'offline' ? 'absent' : 'on_time',
           first_activity: firstActivity,
@@ -530,9 +516,9 @@ export const dataService = {
       name: teamData.name,
       department: teamData.department,
       manager_id: teamData.manager_id,
-      manager_name: teamData.manager_name || 'Alex Vance',
-      member_count: 0,
-      active_count: 0,
+      manager_name: teamData.manager_name || 'Arsal (Manager)',
+      member_count: 1,
+      active_count: 1,
       attendance_rate: 100,
       project_ids: [],
     };
@@ -553,6 +539,75 @@ export const dataService = {
     }
 
     return newTeam;
+  },
+
+  updateTeam: async (
+    role: UserRole,
+    teamId: string,
+    updates: Partial<TeamRecord>
+  ): Promise<TeamRecord> => {
+    if (role !== 'admin' && role !== 'manager') {
+      throw new Error('403 Forbidden: Only Admin and Manager can update teams');
+    }
+    const idx = customTeamsStore.findIndex((t) => t.id === teamId);
+    if (idx === -1) throw new Error('Team not found');
+
+    const updated: TeamRecord = {
+      ...customTeamsStore[idx],
+      ...updates,
+    };
+    customTeamsStore[idx] = updated;
+
+    try {
+      if (isSupabaseConfigured()) {
+        await supabase
+          .from('teams')
+          .update({
+            name: updated.name,
+            department: updated.department,
+            manager_id: updated.manager_id,
+          })
+          .eq('id', teamId);
+      }
+    } catch (e) {
+      console.warn('Could not sync team update to Supabase:', e);
+    }
+
+    dataService.logAction(
+      'Super Admin',
+      role,
+      'UPDATE_TEAM',
+      updated.name,
+      `Updated team configuration: ${updated.name} (${updated.department})`
+    );
+
+    return updated;
+  },
+
+  deleteTeam: async (role: UserRole, teamId: string): Promise<void> => {
+    if (role !== 'admin' && role !== 'manager') {
+      throw new Error('403 Forbidden: Only Admin and Manager can delete teams');
+    }
+    const target = customTeamsStore.find((t) => t.id === teamId);
+    customTeamsStore = customTeamsStore.filter((t) => t.id !== teamId);
+
+    try {
+      if (isSupabaseConfigured()) {
+        await supabase.from('teams').delete().eq('id', teamId);
+      }
+    } catch (e) {
+      console.warn('Could not sync team deletion to Supabase:', e);
+    }
+
+    if (target) {
+      dataService.logAction(
+        'Super Admin',
+        role,
+        'DELETE_TEAM',
+        target.name,
+        `Deleted operational team: ${target.name}`
+      );
+    }
   },
 
   // 5. Screenshots Query with Live Supabase Storage URLs
@@ -1199,16 +1254,32 @@ export const dataService = {
 
       if (!events || events.length === 0) return localAuditLogs;
 
-      const remoteLogs: AuditLogItem[] = events.map((ev: any) => ({
-        id: ev.id,
-        timestamp: ev.occurred_at ? ev.occurred_at.replace('T', ' ').substring(0, 19) : new Date().toISOString(),
-        actor_name: 'Employee Agent',
-        actor_role: 'employee',
-        action: ev.event_type.toUpperCase(),
-        target: ev.device_id || 'Workstation',
-        ip_device: ev.device_id || '127.0.0.1',
-        details: typeof ev.metadata === 'object' ? JSON.stringify(ev.metadata) : 'Telemetry event',
-      }));
+      const remoteLogs: AuditLogItem[] = events.map((ev: any) => {
+        let localTimestamp = '';
+        if (ev.occurred_at || ev.created_at) {
+          const d = new Date(ev.occurred_at || ev.created_at);
+          if (!isNaN(d.getTime())) {
+            const pad = (n: number) => n.toString().padStart(2, '0');
+            localTimestamp = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+          }
+        }
+        if (!localTimestamp) {
+          const d = new Date();
+          const pad = (n: number) => n.toString().padStart(2, '0');
+          localTimestamp = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+        }
+
+        return {
+          id: ev.id,
+          timestamp: localTimestamp,
+          actor_name: ev.metadata?.actor || 'Arsal (Agent)',
+          actor_role: (ev.metadata?.role as any) || 'employee',
+          action: (ev.event_type || 'heartbeat').toUpperCase(),
+          target: ev.metadata?.target || ev.device_id || 'Workstation',
+          ip_device: ev.device_id || '127.0.0.1',
+          details: typeof ev.metadata === 'object' ? JSON.stringify(ev.metadata) : 'Telemetry event',
+        };
+      });
 
       return [...remoteLogs, ...localAuditLogs];
     } catch (err) {
@@ -1224,9 +1295,13 @@ export const dataService = {
     target: string,
     details: string
   ): void => {
+    const d = new Date();
+    const pad = (n: number) => n.toString().padStart(2, '0');
+    const localTimestamp = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+
     const newEntry: AuditLogItem = {
       id: `aud-${Date.now()}`,
-      timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19),
+      timestamp: localTimestamp,
       actor_name: actorName,
       actor_role: actorRole,
       action,
@@ -1431,9 +1506,97 @@ export const dataService = {
     dataService.logAction(
       awardedBy,
       role,
-      'AWARD_STARS',
+      starDelta >= 0 ? 'ALLOCATE_STARS' : 'DEALLOCATE_STARS',
       employeeId,
-      `Adjusted stars by ${starDelta > 0 ? `+${starDelta}` : starDelta} (${reason})`
+      `${starDelta >= 0 ? 'Allocated' : 'Deallocated'} ${Math.abs(starDelta)} ⭐ (${reason})`
+    );
+    return updated;
+  },
+
+  setEmployeeStars: async (
+    role: UserRole,
+    employeeId: string,
+    exactStars: number,
+    reason: string,
+    setBy: string
+  ): Promise<number> => {
+    if (role !== 'admin' && role !== 'manager') {
+      throw new Error('403 Forbidden: Only Admin and Manager can set star balances');
+    }
+    const updated = Math.max(0, exactStars);
+    employeeStarsMap.set(employeeId, updated);
+
+    dataService.logAction(
+      setBy,
+      role,
+      'SET_STARS',
+      employeeId,
+      `Set star balance to ${updated} ⭐ (${reason || 'Direct administrative adjustment'})`
+    );
+    return updated;
+  },
+
+  addStarRule: async (
+    role: UserRole,
+    newRule: Omit<StarRuleItem, 'id'>
+  ): Promise<StarRuleItem> => {
+    if (role !== 'admin') {
+      throw new Error('403 Forbidden: Only Admin can create star rules');
+    }
+    const rule: StarRuleItem = {
+      ...newRule,
+      id: `sr-${Date.now()}`,
+    };
+    starRulesStore = [...starRulesStore, rule];
+
+    dataService.logAction(
+      'Super Admin',
+      'admin',
+      'CREATE_STAR_RULE',
+      rule.name,
+      `Created rule: ${rule.condition} (${rule.star_delta > 0 ? `+${rule.star_delta}` : rule.star_delta} ⭐)`
+    );
+    return rule;
+  },
+
+  deleteStarRule: async (role: UserRole, id: string): Promise<void> => {
+    if (role !== 'admin') {
+      throw new Error('403 Forbidden: Only Admin can delete star rules');
+    }
+    const target = starRulesStore.find((r) => r.id === id);
+    starRulesStore = starRulesStore.filter((r) => r.id !== id);
+
+    if (target) {
+      dataService.logAction(
+        'Super Admin',
+        'admin',
+        'DELETE_STAR_RULE',
+        target.name,
+        `Deleted star rule: ${target.name}`
+      );
+    }
+  },
+
+  updateStarRuleFull: async (
+    role: UserRole,
+    id: string,
+    updates: Partial<StarRuleItem>
+  ): Promise<StarRuleItem> => {
+    if (role !== 'admin') {
+      throw new Error('403 Forbidden: Only Admin can edit star rules');
+    }
+    const idx = starRulesStore.findIndex((r) => r.id === id);
+    if (idx === -1) throw new Error('Star rule not found');
+
+    const updated = { ...starRulesStore[idx], ...updates };
+    starRulesStore[idx] = updated;
+
+    dataService.logAction(
+      'Super Admin',
+      'admin',
+      'EDIT_STAR_RULE',
+      updated.name,
+      `Modified rule: ${updated.condition} (${updated.star_delta > 0 ? `+${updated.star_delta}` : updated.star_delta} ⭐)`
     );
     return updated;
   },

@@ -127,14 +127,14 @@ export const App: React.FC = () => {
         case '/admin/teams':
           return <AdminTeamsPage />;
         case '/admin/monitoring':
-        case '/admin/monitoring/live':
-          return <AdminMonitoringPage initialSubTab="live" />;
+        case '/admin/monitoring/heatmaps':
+        case '/admin/heatmaps':
+          return <AdminMonitoringPage initialSubTab="heatmaps" />;
+        case '/admin/monitoring/keyboard':
+        case '/admin/keyboard':
+          return <AdminMonitoringPage initialSubTab="keyboard" />;
         case '/admin/monitoring/recordings':
           return <AdminMonitoringPage initialSubTab="recordings" />;
-        case '/admin/monitoring/screenshots':
-          return <AdminMonitoringPage initialSubTab="screenshots" />;
-        case '/admin/monitoring/heatmaps':
-          return <AdminMonitoringPage initialSubTab="heatmaps" />;
         case '/admin/attendance':
           return <AdminAttendancePage />;
         case '/admin/projects':
@@ -192,18 +192,16 @@ export const App: React.FC = () => {
         case '/manager/team':
           return <ManagerTeamPage />;
         case '/manager/monitoring':
-        case '/manager/monitoring/live':
+        case '/manager/monitoring/heatmaps':
+        case '/manager/heatmaps':
         case '/manager/activity':
-          return <ManagerMonitoringPage initialSubTab="live" />;
+          return <ManagerMonitoringPage initialSubTab="heatmaps" />;
+        case '/manager/monitoring/keyboard':
+        case '/manager/keyboard':
+          return <ManagerMonitoringPage initialSubTab="keyboard" />;
         case '/manager/monitoring/recordings':
         case '/manager/recordings':
           return <ManagerMonitoringPage initialSubTab="recordings" />;
-        case '/manager/monitoring/screenshots':
-        case '/manager/screenshots':
-          return <ManagerMonitoringPage initialSubTab="screenshots" />;
-        case '/manager/monitoring/heatmaps':
-        case '/manager/heatmaps':
-          return <ManagerMonitoringPage initialSubTab="heatmaps" />;
         case '/manager/attendance':
           return <ManagerAttendancePage />;
         case '/manager/projects':

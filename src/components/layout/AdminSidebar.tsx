@@ -4,8 +4,6 @@ import {
   Users,
   UserCheck,
   Building2,
-  Activity,
-  Camera,
   Flame,
   CalendarCheck,
   FolderKanban,
@@ -16,6 +14,8 @@ import {
   ChevronLeft,
   ChevronRight,
   ShieldCheck,
+  Keyboard,
+  Video,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 
@@ -46,9 +46,9 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({ currentRoute, onNavi
     {
       title: 'Live Telemetry',
       items: [
-        { label: 'Live Monitoring', route: '/admin/monitoring/live', icon: <Activity size={16} /> },
-        { label: 'Screen Captures', route: '/admin/monitoring/screenshots', icon: <Camera size={16} /> },
         { label: 'Mouse Heatmaps', route: '/admin/monitoring/heatmaps', icon: <Flame size={16} /> },
+        { label: 'Keyboard Activity', route: '/admin/monitoring/keyboard', icon: <Keyboard size={16} /> },
+        { label: 'Screen Recordings', route: '/admin/monitoring/recordings', icon: <Video size={16} /> },
       ],
     },
     {

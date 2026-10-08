@@ -31,16 +31,16 @@ export interface HeatmapMatrixDataset {
   unit?: string;
 }
 
-// 8 Employees (replaces BERT, LSTM, Attn, GloVe, ELMo, ERNIE, RoBERTa, T5)
+// 8 Active telemetry tracks for Arsal
 const DEFAULT_EMPLOYEES = [
-  'Arsal',
-  'Alex Vance',
-  'Elena Vance',
-  'Marcus Bell',
-  'Sarah Chen',
-  'David Kim',
-  'Jessica Lee',
-  'Michael Torres',
+  'Arsal (Engineering)',
+  'Arsal (Mon Track)',
+  'Arsal (Tue Track)',
+  'Arsal (Wed Track)',
+  'Arsal (Thu Track)',
+  'Arsal (Fri Track)',
+  'Arsal (Sprint Core)',
+  'Arsal (Live Active)',
 ];
 
 // 8 Time slots (replaces CoLA, MNLI, MRPC, QNLI, QQP, RTE, SST-2, STS-B)
@@ -173,7 +173,7 @@ interface MatrixHeatmapProps {
 
 export const MatrixHeatmap: React.FC<MatrixHeatmapProps> = ({
   initialPreset = 'hourly',
-  selectedEmployeeName: _selectedEmployeeName,
+  selectedEmployeeName,
 }) => {
   const [activeMode, setActiveMode] = useState<'hourly' | 'weekly'>(initialPreset);
   const [employeesList, setEmployeesList] = useState<string[]>(DEFAULT_EMPLOYEES);
@@ -209,9 +209,19 @@ export const MatrixHeatmap: React.FC<MatrixHeatmapProps> = ({
     ? WEEKLY_EMPLOYEE_CADENCE_PRESET 
     : HOURLY_EMPLOYEE_ACTIVITY_PRESET;
 
+  const filteredEmployees = selectedEmployeeName && selectedEmployeeName !== 'all'
+    ? employeesList.filter((e) => e.toLowerCase().includes(selectedEmployeeName.toLowerCase()))
+    : employeesList;
+
+  const filteredData = filteredEmployees.map((emp) => {
+    const origIdx = employeesList.indexOf(emp);
+    return origIdx >= 0 && baseDataset.data[origIdx] ? baseDataset.data[origIdx] : baseDataset.data[0];
+  });
+
   const currentDataset: HeatmapMatrixDataset = {
     ...baseDataset,
-    yLabels: employeesList,
+    yLabels: filteredEmployees,
+    data: filteredData,
   };
 
   const handleExportCSV = () => {

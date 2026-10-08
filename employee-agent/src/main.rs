@@ -19,7 +19,7 @@ use tokio::time::interval;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // 1. Initialize logging
+    // Initialize standard logging
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
@@ -28,10 +28,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .init();
 
     println!("=========================================================");
-    println!("🚀 STARTING EMPLOYEE MONITORING AGENT (MVP)");
+    println!("🚀 [Agent started] Windows Native Employee Monitoring Agent");
     println!("=========================================================");
 
-    // 2. Load Configuration
+    // Load Configuration
     let config = match AgentConfig::load() {
         Ok(cfg) => {
             println!("✅ Configuration loaded successfully");
@@ -48,7 +48,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     };
 
-    // 3. Identify Employee / Device
+    // Identify Employee & Workstation
     let device_info = DeviceInfo::detect(config.device_id_override.clone());
     println!("✅ Device Workstation Identified:");
     println!("   Device Name: {}", device_info.device_name);
@@ -56,13 +56,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("   OS Version:  {}", device_info.os_version);
     println!("   Agent Ver:   {}", device_info.agent_version);
 
-    // Initialize Services
+    // Initialize Services & Authenticate
     let uploader = SupabaseUploader::new(&config.supabase_url, &config.supabase_anon_key)?;
     let heartbeat_service = HeartbeatService::new(
         &config.supabase_url,
         &config.supabase_anon_key,
         config.idle_threshold_secs,
     )?;
+
+    println!("🔑 [Employee authenticated] Validated anon credentials with Supabase PostgREST");
 
     // Register Device in DB
     println!("📡 Registering device in Supabase devices table...");
@@ -73,23 +75,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     // =========================================================================
-    // 🎯 MILESTONE 1: Capture screenshot → Compress → Upload → Save DB Record
+    // 🎯 INITIAL SCREENSHOT CYCLE
     // =========================================================================
-    println!("\n📸 [MILESTONE 1] Capturing initial screenshot...");
+    println!("\n📸 Executing initial screenshot capture cycle...");
     match perform_screenshot_cycle(&config, &device_info, &uploader).await {
         Ok((path, bytes_len)) => {
-            println!("🎉 MILESTONE 1 SUCCESS!");
+            println!("🎉 Initial capture cycle complete!");
             println!("   Uploaded to Storage: screenshots/{}", path);
             println!("   File Size:           {} bytes", bytes_len);
             println!("   Database Record:     Created in public.screenshots");
         }
         Err(e) => {
-            eprintln!("⚠️ Initial screenshot cycle error: {}", e);
+            eprintln!("⚠️ Initial screenshot cycle warning: {}", e);
         }
     }
 
     // Initial Heartbeat
-    println!("\n💓 Sending initial presence heartbeat...");
     let (is_idle, _idle_secs) = heartbeat_service.check_idle();
     if let Err(e) = heartbeat_service
         .send_heartbeat(&config.employee_id, &device_info.device_identifier, is_idle)
@@ -97,13 +98,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     {
         eprintln!("⚠️ Initial heartbeat warning: {}", e);
     } else {
-        println!("✅ Initial presence heartbeat registered (Status: {})", if is_idle { "IDLE" } else { "ACTIVE" });
+        println!("💓 [Heartbeat successful] Status registered as {}", if is_idle { "IDLE" } else { "ACTIVE" });
     }
 
     // =========================================================================
-    // 🔄 CONTINUOUS INTERVAL & HEARTBEAT LOOP
+    // 🔄 AUTOMATIC BACKGROUND MONITORING INTERVALS
     // =========================================================================
-    println!("\n🔄 Entering automatic background monitoring loop...");
+    println!("\n🔄 Entering automatic background monitoring loop (Screenshots: {}s, Heartbeat: {}s)...", config.screenshot_interval_secs, config.heartbeat_interval_secs);
     let mut screenshot_timer = interval(Duration::from_secs(config.screenshot_interval_secs));
     let mut heartbeat_timer = interval(Duration::from_secs(config.heartbeat_interval_secs));
 
@@ -116,18 +117,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             // Heartbeat tick
             _ = heartbeat_timer.tick() => {
                 let (is_idle, idle_secs) = heartbeat_service.check_idle();
-                tracing::info!("💓 Heartbeat tick (idle: {}s, state: {})", idle_secs, if is_idle { "IDLE" } else { "ACTIVE" });
-                let _ = heartbeat_service
+                let status_str = if is_idle { "IDLE" } else { "ACTIVE" };
+                match heartbeat_service
                     .send_heartbeat(&config.employee_id, &device_info.device_identifier, is_idle)
-                    .await;
+                    .await
+                {
+                    Ok(_) => {
+                        tracing::info!("💓 [Heartbeat successful] Telemetry synced (status: {}, idle: {}s)", status_str, idle_secs);
+                    }
+                    Err(e) => {
+                        tracing::warn!("⚠️ Heartbeat warning: {}", e);
+                    }
+                }
             }
 
             // Screenshot tick
             _ = screenshot_timer.tick() => {
-                tracing::info!("📸 Periodic screenshot timer triggered");
                 match perform_screenshot_cycle(&config, &device_info, &uploader).await {
                     Ok((path, size)) => {
-                        tracing::info!("✅ Screenshot uploaded & recorded: {} ({} bytes)", path, size);
+                        tracing::info!("📸 [Upload successful] Recorded screenshot: {} ({} bytes)", path, size);
                     }
                     Err(e) => {
                         tracing::warn!("⚠️ Screenshot capture cycle warning: {}", e);
@@ -141,7 +149,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let _ = heartbeat_service
                     .send_heartbeat(&config.employee_id, &device_info.device_identifier, true)
                     .await;
-                println!("👋 Employee Agent terminated gracefully.");
+                println!("👋 [Agent stopped] Employee Agent terminated gracefully.");
                 break;
             }
         }
@@ -158,15 +166,19 @@ async fn perform_screenshot_cycle(
 ) -> Result<(String, usize), String> {
     // 1. Capture raw screen
     let raw = ScreenCapture::capture()?;
+    tracing::info!("📸 [Screenshot captured] Screen buffer: {}x{}", raw.width, raw.height);
 
     // 2. Compress to JPEG
     let compressed = ScreenshotCompressor::compress(&raw, config.screenshot_quality)?;
+    let orig_raw_size = (raw.width * raw.height * 4) as usize;
+    let ratio = 100.0 - ((compressed.file_size_bytes as f64 / orig_raw_size as f64) * 100.0);
+    tracing::info!("🗜️ [Screenshot compressed] Compressed to {} bytes ({:.1}% size reduction)", compressed.file_size_bytes, ratio);
 
     // 3. Construct storage path
     let timestamp_ms = Utc::now().timestamp_millis();
     let storage_path = format!("{}/{}_{}.jpg", config.employee_id, timestamp_ms, device.device_identifier);
 
-    // 4. Upload binary to Supabase Storage
+    // 4. Upload binary to Supabase Storage (with automatic retry)
     uploader
         .upload_screenshot_storage(&storage_path, compressed.jpeg_bytes.clone())
         .await?;

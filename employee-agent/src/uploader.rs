@@ -95,27 +95,56 @@ impl SupabaseUploader {
         Ok(())
     }
 
-    /// Upload compressed screenshot binary directly to Supabase Storage bucket 'screenshots'
+    /// Upload compressed screenshot binary directly to Supabase Storage bucket 'screenshots' with retry
     pub async fn upload_screenshot_storage(&self, path: &str, jpeg_bytes: Vec<u8>) -> Result<(), String> {
         let upload_url = format!("{}/storage/v1/object/screenshots/{}", self.base_url, path);
+        let max_attempts = 3;
 
-        let resp = self
-            .client
-            .post(&upload_url)
-            .header(CONTENT_TYPE, "image/jpeg")
-            .header("x-upsert", "true")
-            .body(jpeg_bytes)
-            .send()
-            .await
-            .map_err(|e| format!("Storage upload network error: {}", e))?;
+        for attempt in 1..=max_attempts {
+            let resp = self
+                .client
+                .post(&upload_url)
+                .header(CONTENT_TYPE, "image/jpeg")
+                .header("x-upsert", "true")
+                .body(jpeg_bytes.clone())
+                .send()
+                .await;
 
-        if !resp.status().is_success() {
-            let status = resp.status();
-            let body = resp.text().await.unwrap_or_default();
-            return Err(format!("Storage upload failed with HTTP {}: {}", status, body));
+            match resp {
+                Ok(response) if response.status().is_success() => {
+                    tracing::info!("✅ [Upload successful] Storage object written: screenshots/{}", path);
+                    return Ok(());
+                }
+                Ok(response) => {
+                    let status = response.status();
+                    let body = response.text().await.unwrap_or_default();
+                    if attempt < max_attempts {
+                        let delay = Duration::from_millis(500 * (1 << (attempt - 1)));
+                        tracing::warn!(
+                            "⚠️ [Upload failed -> Retrying] Attempt {}/{} failed (HTTP {}): {}. Waiting {:?}...",
+                            attempt, max_attempts, status, body, delay
+                        );
+                        tokio::time::sleep(delay).await;
+                    } else {
+                        return Err(format!("Storage upload failed after {} attempts (HTTP {}): {}", max_attempts, status, body));
+                    }
+                }
+                Err(err) => {
+                    if attempt < max_attempts {
+                        let delay = Duration::from_millis(500 * (1 << (attempt - 1)));
+                        tracing::warn!(
+                            "⚠️ [Upload failed -> Retrying] Attempt {}/{} network error: {}. Waiting {:?}...",
+                            attempt, max_attempts, err, delay
+                        );
+                        tokio::time::sleep(delay).await;
+                    } else {
+                        return Err(format!("Storage upload network error after {} attempts: {}", max_attempts, err));
+                    }
+                }
+            }
         }
 
-        Ok(())
+        Err("Storage upload retry attempts exhausted".to_string())
     }
 
     /// Save screenshot metadata record in public.screenshots table

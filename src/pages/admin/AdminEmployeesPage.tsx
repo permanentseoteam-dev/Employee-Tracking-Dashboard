@@ -32,7 +32,23 @@ export const AdminEmployeesPage: React.FC = () => {
 
   useEffect(() => {
     loadData();
+
+    const unsubscribe = dataService.subscribeToRealtime((payload) => {
+      if (payload.table === 'employees' || payload.table === 'devices') {
+        loadData();
+      }
+    });
+
+    return () => {
+      unsubscribe();
+    };
   }, []);
+
+  useEffect(() => {
+    if (managers.length > 0 && (!newEmpManagerId || newEmpManagerId === 'mgr-001')) {
+      setNewEmpManagerId(managers[0].id);
+    }
+  }, [managers]);
 
   const handleAddEmployee = async (e: React.FormEvent) => {
     e.preventDefault();

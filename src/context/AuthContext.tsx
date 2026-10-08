@@ -4,36 +4,36 @@ import { supabase } from '../services/supabaseClient';
 import { supabaseAuth } from '../services/supabaseService';
 import type { UserProfile, UserRole } from '../types/roles';
 
-// Mock profiles for testing role-switching and local development
+// Default profiles matching seeded Supabase database users
 const DEFAULT_PROFILES: Record<UserRole, UserProfile> = {
   admin: {
-    id: 'usr-admin-01',
-    name: 'Sarah Jenkins (Admin)',
-    email: 'sarah.admin@enterprise.internal',
+    id: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+    name: 'Admin User',
+    email: 'admin@company.com',
     role: 'admin',
-    avatar: 'SJ',
-    department: 'Executive Operations',
+    avatar: 'AU',
+    department: 'Management',
   },
   manager: {
-    id: 'usr-mgr-01',
-    name: 'Marcus Vance (Manager)',
-    email: 'marcus.vance@enterprise.internal',
+    id: 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
+    name: 'Alex Vance (Manager)',
+    email: 'alex.v@company.com',
     role: 'manager',
-    avatar: 'MV',
+    avatar: 'AV',
     department: 'Engineering',
-    team_id: 'team-alpha',
-    team_name: 'Core Platform Team',
+    team_id: 'team-backend',
+    team_name: 'Core Backend Team',
   },
   employee: {
-    id: 'usr-emp-01',
-    name: 'Alex Rivera (Employee)',
-    email: 'alex.rivera@enterprise.internal',
+    id: 'cccccccc-cccc-cccc-cccc-cccccccccccc',
+    name: 'Arsal (Employee)',
+    email: 'arsal@company.com',
     role: 'employee',
     avatar: 'AR',
-    department: 'Frontend Engineering',
-    team_id: 'team-alpha',
-    team_name: 'Core Platform Team',
-    assigned_manager_id: 'usr-mgr-01',
+    department: 'Engineering',
+    team_id: 'team-backend',
+    team_name: 'Core Backend Team',
+    assigned_manager_id: 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
   },
 };
 

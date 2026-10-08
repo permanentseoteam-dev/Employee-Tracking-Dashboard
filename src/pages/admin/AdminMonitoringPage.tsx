@@ -28,6 +28,18 @@ export const AdminMonitoringPage: React.FC = () => {
 
   useEffect(() => {
     loadData();
+
+    // Auto-receive new screenshot uploads in real-time
+    const unsubscribe = dataService.subscribeToRealtime((payload) => {
+      if (payload.table === 'screenshots' || payload.table === 'employee_presence') {
+        console.log('⚡ [AdminMonitoring] New screenshot/presence telemetry event:', payload);
+        loadData();
+      }
+    });
+
+    return () => {
+      unsubscribe();
+    };
   }, [selectedEmployeeId]);
 
   const handleOpenScreenshot = (sc: ScreenshotItem) => {

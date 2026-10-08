@@ -53,6 +53,16 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({ onNaviga
 
   useEffect(() => {
     loadData();
+
+    // Real-time live auto-sync subscription
+    const unsubscribe = dataService.subscribeToRealtime((payload) => {
+      console.log('⚡ [AdminDashboard] Realtime event received, refreshing metrics:', payload.table);
+      loadData();
+    });
+
+    return () => {
+      unsubscribe();
+    };
   }, []);
 
   const filteredEmployees = employees.filter((emp) => {

@@ -172,10 +172,16 @@ export const App: React.FC = () => {
           return <ManagerDashboardPage onNavigate={navigate} />;
         case '/manager/team':
           return <ManagerTeamPage />;
+        case '/manager/monitoring':
+        case '/manager/monitoring/live':
         case '/manager/activity':
           return <ManagerMonitoringPage initialSubTab="live" />;
+        case '/manager/monitoring/screenshots':
         case '/manager/screenshots':
           return <ManagerMonitoringPage initialSubTab="screenshots" />;
+        case '/manager/monitoring/heatmaps':
+        case '/manager/heatmaps':
+          return <ManagerMonitoringPage initialSubTab="heatmaps" />;
         case '/manager/attendance':
           return <ManagerAttendancePage />;
         case '/manager/projects':

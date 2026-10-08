@@ -1,7 +1,8 @@
 import React from 'react';
 import { motion } from 'framer-motion';
-import { Keyboard, MousePointer, ShieldCheck, CheckCircle2, Star, Trophy } from 'lucide-react';
+import { Keyboard, MousePointer, ShieldCheck, CheckCircle2, Star, Trophy, Activity } from 'lucide-react';
 import type { DbStats } from '../types';
+import { MatrixHeatmap } from '../components/telemetry/MatrixHeatmap';
 
 interface PerformancePageProps {
   dbStats: DbStats;
@@ -72,6 +73,17 @@ export const PerformancePage: React.FC<PerformancePageProps> = ({ dbStats }) => 
           <div className="stat-numeric-md" style={{ fontSize: 18 }}>Aggregates Only</div>
           <span style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>Zero raw characters stored</span>
         </div>
+      </div>
+
+      {/* Interactive Telemetry Heatmap Matrix */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingLeft: 4 }}>
+          <Activity size={18} color="var(--color-secondary)" />
+          <h2 style={{ fontSize: 18, fontWeight: 800, color: 'var(--text-primary)', margin: 0 }}>
+            Personal Cadence & Benchmark Telemetry Matrix
+          </h2>
+        </div>
+        <MatrixHeatmap initialPreset="hourly" />
       </div>
 
       {/* Aggregate Specification Table */}

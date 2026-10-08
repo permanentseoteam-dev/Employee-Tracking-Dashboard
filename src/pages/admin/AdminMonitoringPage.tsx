@@ -10,11 +10,9 @@ import {
   Eye,
   Activity,
   Monitor,
-  MousePointer,
-  Keyboard,
-  ShieldCheck,
 } from 'lucide-react';
 import { dataService } from '../../services/dataService';
+import { MatrixHeatmap } from '../../components/telemetry/MatrixHeatmap';
 import type { ScreenshotItem, EmployeeRecord } from '../../types/roles';
 
 interface AdminMonitoringPageProps {
@@ -256,54 +254,7 @@ export const AdminMonitoringPage: React.FC<AdminMonitoringPageProps> = ({ initia
 
       {/* 3. Heatmaps Tab */}
       {activeSubTab === 'heatmaps' && (
-        <div className="frosted-card" style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <div>
-              <h3 style={{ fontSize: 16, fontWeight: 700, color: 'var(--text-primary)' }}>Mouse Movement & Spatial Activity Heatmap</h3>
-              <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Aggregated spatial telemetry density across daily workstation window captures</span>
-            </div>
-            <span className="live-telemetry-badge">1,420 events logged</span>
-          </div>
-
-          <div
-            style={{
-              height: 380,
-              borderRadius: 'var(--radius-card-sm)',
-              background: 'radial-gradient(circle at 40% 45%, rgba(213,239,89,0.32) 0%, rgba(76,107,255,0.18) 42%, rgba(18,20,23,0.04) 75%)',
-              border: '1px solid var(--surface-border-subtle)',
-              position: 'relative',
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              justifyContent: 'center',
-              padding: '2rem',
-              textAlign: 'center',
-            }}
-          >
-            <Flame size={42} color="var(--color-secondary)" style={{ marginBottom: 12 }} />
-            <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--text-primary)', marginBottom: 4 }}>
-              Active Spatial Activity Concentration: Primary Editor & Terminal
-            </div>
-            <div style={{ fontSize: 13, color: 'var(--text-muted)', maxWidth: 520, lineHeight: 1.5 }}>
-              Aggregated coordinates show high focus in central visual viewport. Zero keylogger guarantee active with privacy-first aggregate counters.
-            </div>
-
-            <div style={{ display: 'flex', gap: 16, marginTop: 20 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--text-secondary)' }}>
-                <MousePointer size={14} color="var(--color-secondary)" />
-                <span>12,480 Mouse Moves</span>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--text-secondary)' }}>
-                <Keyboard size={14} color="var(--color-primary)" />
-                <span>4,190 Keypress Totals</span>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--text-secondary)' }}>
-                <ShieldCheck size={14} color="var(--status-success)" />
-                <span>DPAPI Verified</span>
-              </div>
-            </div>
-          </div>
-        </div>
+        <MatrixHeatmap initialPreset="benchmark" />
       )}
 
       {/* Full-Screen Screenshot Modal */}

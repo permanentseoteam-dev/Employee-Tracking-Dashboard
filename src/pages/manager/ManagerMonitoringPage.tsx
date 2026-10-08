@@ -3,15 +3,16 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { RefreshCw, X, Filter, Calendar, Activity, Camera, Monitor, Eye } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { dataService } from '../../services/dataService';
+import { MatrixHeatmap } from '../../components/telemetry/MatrixHeatmap';
 import type { ScreenshotItem, EmployeeRecord } from '../../types/roles';
 
 interface ManagerMonitoringPageProps {
-  initialSubTab?: 'live' | 'screenshots';
+  initialSubTab?: 'live' | 'screenshots' | 'heatmaps';
 }
 
 export const ManagerMonitoringPage: React.FC<ManagerMonitoringPageProps> = ({ initialSubTab = 'live' }) => {
   const { user } = useAuth();
-  const [activeSubTab, setActiveSubTab] = useState<'live' | 'screenshots'>(initialSubTab);
+  const [activeSubTab, setActiveSubTab] = useState<'live' | 'screenshots' | 'heatmaps'>(initialSubTab);
   const [screenshots, setScreenshots] = useState<ScreenshotItem[]>([]);
   const [teamEmployees, setTeamEmployees] = useState<EmployeeRecord[]>([]);
   const [filterEmployeeId, setFilterEmployeeId] = useState<string>('all');
@@ -104,6 +105,13 @@ export const ManagerMonitoringPage: React.FC<ManagerMonitoringPageProps> = ({ in
             >
               <Camera size={14} />
               <span>Screenshots ({screenshots.length})</span>
+            </button>
+            <button
+              type="button"
+              className={`nav-pill-item ${activeSubTab === 'heatmaps' ? 'active' : ''}`}
+              onClick={() => setActiveSubTab('heatmaps')}
+            >
+              <span>Heatmaps</span>
             </button>
           </div>
 
@@ -256,6 +264,11 @@ export const ManagerMonitoringPage: React.FC<ManagerMonitoringPageProps> = ({ in
             </div>
           )}
         </div>
+      )}
+
+      {/* 3. Heatmaps Tab */}
+      {activeSubTab === 'heatmaps' && (
+        <MatrixHeatmap initialPreset="workforce" />
       )}
 
       {/* Modal */}

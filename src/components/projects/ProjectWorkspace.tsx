@@ -336,6 +336,16 @@ export const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({ role, manage
               {/* The requested prominent + button to create projects */}
               <button
                 type="button"
+                className="btn-icon-circle accent"
+                onClick={() => setIsCreateProjOpen(true)}
+                title="Create New Project (+)"
+                style={{ width: 34, height: 34 }}
+              >
+                <Plus size={18} strokeWidth={2.5} />
+              </button>
+
+              <button
+                type="button"
                 className="btn-pill btn-pill-primary"
                 onClick={() => setIsCreateProjOpen(true)}
                 title="Create New Project"
@@ -477,6 +487,46 @@ export const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({ role, manage
                   </div>
                 </motion.div>
               ))}
+
+              {/* Quick + Add Project Card */}
+              <motion.div
+                whileHover={{ y: -3 }}
+                className="frosted-card"
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: 'pointer',
+                  minHeight: 200,
+                  border: '2px dashed var(--surface-border)',
+                  gap: 10,
+                  textAlign: 'center',
+                  background: 'rgba(255, 255, 255, 0.02)',
+                }}
+                onClick={() => setIsCreateProjOpen(true)}
+              >
+                <div
+                  style={{
+                    width: 44,
+                    height: 44,
+                    borderRadius: '50%',
+                    background: 'rgba(59, 130, 246, 0.15)',
+                    color: '#3b82f6',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <Plus size={24} strokeWidth={2.5} />
+                </div>
+                <div>
+                  <strong style={{ fontSize: 14, color: 'var(--text-primary)' }}>+ Create New Project</strong>
+                  <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
+                    Add repository with folders & deliverables
+                  </div>
+                </div>
+              </motion.div>
             </div>
           )}
         </div>
@@ -538,6 +588,16 @@ export const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({ role, manage
                   {folders.reduce((acc, f) => acc + (f.files?.length || 0), 0)}
                 </div>
               </div>
+
+              <button
+                type="button"
+                className="btn-icon-circle accent"
+                onClick={() => setIsCreateFolderOpen(true)}
+                title="Create Folder (+)"
+                style={{ width: 34, height: 34 }}
+              >
+                <Plus size={18} strokeWidth={2.5} />
+              </button>
 
               <button
                 type="button"
@@ -622,14 +682,15 @@ export const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({ role, manage
                         {/* Embed File Button */}
                         <button
                           type="button"
-                          className="btn-pill btn-pill-secondary"
-                          style={{ padding: '4px 10px', fontSize: 11, gap: 4 }}
+                          className="btn-pill btn-pill-primary"
+                          style={{ padding: '5px 12px', fontSize: 11, gap: 5, fontWeight: 700 }}
                           onClick={() => {
                             setTargetFolderId(folder.id);
                             setIsEmbedFileOpen(true);
                           }}
                           title="Embed a file into this folder"
                         >
+                          <Plus size={13} strokeWidth={2.5} />
                           <Upload size={12} />
                           <span>Embed File</span>
                         </button>
@@ -658,9 +719,25 @@ export const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({ role, manage
                             border: '1px dashed var(--surface-border-subtle)',
                             color: 'var(--text-muted)',
                             fontSize: 12,
+                            display: 'flex',
+                            flexDirection: 'column',
+                            alignItems: 'center',
+                            gap: 8,
                           }}
                         >
-                          <span>Empty folder. Click <strong>Embed File</strong> above to add files.</span>
+                          <span>Empty folder. Embed project deliverables or files.</span>
+                          <button
+                            type="button"
+                            className="btn-pill btn-pill-secondary"
+                            style={{ padding: '4px 12px', fontSize: 11, gap: 5 }}
+                            onClick={() => {
+                              setTargetFolderId(folder.id);
+                              setIsEmbedFileOpen(true);
+                            }}
+                          >
+                            <Plus size={13} strokeWidth={2.5} />
+                            <span>Embed File</span>
+                          </button>
                         </div>
                       ) : (
                         folder.files.map((file) => (
@@ -736,6 +813,45 @@ export const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({ role, manage
                     </div>
                   </div>
                 ))}
+
+                {/* Dashed + Create Folder Card */}
+                <div
+                  className="frosted-card"
+                  style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    cursor: 'pointer',
+                    minHeight: 180,
+                    border: '2px dashed var(--surface-border)',
+                    gap: 10,
+                    textAlign: 'center',
+                    background: 'rgba(255, 255, 255, 0.02)',
+                  }}
+                  onClick={() => setIsCreateFolderOpen(true)}
+                >
+                  <div
+                    style={{
+                      width: 40,
+                      height: 40,
+                      borderRadius: '50%',
+                      background: 'rgba(59, 130, 246, 0.15)',
+                      color: '#3b82f6',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    <Plus size={20} strokeWidth={2.5} />
+                  </div>
+                  <div>
+                    <strong style={{ fontSize: 14, color: 'var(--text-primary)' }}>+ Create Folder</strong>
+                    <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
+                      Add folder to this project
+                    </div>
+                  </div>
+                </div>
               </div>
             )}
           </div>

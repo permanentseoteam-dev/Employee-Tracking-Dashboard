@@ -79,6 +79,24 @@ export interface ScreenshotItem {
   window_title: string;
 }
 
+export interface ScreenRecordingItem {
+  id: string;
+  employee_id: string;
+  employee_name: string;
+  department: string;
+  device_id: string;
+  device_name?: string;
+  started_at: string;
+  duration_seconds: number;
+  video_url: string;
+  thumbnail_url: string;
+  trigger_type: 'on_demand' | 'scheduled' | 'rule_triggered';
+  recorded_by: string;
+  active_window: string;
+  file_size_bytes: number;
+  status: 'completed' | 'processing' | 'recording';
+}
+
 export interface AttendanceRecordItem {
   id: string;
   employee_id: string;

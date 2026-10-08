@@ -305,7 +305,7 @@ export const ManagerDashboardPage: React.FC<ManagerDashboardPageProps> = ({ onNa
             <button
               type="button"
               className="btn-icon-circle accent"
-              onClick={() => onNavigate('/manager/tasks')}
+              onClick={() => onNavigate('/manager/projects')}
             >
               <ArrowUpRight size={16} />
             </button>

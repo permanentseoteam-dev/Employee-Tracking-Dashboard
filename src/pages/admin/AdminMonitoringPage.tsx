@@ -29,7 +29,7 @@ interface AdminMonitoringPageProps {
   initialSubTab?: 'heatmaps' | 'keyboard' | 'recordings' | 'live' | 'screenshots';
 }
 
-export const AdminMonitoringPage: React.FC<AdminMonitoringPageProps> = ({ initialSubTab = 'heatmaps' }) => {
+export const AdminMonitoringPage: React.FC<AdminMonitoringPageProps> = ({ initialSubTab = 'live' }) => {
   const { navigate, user } = useAuth();
   const [activeSubTab, setActiveSubTab] = useState<'heatmaps' | 'keyboard' | 'recordings' | 'live' | 'screenshots'>(initialSubTab);
   const [screenshots, setScreenshots] = useState<ScreenshotItem[]>([]);
@@ -186,6 +186,28 @@ export const AdminMonitoringPage: React.FC<AdminMonitoringPageProps> = ({ initia
         {/* View Switcher Pills */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <div className="stitch-nav-pills">
+            <button
+              type="button"
+              className={`nav-pill-item ${activeSubTab === 'live' ? 'active' : ''}`}
+              onClick={() => {
+                setActiveSubTab('live');
+                navigate('/admin/monitoring/live');
+              }}
+            >
+              <Activity size={14} />
+              <span>Live Feeds</span>
+            </button>
+            <button
+              type="button"
+              className={`nav-pill-item ${activeSubTab === 'screenshots' ? 'active' : ''}`}
+              onClick={() => {
+                setActiveSubTab('screenshots');
+                navigate('/admin/monitoring/screenshots');
+              }}
+            >
+              <Camera size={14} />
+              <span>Screenshots ({screenshots.length})</span>
+            </button>
             <button
               type="button"
               className={`nav-pill-item ${activeSubTab === 'heatmaps' ? 'active' : ''}`}

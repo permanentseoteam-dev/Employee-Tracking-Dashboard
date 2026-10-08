@@ -127,6 +127,12 @@ export const App: React.FC = () => {
         case '/admin/teams':
           return <AdminTeamsPage />;
         case '/admin/monitoring':
+        case '/admin/monitoring/live':
+        case '/admin/live':
+          return <AdminMonitoringPage initialSubTab="live" />;
+        case '/admin/monitoring/screenshots':
+        case '/admin/screenshots':
+          return <AdminMonitoringPage initialSubTab="screenshots" />;
         case '/admin/monitoring/heatmaps':
         case '/admin/heatmaps':
           return <AdminMonitoringPage initialSubTab="heatmaps" />;
@@ -134,6 +140,7 @@ export const App: React.FC = () => {
         case '/admin/keyboard':
           return <AdminMonitoringPage initialSubTab="keyboard" />;
         case '/admin/monitoring/recordings':
+        case '/admin/recordings':
           return <AdminMonitoringPage initialSubTab="recordings" />;
         case '/admin/attendance':
           return <AdminAttendancePage />;
@@ -192,6 +199,12 @@ export const App: React.FC = () => {
         case '/manager/team':
           return <ManagerTeamPage />;
         case '/manager/monitoring':
+        case '/manager/monitoring/live':
+        case '/manager/live':
+          return <ManagerMonitoringPage initialSubTab="live" />;
+        case '/manager/monitoring/screenshots':
+        case '/manager/screenshots':
+          return <ManagerMonitoringPage initialSubTab="screenshots" />;
         case '/manager/monitoring/heatmaps':
         case '/manager/heatmaps':
         case '/manager/activity':

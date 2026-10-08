@@ -28,7 +28,7 @@ interface ManagerMonitoringPageProps {
   initialSubTab?: 'heatmaps' | 'keyboard' | 'recordings' | 'live' | 'screenshots';
 }
 
-export const ManagerMonitoringPage: React.FC<ManagerMonitoringPageProps> = ({ initialSubTab = 'heatmaps' }) => {
+export const ManagerMonitoringPage: React.FC<ManagerMonitoringPageProps> = ({ initialSubTab = 'live' }) => {
   const { user, navigate } = useAuth();
   const [activeSubTab, setActiveSubTab] = useState<'heatmaps' | 'keyboard' | 'recordings' | 'live' | 'screenshots'>(initialSubTab);
   const [screenshots, setScreenshots] = useState<ScreenshotItem[]>([]);
@@ -199,6 +199,28 @@ export const ManagerMonitoringPage: React.FC<ManagerMonitoringPageProps> = ({ in
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           {/* Segmented Switcher */}
           <div className="stitch-nav-pills">
+            <button
+              type="button"
+              className={`nav-pill-item ${activeSubTab === 'live' ? 'active' : ''}`}
+              onClick={() => {
+                setActiveSubTab('live');
+                navigate('/manager/monitoring/live');
+              }}
+            >
+              <Activity size={14} />
+              <span>Live Feeds</span>
+            </button>
+            <button
+              type="button"
+              className={`nav-pill-item ${activeSubTab === 'screenshots' ? 'active' : ''}`}
+              onClick={() => {
+                setActiveSubTab('screenshots');
+                navigate('/manager/monitoring/screenshots');
+              }}
+            >
+              <Camera size={14} />
+              <span>Screenshots ({screenshots.length})</span>
+            </button>
             <button
               type="button"
               className={`nav-pill-item ${activeSubTab === 'heatmaps' ? 'active' : ''}`}

@@ -53,6 +53,15 @@ export const ManagerDashboardPage: React.FC<ManagerDashboardPageProps> = ({ onNa
 
   useEffect(() => {
     loadData();
+
+    const unsubscribe = dataService.subscribeToRealtime((payload) => {
+      console.log('⚡ [ManagerDashboard] Realtime event received:', payload.table);
+      loadData();
+    });
+
+    return () => {
+      unsubscribe();
+    };
   }, [user.id]);
 
   return (

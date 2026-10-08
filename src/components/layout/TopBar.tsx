@@ -1,6 +1,8 @@
-import { Search, Bell, Activity, RefreshCw, Sun, Moon } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Search, Bell, Activity, RefreshCw, Sun, Moon, Radio } from 'lucide-react';
 import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
+import { dataService } from '../../services/dataService';
 import type { AgentStatusDto, DbStats } from '../../types';
 import type { UserRole } from '../../types/roles';
 
@@ -21,6 +23,23 @@ export const TopBar: React.FC<TopBarProps> = ({
 }) => {
   const { theme, toggleTheme } = useTheme();
   const { user, role, switchRole } = useAuth();
+  const [realtimeStatus, setRealtimeStatus] = useState<'Live' | 'Reconnecting...' | 'Offline'>('Live');
+
+  useEffect(() => {
+    const unsubscribe = dataService.subscribeToRealtime(
+      () => {},
+      (channelStatus) => {
+        if (channelStatus === 'SUBSCRIBED') {
+          setRealtimeStatus('Live');
+        } else if (channelStatus === 'TIMED_OUT' || channelStatus === 'CHANNEL_ERROR') {
+          setRealtimeStatus('Reconnecting...');
+        } else {
+          setRealtimeStatus('Offline');
+        }
+      }
+    );
+    return () => unsubscribe();
+  }, []);
 
   return (
     <header className="topbar">
@@ -121,6 +140,36 @@ export const TopBar: React.FC<TopBarProps> = ({
               </button>
             );
           })}
+        </div>
+
+        {/* Supabase Realtime Telemetry Live Indicator */}
+        <div
+          className="sync-status-badge"
+          style={{
+            backgroundColor:
+              realtimeStatus === 'Live'
+                ? 'var(--success-bg)'
+                : realtimeStatus === 'Reconnecting...'
+                ? 'var(--warning-bg)'
+                : 'rgba(100,116,139,0.12)',
+            color:
+              realtimeStatus === 'Live'
+                ? 'var(--success)'
+                : realtimeStatus === 'Reconnecting...'
+                ? 'var(--warning)'
+                : 'var(--text-muted)',
+            border: `1px solid ${
+              realtimeStatus === 'Live'
+                ? 'rgba(16, 185, 129, 0.3)'
+                : realtimeStatus === 'Reconnecting...'
+                ? 'rgba(245, 158, 11, 0.3)'
+                : 'rgba(100, 116, 139, 0.3)'
+            }`,
+          }}
+          title={`Supabase Realtime Stream: ${realtimeStatus}`}
+        >
+          <Radio size={12} className={realtimeStatus === 'Live' ? 'animate-pulse' : ''} />
+          <span style={{ fontWeight: 600 }}>{realtimeStatus}</span>
         </div>
 
         {/* Outbox synchronization indicator */}

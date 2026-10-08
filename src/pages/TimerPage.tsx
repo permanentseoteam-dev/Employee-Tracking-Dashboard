@@ -1,5 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Play, Pause, Coffee, Moon, CheckCircle2 } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
+import { supabaseSync } from '../services/supabaseService';
+import { dataService } from '../services/dataService';
 
 interface TimerPageProps {
   activeTaskTitle: string | null;
@@ -10,10 +13,12 @@ export const TimerPage: React.FC<TimerPageProps> = ({
   activeTaskTitle,
   onActiveTaskChange,
 }) => {
-  const [secondsElapsed, setSecondsElapsed] = useState(1450); // example productive time
+  const { user } = useAuth();
+  const [secondsElapsed, setSecondsElapsed] = useState(0);
   const [isRunning, setIsRunning] = useState(Boolean(activeTaskTitle));
   const [activeBreak, setActiveBreak] = useState<'general' | 'namaz' | null>(null);
   const [breakSeconds, setBreakSeconds] = useState(0);
+  const [sessionStartTime, setSessionStartTime] = useState<string>(() => new Date().toISOString());
 
   useEffect(() => {
     let interval: any = null;
@@ -40,6 +45,7 @@ export const TimerPage: React.FC<TimerPageProps> = ({
     if (!activeTaskTitle) {
       onActiveTaskChange('Active Engineering Session');
     }
+    setSessionStartTime(new Date().toISOString());
     setIsRunning(true);
     setActiveBreak(null);
   };
@@ -51,18 +57,59 @@ export const TimerPage: React.FC<TimerPageProps> = ({
   const handleBreak = (type: 'general' | 'namaz') => {
     setActiveBreak(type);
     setIsRunning(false);
+    dataService.logAction(
+      user.name,
+      'employee',
+      'BREAK_START',
+      type.toUpperCase(),
+      `Started ${type} break`
+    );
   };
 
   const handleEndBreak = () => {
     setActiveBreak(null);
     setIsRunning(true);
+    dataService.logAction(
+      user.name,
+      'employee',
+      'BREAK_END',
+      'WORK_RESUMED',
+      'Ended break and resumed task timer'
+    );
   };
 
-  const handleFinish = () => {
+  const handleFinish = async () => {
+    const taskTitle = activeTaskTitle || 'Active Engineering Session';
     setIsRunning(false);
     setActiveBreak(null);
     onActiveTaskChange(null);
-    alert('Task session completed. Productive time saved to local SQLite outbox queue.');
+
+    try {
+      await supabaseSync.syncTaskSession({
+        task_title: taskTitle,
+        employee_id: user.id,
+        start_time: sessionStartTime,
+        end_time: new Date().toISOString(),
+        total_seconds: secondsElapsed,
+        break_seconds: breakSeconds,
+        status: 'completed',
+      });
+
+      dataService.logAction(
+        user.name,
+        'employee',
+        'FINISH_TASK_SESSION',
+        taskTitle,
+        `Completed session of ${formatTime(secondsElapsed)} (Breaks: ${formatTime(breakSeconds)})`
+      );
+
+      alert(`Task session completed! Tracked ${formatTime(secondsElapsed)} synchronized to Supabase.`);
+      setSecondsElapsed(0);
+      setBreakSeconds(0);
+    } catch (err: any) {
+      console.warn('Could not sync task session:', err);
+      alert(`Task session finished locally (${formatTime(secondsElapsed)}).`);
+    }
   };
 
   return (
@@ -71,7 +118,7 @@ export const TimerPage: React.FC<TimerPageProps> = ({
         <div>
           <h1 className="page-title">Precision Task Timer</h1>
           <p className="page-subtitle">
-            Timestamp-based session tracker &bull; Survives restarts &bull; Excludes breaks
+            Timestamp-based session tracker &bull; Survives restarts &bull; Excludes breaks &bull; Synced with Supabase
           </p>
         </div>
       </div>
@@ -175,6 +222,7 @@ export const TimerPage: React.FC<TimerPageProps> = ({
             className="btn btn-secondary"
             style={{ padding: '10px 16px', color: 'var(--danger)' }}
             onClick={handleFinish}
+            disabled={secondsElapsed === 0 && !isRunning}
           >
             <CheckCircle2 size={15} />
             <span>Finish Task</span>

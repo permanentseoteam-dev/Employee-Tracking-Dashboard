@@ -30,6 +30,16 @@ export const ManagerMonitoringPage: React.FC = () => {
 
   useEffect(() => {
     loadData();
+
+    const unsubscribe = dataService.subscribeToRealtime((payload) => {
+      if (payload.table === 'screenshots' || payload.table === 'employee_presence') {
+        loadData();
+      }
+    });
+
+    return () => {
+      unsubscribe();
+    };
   }, [user.id, filterEmployeeId]);
 
   const handleOpenScreenshot = (sc: ScreenshotItem) => {

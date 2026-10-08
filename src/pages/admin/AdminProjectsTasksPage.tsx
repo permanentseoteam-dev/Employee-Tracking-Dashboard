@@ -29,6 +29,16 @@ export const AdminProjectsTasksPage: React.FC<AdminProjectsTasksPageProps> = ({ 
 
   useEffect(() => {
     loadData();
+
+    const unsubscribe = dataService.subscribeToRealtime((payload) => {
+      if (payload.table === 'projects' || payload.table === 'tasks') {
+        loadData();
+      }
+    });
+
+    return () => {
+      unsubscribe();
+    };
   }, []);
 
   const filteredTasks = tasks.filter((t) => {

@@ -8,7 +8,7 @@
 
 ; General Settings
 Name "Employee Tracking Agent"
-OutFile "dist\EmployeeAgent-Setup.exe"
+OutFile "release\EmployeeAgent-Setup.exe"
 InstallDir "$PROGRAMFILES64\EmployeeAgent"
 InstallDirRegKey HKLM "Software\EmployeeTrackingAgent" "Install_Dir"
 RequestExecutionLevel admin
@@ -41,17 +41,17 @@ Section "MainSection" SEC01
   ExecWait 'taskkill /F /IM employee-agent.exe'
   
   ; 2. Extract agent binary
-  File "dist\employee-agent-windows\employee-agent.exe"
+  File "release\employee-agent-windows\employee-agent.exe"
   
   ; 3. Extract .env configuration only if it doesn't already exist (preserves existing config on upgrades)
   IfFileExists "$INSTDIR\.env" skip_env 0
-    File "dist\employee-agent-windows\.env"
+    File "release\employee-agent-windows\.env"
   skip_env:
 
   ; 4. Extract companion scripts and docs
-  File "dist\employee-agent-windows\run-agent.bat"
-  File "dist\employee-agent-windows\install-service.bat"
-  File "dist\employee-agent-windows\README.md"
+  File "release\employee-agent-windows\run-agent.bat"
+  File "release\employee-agent-windows\install-service.bat"
+  File "release\employee-agent-windows\README.md"
   
   ; 5. Create uninstaller
   WriteUninstaller "$INSTDIR\uninstall.exe"

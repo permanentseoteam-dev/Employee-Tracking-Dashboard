@@ -35,6 +35,16 @@ export const ManagerTasksPage: React.FC = () => {
 
   useEffect(() => {
     loadData();
+
+    const unsubscribe = dataService.subscribeToRealtime((payload) => {
+      if (payload.table === 'tasks' || payload.table === 'projects') {
+        loadData();
+      }
+    });
+
+    return () => {
+      unsubscribe();
+    };
   }, [user.id]);
 
   const handleCreateTask = async (e: React.FormEvent) => {

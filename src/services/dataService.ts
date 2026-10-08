@@ -17,8 +17,8 @@ import type {
 let employeesStore: EmployeeRecord[] = [
   {
     id: 'emp-001',
-    name: 'Sarah Connor',
-    email: 'sarah.c@company.com',
+    name: 'Arsal',
+    email: 'arsal@company.com',
     department: 'Engineering',
     team_id: 'team-backend',
     team_name: 'Core Backend Team',

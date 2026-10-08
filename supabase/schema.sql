@@ -265,7 +265,7 @@ insert into public.profiles (id, email, full_name, role, department, team_id)
 values 
     ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'admin@company.com', 'Admin User', 'admin', 'Operations', null),
     ('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', 'alex.v@company.com', 'Alex Vance', 'manager', 'Engineering', '11111111-1111-1111-1111-111111111111'),
-    ('cccccccc-cccc-cccc-cccc-cccccccccccc', 'sarah.c@company.com', 'Sarah Connor', 'employee', 'Engineering', '11111111-1111-1111-1111-111111111111'),
+    ('cccccccc-cccc-cccc-cccc-cccccccccccc', 'arsal@company.com', 'Arsal', 'employee', 'Engineering', '11111111-1111-1111-1111-111111111111'),
     ('dddddddd-dddd-dddd-dddd-dddddddddddd', 'michael.c@company.com', 'Michael Chen', 'employee', 'Engineering', '11111111-1111-1111-1111-111111111111')
 on conflict (id) do nothing;
 

@@ -11,7 +11,6 @@ import { TasksPage } from './pages/TasksPage';
 import { ProjectsPage } from './pages/ProjectsPage';
 import { PerformancePage } from './pages/PerformancePage';
 import { TimerPage } from './pages/TimerPage';
-import { SettingsPage } from './pages/SettingsPage';
 
 // Admin Pages
 import { AdminDashboardPage } from './pages/admin/AdminDashboardPage';
@@ -35,6 +34,8 @@ import { ManagerPerformancePage } from './pages/manager/ManagerPerformancePage';
 import { api } from './services/tauriBridge';
 import { useAuth } from './context/AuthContext';
 import type { AgentStatusDto, DbStats, NavTab, SystemInfoDto } from './types';
+
+import { ErrorBoundary } from './components/ErrorBoundary';
 
 export const App: React.FC = () => {
   const { role, currentRoute, navigate } = useAuth();
@@ -141,7 +142,11 @@ export const App: React.FC = () => {
         />
         <div className="app-body">
           <AdminSidebar currentRoute={currentRoute} onNavigate={navigate} />
-          <main className="main-content">{renderAdminContent()}</main>
+          <main className="main-content">
+            <ErrorBoundary fallbackTitle="Admin Section Error">
+              {renderAdminContent()}
+            </ErrorBoundary>
+          </main>
         </div>
       </div>
     );
@@ -184,7 +189,11 @@ export const App: React.FC = () => {
         />
         <div className="app-body">
           <ManagerSidebar currentRoute={currentRoute} onNavigate={navigate} />
-          <main className="main-content">{renderManagerContent()}</main>
+          <main className="main-content">
+            <ErrorBoundary fallbackTitle="Manager Section Error">
+              {renderManagerContent()}
+            </ErrorBoundary>
+          </main>
         </div>
       </div>
     );
@@ -219,8 +228,6 @@ export const App: React.FC = () => {
             onActiveTaskChange={setActiveTaskTitle}
           />
         );
-      case 'settings':
-        return <SettingsPage dbStats={dbStats} />;
       default:
         return (
           <DashboardPage
@@ -241,7 +248,9 @@ export const App: React.FC = () => {
       dbStats={dbStats}
       onRefresh={fetchState}
     >
-      {renderEmployeeContent()}
+      <ErrorBoundary fallbackTitle="Employee Section Error">
+        {renderEmployeeContent()}
+      </ErrorBoundary>
     </AppShell>
   );
 };

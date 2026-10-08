@@ -34,6 +34,53 @@ let attendanceRulesStore: AttendanceRuleConfig = {
 
 let localAuditLogs: AuditLogItem[] = [];
 
+// Global Broadcast Sets for Realtime Subscriptions
+const eventListeners = new Set<(payload: any) => void>();
+const statusListeners = new Set<(status: 'SUBSCRIBED' | 'TIMED_OUT' | 'CLOSED' | 'CHANNEL_ERROR') => void>();
+let globalRealtimeChannel: any = null;
+let currentChannelStatus: 'SUBSCRIBED' | 'TIMED_OUT' | 'CLOSED' | 'CHANNEL_ERROR' = 'CLOSED';
+
+function initGlobalRealtimeChannel() {
+  if (globalRealtimeChannel || !isSupabaseConfigured()) return;
+
+  const broadcastEvent = (payload: any) => {
+    eventListeners.forEach((cb) => {
+      try {
+        cb(payload);
+      } catch (err) {
+        console.error('Error in realtime event listener:', err);
+      }
+    });
+  };
+
+  globalRealtimeChannel = supabase
+    .channel('realtime:live_dashboard_global')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'screenshots' }, broadcastEvent)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'employee_presence' }, broadcastEvent)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'employee_activity' }, broadcastEvent)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, broadcastEvent)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'projects' }, broadcastEvent)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'employees' }, broadcastEvent)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'devices' }, broadcastEvent)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'attendance_records' }, broadcastEvent)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'activity_events' }, broadcastEvent)
+    .subscribe((status) => {
+      currentChannelStatus = status as any;
+      if (status === 'SUBSCRIBED') {
+        console.log('📡 [Supabase Realtime] Connected to live schema updates');
+      } else if (status === 'CLOSED' || status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+        console.warn(`📡 [Supabase Realtime] Channel status: ${status}`);
+      }
+      statusListeners.forEach((cb) => {
+        try {
+          cb(currentChannelStatus);
+        } catch (err) {
+          console.error('Error in realtime status listener:', err);
+        }
+      });
+    });
+}
+
 // ============================================================================
 // Real-Time Data Service Connected Directly to Supabase
 // ============================================================================
@@ -49,29 +96,21 @@ export const dataService = {
       return () => {};
     }
 
-    const channel = supabase
-      .channel('realtime:live_dashboard')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'screenshots' }, onEvent)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'employee_presence' }, onEvent)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'employee_activity' }, onEvent)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, onEvent)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'projects' }, onEvent)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'employees' }, onEvent)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'devices' }, onEvent)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'attendance_records' }, onEvent)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'activity_events' }, onEvent)
-      .subscribe((status) => {
-        if (status === 'SUBSCRIBED') {
-          console.log('📡 [Supabase Realtime] Connected to live schema updates');
-          onStatusChange?.('SUBSCRIBED');
-        } else if (status === 'CLOSED' || status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-          console.warn(`📡 [Supabase Realtime] Channel status: ${status}`);
-          onStatusChange?.(status);
-        }
-      });
+    eventListeners.add(onEvent);
+    if (onStatusChange) {
+      statusListeners.add(onStatusChange);
+      if (currentChannelStatus === 'SUBSCRIBED') {
+        onStatusChange(currentChannelStatus);
+      }
+    }
+
+    initGlobalRealtimeChannel();
 
     return () => {
-      supabase.removeChannel(channel);
+      eventListeners.delete(onEvent);
+      if (onStatusChange) {
+        statusListeners.delete(onStatusChange);
+      }
     };
   },
 

@@ -103,11 +103,11 @@ export const ManagerAttendancePage: React.FC = () => {
                             : 'var(--warning)',
                       }}
                     >
-                      {rec.status.toUpperCase()}
+                      {(rec.status || '').toUpperCase()}
                     </span>
                   </td>
                   <td>{rec.late_minutes > 0 ? `${rec.late_minutes} mins` : '--'}</td>
-                  <td style={{ fontWeight: 600 }}>{rec.active_hours} hrs</td>
+                  <td style={{ fontWeight: 600 }}>{rec.active_hours ?? 0} hrs</td>
                 </tr>
               ))}
             </tbody>

@@ -20,11 +20,12 @@ export const AdminManagersPage: React.FC = () => {
     loadData();
   }, []);
 
-  const filtered = managers.filter(
-    (m) =>
-      m.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      m.department.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const filtered = (managers || []).filter((m) => {
+    const name = m?.name || '';
+    const dept = m?.department || '';
+    const search = (searchQuery || '').toLowerCase();
+    return name.toLowerCase().includes(search) || dept.toLowerCase().includes(search);
+  });
 
   return (
     <div>
@@ -79,7 +80,7 @@ export const AdminManagersPage: React.FC = () => {
                   <td>{mgr.department}</td>
                   <td>
                     <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                      {mgr.teams.map((t) => (
+                      {(mgr.teams || []).map((t) => (
                         <span
                           key={t}
                           style={{
@@ -97,7 +98,7 @@ export const AdminManagersPage: React.FC = () => {
                   </td>
                   <td>
                     <span style={{ fontWeight: 600, color: 'var(--primary)' }}>
-                      {mgr.assigned_employee_ids.length} employees
+                      {(mgr.assigned_employee_ids || []).length} employees
                     </span>
                   </td>
                   <td>{mgr.active_projects_count} projects</td>

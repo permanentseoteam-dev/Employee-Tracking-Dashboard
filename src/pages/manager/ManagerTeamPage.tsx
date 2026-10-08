@@ -52,11 +52,11 @@ export const ManagerTeamPage: React.FC = () => {
                   fontWeight: 600,
                   padding: '2px 8px',
                   borderRadius: 'var(--radius-full)',
-                  backgroundColor: emp.status === 'active' ? 'var(--success-bg)' : 'var(--warning-bg)',
-                  color: emp.status === 'active' ? 'var(--success)' : 'var(--warning)',
+                  backgroundColor: emp?.status === 'active' ? 'var(--success-bg)' : 'var(--warning-bg)',
+                  color: emp?.status === 'active' ? 'var(--success)' : 'var(--warning)',
                 }}
               >
-                {emp.status.toUpperCase()}
+                {(emp?.status || '').toUpperCase()}
               </span>
             </div>
 
@@ -64,16 +64,16 @@ export const ManagerTeamPage: React.FC = () => {
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                 <span style={{ color: 'var(--text-muted)' }}>Current Task:</span>
                 <span style={{ fontWeight: 500, maxWidth: 180, textAlign: 'right' }}>
-                  {emp.current_task || 'Idle / No active task'}
+                  {emp?.current_task || 'Idle / No active task'}
                 </span>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                 <span style={{ color: 'var(--text-muted)' }}>First Check-in:</span>
-                <span style={{ fontFamily: 'monospace' }}>{emp.first_activity}</span>
+                <span style={{ fontFamily: 'monospace' }}>{emp?.first_activity || '--:--'}</span>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                 <span style={{ color: 'var(--text-muted)' }}>Tracked Today:</span>
-                <span style={{ fontWeight: 600 }}>{(emp.active_seconds / 3600).toFixed(1)} hrs</span>
+                <span style={{ fontWeight: 600 }}>{(((emp?.active_seconds || 0) / 3600)).toFixed(1)} hrs</span>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                 <span style={{ color: 'var(--text-muted)' }}>Device Binding:</span>

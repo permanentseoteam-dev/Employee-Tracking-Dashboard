@@ -24,6 +24,13 @@ export const AppShell: React.FC<AppShellProps> = ({
 
   return (
     <div className="app-container">
+      {/* Ambient Luminous Gradient Backdrop */}
+      <div className="stitch-ambient-canvas">
+        <div className="ambient-orb ambient-orb-1" />
+        <div className="ambient-orb ambient-orb-2" />
+        <div className="ambient-orb ambient-orb-3" />
+      </div>
+
       <TopBar
         status={status}
         dbStats={dbStats}
@@ -31,13 +38,13 @@ export const AppShell: React.FC<AppShellProps> = ({
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
       />
-      <div className="app-body">
+      <div style={{ display: 'flex', flex: 1, position: 'relative', zIndex: 10 }}>
         <Sidebar
           currentTab={currentTab}
           onTabChange={onTabChange}
           status={status}
         />
-        <main className="main-content">{children}</main>
+        <main className="stitch-main">{children}</main>
       </div>
     </div>
   );

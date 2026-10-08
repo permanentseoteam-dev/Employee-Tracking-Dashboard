@@ -131,15 +131,15 @@ export const AdminPerformancePage: React.FC = () => {
                 </tr>
               </thead>
               <tbody>
-                {[...employees]
-                  .sort((a, b) => b.stars - a.stars)
+                {[...(employees || [])]
+                  .sort((a, b) => (b?.stars || 0) - (a?.stars || 0))
                   .map((emp) => (
                     <tr key={emp.id}>
                       <td style={{ fontWeight: 600 }}>{emp.name}</td>
                       <td>{emp.team_name}</td>
-                      <td>{(emp.active_seconds / 3600).toFixed(1)} hrs</td>
+                      <td>{(((emp?.active_seconds || 0) / 3600)).toFixed(1)} hrs</td>
                       <td style={{ fontWeight: 700, color: '#f59e0b', fontSize: 14 }}>
-                        ⭐ {emp.stars}
+                        ⭐ {emp?.stars ?? 0}
                       </td>
                     </tr>
                   ))}

@@ -203,7 +203,7 @@ export const ManagerTasksPage: React.FC = () => {
                       <option value="paused">Paused</option>
                     </select>
                   </td>
-                  <td style={{ fontFamily: 'monospace' }}>{(task.tracked_seconds / 3600).toFixed(1)}h</td>
+                  <td style={{ fontFamily: 'monospace' }}>{(((task.tracked_seconds || 0) / 3600)).toFixed(1)}h</td>
                   <td style={{ fontSize: 12, color: 'var(--text-muted)' }}>{task.due_date}</td>
                   <td>
                     {task.status !== 'completed' && (

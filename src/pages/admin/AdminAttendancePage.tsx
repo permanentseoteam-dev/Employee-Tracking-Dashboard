@@ -149,7 +149,7 @@ export const AdminAttendancePage: React.FC = () => {
                               : 'var(--danger)',
                         }}
                       >
-                        {rec.status.toUpperCase()}
+                        {(rec.status || '').toUpperCase()}
                       </span>
                     </td>
                     <td>{rec.late_minutes > 0 ? `${rec.late_minutes} mins` : '--'}</td>

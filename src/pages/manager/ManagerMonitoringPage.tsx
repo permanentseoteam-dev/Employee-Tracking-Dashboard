@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { RefreshCw, X, Filter } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { RefreshCw, X, Filter, Calendar } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { dataService } from '../../services/dataService';
 import type { ScreenshotItem, EmployeeRecord } from '../../types/roles';
@@ -30,16 +31,12 @@ export const ManagerMonitoringPage: React.FC = () => {
 
   useEffect(() => {
     loadData();
-
     const unsubscribe = dataService.subscribeToRealtime((payload) => {
       if (payload.table === 'screenshots' || payload.table === 'employee_presence') {
         loadData();
       }
     });
-
-    return () => {
-      unsubscribe();
-    };
+    return () => unsubscribe();
   }, [user.id, filterEmployeeId]);
 
   const handleOpenScreenshot = (sc: ScreenshotItem) => {
@@ -54,30 +51,48 @@ export const ManagerMonitoringPage: React.FC = () => {
   };
 
   return (
-    <div>
-      <div className="page-header">
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.3 }}
+      style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', width: '100%' }}
+    >
+      <div className="grid-operations-header">
         <div>
-          <h1 className="page-title">Team Screenshots & Activity Telemetry</h1>
-          <p className="page-subtitle">
-            Restricted to {user.team_name || 'assigned team'} &bull; Transparent employee monitoring
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)' }}>
+            <span className="pulse-beacon" />
+            <span>Team Live Feed</span>
+          </div>
+          <h1 style={{ fontSize: 32, fontWeight: 800, color: 'var(--text-primary)', letterSpacing: '-0.03em', marginTop: 2 }}>
+            Team Telemetry & Screen Captures
+          </h1>
+          <p style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 4 }}>
+            Active windows and screen captures scoped to {user.team_name || 'your assigned team'}
           </p>
         </div>
-        <div style={{ display: 'flex', gap: 10 }}>
-          <button className="btn btn-secondary" onClick={loadData}>
-            <RefreshCw size={14} />
-            <span>Refresh</span>
-          </button>
-        </div>
+
+        <button type="button" className="btn-icon-circle" onClick={loadData} title="Refresh captures">
+          <RefreshCw size={15} />
+        </button>
       </div>
 
-      {/* Filter by Team Member */}
-      <div className="content-card" style={{ padding: '12px 18px', marginBottom: 18 }}>
+      {/* Filter Bar */}
+      <div className="frosted-card frosted-card-sm" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <Filter size={15} color="var(--text-muted)" />
-          <span style={{ fontSize: 13, fontWeight: 500 }}>Filter by Team Member:</span>
+          <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-primary)' }}>Team Member:</span>
           <select
-            className="form-input"
-            style={{ width: 220, padding: '6px 10px', fontSize: 13 }}
+            style={{
+              background: 'var(--surface-frosted-subdued)',
+              border: '1px solid var(--surface-border-subtle)',
+              borderRadius: 'var(--radius-pill)',
+              padding: '6px 14px',
+              fontSize: 12,
+              fontWeight: 600,
+              color: 'var(--text-primary)',
+              outline: 'none',
+              cursor: 'pointer',
+            }}
             value={filterEmployeeId}
             onChange={(e) => setFilterEmployeeId(e.target.value)}
           >
@@ -89,75 +104,51 @@ export const ManagerMonitoringPage: React.FC = () => {
             ))}
           </select>
         </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 11, color: 'var(--text-muted)' }}>
+          <span className="live-telemetry-badge">
+            <Calendar size={12} /> Live Sync
+          </span>
+          <span>&bull;</span>
+          <span>Privacy-Preserving Telemetry</span>
+        </div>
       </div>
 
+      {/* Screenshot Card Grid */}
       {screenshots.length === 0 ? (
-        <div className="content-card" style={{ textAlign: 'center', padding: '40px 0', color: 'var(--text-muted)' }}>
+        <div className="frosted-card" style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>
           No screenshots recorded for your team.
         </div>
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 18 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '1.25rem' }}>
           {screenshots.map((sc) => (
             <div
               key={sc.id}
-              className="content-card"
-              style={{
-                padding: 0,
-                overflow: 'hidden',
-                display: 'flex',
-                flexDirection: 'column',
-                cursor: 'pointer',
-              }}
+              className="frosted-card"
+              style={{ padding: 0, overflow: 'hidden', cursor: 'pointer' }}
               onClick={() => handleOpenScreenshot(sc)}
             >
-              <div
-                style={{
-                  height: 170,
-                  backgroundColor: 'var(--bg-surface)',
-                  position: 'relative',
-                  borderBottom: '1px solid var(--border-subtle)',
-                }}
-              >
+              <div style={{ height: 180, position: 'relative', background: 'var(--surface-frosted-subdued)' }}>
                 <img
                   src={sc.thumbnail_url}
                   alt={sc.window_title}
                   style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                 />
-                <span
-                  style={{
-                    position: 'absolute',
-                    top: 10,
-                    right: 10,
-                    padding: '2px 8px',
-                    borderRadius: 'var(--radius-full)',
-                    fontSize: 10,
-                    fontWeight: 700,
-                    textTransform: 'uppercase',
-                    backgroundColor: sc.activity_type === 'active' ? 'var(--success-bg)' : 'var(--warning-bg)',
-                    color: sc.activity_type === 'active' ? 'var(--success)' : 'var(--warning)',
-                  }}
-                >
+                <div style={{ position: 'absolute', top: 10, right: 10 }} className={`status-pill ${sc.activity_type === 'active' ? 'active' : 'idle'}`}>
                   {sc.activity_type}
-                </span>
+                </div>
               </div>
 
-              <div style={{ padding: 12 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                  <span style={{ fontWeight: 600, fontSize: 13 }}>{sc.employee_name}</span>
-                  <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{sc.captured_at.split(' ')[1]}</span>
+              <div style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>
+                    {sc.employee_name || 'Team Member'}
+                  </span>
+                  <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                    {sc.captured_at ? (sc.captured_at.includes(' ') ? sc.captured_at.split(' ')[1] : sc.captured_at) : 'Live'}
+                  </span>
                 </div>
-                <div
-                  style={{
-                    fontSize: 11,
-                    color: 'var(--text-muted)',
-                    whiteSpace: 'nowrap',
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    backgroundColor: 'var(--bg-surface)',
-                    padding: '4px 8px',
-                    borderRadius: 4,
-                  }}
-                >
+                <div style={{ fontSize: 11, color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {sc.window_title}
                 </div>
               </div>
@@ -166,52 +157,46 @@ export const ManagerMonitoringPage: React.FC = () => {
         </div>
       )}
 
-      {/* High-Res Modal */}
-      {selectedScreenshot && (
-        <div
-          style={{
-            position: 'fixed',
-            inset: 0,
-            backgroundColor: 'rgba(0, 0, 0, 0.85)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 1000,
-            padding: 24,
-          }}
-          onClick={() => setSelectedScreenshot(null)}
-        >
-          <div
-            className="content-card"
-            style={{ maxWidth: 960, width: '100%', margin: 0, padding: 20 }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="content-card-title">
-              <div>
-                <span>{selectedScreenshot.employee_name}</span>
-                <span style={{ fontSize: 12, color: 'var(--text-muted)', marginLeft: 10 }}>
-                  Captured: {selectedScreenshot.captured_at} &bull; {selectedScreenshot.window_title}
-                </span>
+      {/* Modal */}
+      <AnimatePresence>
+        {selectedScreenshot && (
+          <div className="stitch-modal-backdrop" onClick={() => setSelectedScreenshot(null)}>
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="stitch-modal-content"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
+                <div>
+                  <h3 style={{ fontSize: 18, fontWeight: 800, color: 'var(--text-primary)' }}>
+                    {selectedScreenshot.employee_name}
+                  </h3>
+                  <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                    {selectedScreenshot.captured_at} &bull; {selectedScreenshot.window_title}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  className="btn-icon-circle"
+                  onClick={() => setSelectedScreenshot(null)}
+                >
+                  <X size={16} />
+                </button>
               </div>
-              <button className="icon-btn" onClick={() => setSelectedScreenshot(null)}>
-                <X size={18} />
-              </button>
-            </div>
 
-            <div style={{ borderRadius: 'var(--radius-md)', overflow: 'hidden', border: '1px solid var(--border-medium)', marginBottom: 14 }}>
-              <img
-                src={selectedScreenshot.high_res_url}
-                alt="Full resolution capture"
-                style={{ width: '100%', height: 'auto', display: 'block' }}
-              />
-            </div>
-
-            <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-              Size: {(selectedScreenshot.file_size_bytes / 1024).toFixed(1)} KB (Lossy WebP)
-            </div>
+              <div style={{ borderRadius: 'var(--radius-card-sm)', overflow: 'hidden', border: '1px solid var(--surface-border)', maxHeight: '70vh' }}>
+                <img
+                  src={selectedScreenshot.high_res_url || selectedScreenshot.thumbnail_url}
+                  alt={selectedScreenshot.window_title}
+                  style={{ width: '100%', height: 'auto', display: 'block' }}
+                />
+              </div>
+            </motion.div>
           </div>
-        </div>
-      )}
-    </div>
+        )}
+      </AnimatePresence>
+    </motion.div>
   );
 };

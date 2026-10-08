@@ -41,12 +41,16 @@ export const AdminProjectsTasksPage: React.FC<AdminProjectsTasksPageProps> = ({ 
     };
   }, []);
 
-  const filteredTasks = tasks.filter((t) => {
+  const filteredTasks = (tasks || []).filter((t) => {
+    const title = t?.title || '';
+    const empName = t?.employee_name || '';
+    const projName = t?.project_name || '';
+    const search = (searchQuery || '').toLowerCase();
     const matchesSearch =
-      t.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      t.employee_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      t.project_name.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesStatus = statusFilter === 'all' || t.status === statusFilter;
+      title.toLowerCase().includes(search) ||
+      empName.toLowerCase().includes(search) ||
+      projName.toLowerCase().includes(search);
+    const matchesStatus = statusFilter === 'all' || t?.status === statusFilter;
     return matchesSearch && matchesStatus;
   });
 
@@ -103,7 +107,7 @@ export const AdminProjectsTasksPage: React.FC<AdminProjectsTasksPageProps> = ({ 
                     color: proj.status === 'active' ? 'var(--success)' : 'var(--text-muted)',
                   }}
                 >
-                  {proj.status.toUpperCase()}
+                  {(proj.status || '').toUpperCase()}
                 </span>
               </div>
 
@@ -233,11 +237,11 @@ export const AdminProjectsTasksPage: React.FC<AdminProjectsTasksPageProps> = ({ 
                               : 'var(--text-muted)',
                         }}
                       >
-                        {t.status.replace('_', ' ')}
+                        {(t.status || '').replace('_', ' ')}
                       </span>
                     </td>
                     <td style={{ fontFamily: 'monospace' }}>
-                      {(t.tracked_seconds / 3600).toFixed(1)}h
+                      {(((t.tracked_seconds || 0) / 3600)).toFixed(1)}h
                     </td>
                     <td style={{ fontSize: 12, color: 'var(--text-muted)' }}>{t.due_date}</td>
                   </tr>

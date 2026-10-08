@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Play, CheckCircle2, Clock, Plus, RefreshCw } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Play, Plus, RefreshCw, X, CheckSquare, FolderKanban } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { dataService } from '../services/dataService';
 import type { TaskItem } from '../types/roles';
@@ -11,34 +12,26 @@ interface TasksPageProps {
 export const TasksPage: React.FC<TasksPageProps> = ({ onStartTask }) => {
   const { user } = useAuth();
   const [tasks, setTasks] = useState<TaskItem[]>([]);
-  const [loading, setLoading] = useState(true);
   const [isAdding, setIsAdding] = useState(false);
   const [newTaskTitle, setNewTaskTitle] = useState('');
 
   const loadData = async () => {
-    setLoading(true);
     try {
       const list = await dataService.getTasks('employee', undefined, user.id);
       setTasks(list);
     } catch (err) {
       console.error('Failed to load employee tasks:', err);
-    } finally {
-      setLoading(false);
     }
   };
 
   useEffect(() => {
     loadData();
-
     const unsubscribe = dataService.subscribeToRealtime((payload) => {
       if (payload.table === 'tasks') {
         loadData();
       }
     });
-
-    return () => {
-      unsubscribe();
-    };
+    return () => unsubscribe();
   }, [user.id]);
 
   const toggleTaskStatus = async (task: TaskItem) => {
@@ -93,185 +86,182 @@ export const TasksPage: React.FC<TasksPageProps> = ({ onStartTask }) => {
   };
 
   return (
-    <div>
-      <div className="page-header">
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.3 }}
+      style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', width: '100%' }}
+    >
+      <div className="grid-operations-header">
         <div>
-          <h1 className="page-title">My Assigned Tasks</h1>
-          <p className="page-subtitle">
-            Live database sync &bull; Precision timer tracking &bull; Assigned to {user.name}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)' }}>
+            <span className="pulse-beacon" />
+            <span>Sprint Deliverables</span>
+          </div>
+          <h1 style={{ fontSize: 32, fontWeight: 800, color: 'var(--text-primary)', letterSpacing: '-0.03em', marginTop: 2 }}>
+            My Assigned Tasks
+          </h1>
+          <p style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 4 }}>
+            Directly synced from Supabase tasks &bull; Integrated task stopwatch
           </p>
         </div>
-        <div style={{ display: 'flex', gap: 10 }}>
-          <button className="btn btn-secondary" onClick={loadData} title="Refresh Tasks">
-            <RefreshCw size={14} />
-            <span>Refresh</span>
-          </button>
-          <button className="btn btn-primary" onClick={() => setIsAdding(true)}>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <button
+            type="button"
+            className="btn-pill btn-pill-primary"
+            onClick={() => setIsAdding(true)}
+          >
             <Plus size={15} />
             <span>Add Custom Task</span>
           </button>
+          <button type="button" className="btn-icon-circle" onClick={loadData} title="Refresh tasks">
+            <RefreshCw size={15} />
+          </button>
+        </div>
+      </div>
+
+      {/* Task List Table in Frosted Card */}
+      <div className="frosted-card">
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <h3 style={{ fontSize: 16, fontWeight: 700, color: 'var(--text-primary)' }}>Sprint Task Board</h3>
+            <span className="status-pill active" style={{ fontSize: 10 }}>
+              {tasks.filter((t) => t.status === 'completed').length}/{tasks.length} Completed
+            </span>
+          </div>
+          <span className="live-telemetry-badge">
+            <CheckSquare size={12} /> Active Sprint
+          </span>
+        </div>
+
+        <div className="stitch-table-wrapper">
+          <table className="stitch-table">
+            <thead>
+              <tr>
+                <th style={{ width: 40 }}>Done</th>
+                <th>Task Title</th>
+                <th>Project</th>
+                <th>Priority</th>
+                <th>Due Date</th>
+                <th>Timer</th>
+              </tr>
+            </thead>
+            <tbody>
+              {tasks.length === 0 ? (
+                <tr>
+                  <td colSpan={6} style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>
+                    No assigned tasks found. Create one using the button above.
+                  </td>
+                </tr>
+              ) : (
+                tasks.map((task) => {
+                  const isDone = task.status === 'completed';
+                  return (
+                    <tr key={task.id}>
+                      <td>
+                        <input
+                          type="checkbox"
+                          checked={isDone}
+                          onChange={() => toggleTaskStatus(task)}
+                          style={{ cursor: 'pointer' }}
+                        />
+                      </td>
+                      <td>
+                        <span style={{ fontWeight: 600, color: 'var(--text-primary)', textDecoration: isDone ? 'line-through' : 'none', opacity: isDone ? 0.6 : 1 }}>
+                          {task.title}
+                        </span>
+                      </td>
+                      <td style={{ color: 'var(--text-muted)' }}>
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                          <FolderKanban size={13} /> {task.project_name || 'Core Operations'}
+                        </span>
+                      </td>
+                      <td>
+                        <span className={`status-pill ${task.priority === 'high' ? 'critical' : task.priority === 'medium' ? 'invited' : 'neutral'}`}>
+                          {task.priority}
+                        </span>
+                      </td>
+                      <td style={{ color: 'var(--text-muted)', fontSize: 12 }}>
+                        {task.due_date || 'Sprint Close'}
+                      </td>
+                      <td>
+                        <button
+                          type="button"
+                          className="btn-pill btn-pill-secondary"
+                          style={{ padding: '3px 10px', fontSize: 11 }}
+                          onClick={() => onStartTask(task.title)}
+                        >
+                          <Play size={11} />
+                          <span>Track Time</span>
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
         </div>
       </div>
 
       {/* Add Task Modal */}
-      {isAdding && (
-        <div
-          style={{
-            position: 'fixed',
-            inset: 0,
-            backgroundColor: 'rgba(0,0,0,0.6)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 1000,
-          }}
-        >
-          <div className="content-card" style={{ width: 420, maxWidth: '90vw', margin: 0 }}>
-            <div className="content-card-title">
-              <span>Create New Task</span>
-              <button className="icon-btn" onClick={() => setIsAdding(false)}>
-                &times;
-              </button>
-            </div>
-            <form onSubmit={handleCreateTask}>
-              <div className="form-group">
-                <label className="form-label">Task Name</label>
-                <input
-                  type="text"
-                  required
-                  className="form-input"
-                  placeholder="e.g. Implement real-time WebSocket listeners"
-                  value={newTaskTitle}
-                  onChange={(e) => setNewTaskTitle(e.target.value)}
-                  autoFocus
-                />
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 16 }}>
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  onClick={() => setIsAdding(false)}
-                >
-                  Cancel
-                </button>
-                <button type="submit" className="btn btn-primary">
-                  Save Task
+      <AnimatePresence>
+        {isAdding && (
+          <div className="stitch-modal-backdrop" onClick={() => setIsAdding(false)}>
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="stitch-modal-content"
+              style={{ maxWidth: 460 }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.25rem' }}>
+                <h3 style={{ fontSize: 18, fontWeight: 800, color: 'var(--text-primary)' }}>Create New Task</h3>
+                <button type="button" className="btn-icon-circle" onClick={() => setIsAdding(false)}>
+                  <X size={16} />
                 </button>
               </div>
-            </form>
-          </div>
-        </div>
-      )}
 
-      <div className="content-card">
-        <div className="content-card-title">
-          <span>Active Task Queue</span>
-          <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-            {tasks.length} total tasks
-          </span>
-        </div>
+              <form onSubmit={handleCreateTask} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 6 }}>
+                    Task Title
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. Implement real-time WebSocket listeners"
+                    value={newTaskTitle}
+                    onChange={(e) => setNewTaskTitle(e.target.value)}
+                    style={{
+                      width: '100%',
+                      background: 'var(--surface-frosted-subdued)',
+                      border: '1px solid var(--surface-border-subtle)',
+                      borderRadius: 'var(--radius-card-sm)',
+                      padding: '10px 14px',
+                      fontSize: 13,
+                      color: 'var(--text-primary)',
+                      outline: 'none',
+                    }}
+                    autoFocus
+                  />
+                </div>
 
-        {loading ? (
-          <div style={{ textAlign: 'center', padding: '36px 0', color: 'var(--text-muted)' }}>
-            Loading your tasks from Supabase...
-          </div>
-        ) : tasks.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: '36px 0', color: 'var(--text-muted)' }}>
-            No tasks assigned yet. Click "Add Custom Task" to create one.
-          </div>
-        ) : (
-          <div style={{ overflowX: 'auto' }}>
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>ID</th>
-                  <th>Task Title</th>
-                  <th>Project</th>
-                  <th>Logged Time</th>
-                  <th>Status</th>
-                  <th>Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {tasks.map((task) => (
-                  <tr key={task.id}>
-                    <td style={{ fontFamily: 'monospace', color: 'var(--text-muted)', fontSize: 11 }}>
-                      {task.id.substring(0, 8)}...
-                    </td>
-                    <td style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
-                      {task.title}
-                    </td>
-                    <td>{task.project_name}</td>
-                    <td>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <Clock size={13} color="var(--text-muted)" />
-                        <span>{(task.tracked_seconds / 3600).toFixed(1)} hrs</span>
-                      </div>
-                    </td>
-                    <td>
-                      <span
-                        style={{
-                          padding: '3px 8px',
-                          borderRadius: 'var(--radius-sm)',
-                          fontSize: 11,
-                          fontWeight: 600,
-                          backgroundColor:
-                            task.status === 'in_progress'
-                              ? 'var(--primary-light)'
-                              : task.status === 'completed'
-                              ? 'var(--success-bg)'
-                              : 'var(--bg-surface)',
-                          color:
-                            task.status === 'in_progress'
-                              ? 'var(--primary)'
-                              : task.status === 'completed'
-                              ? 'var(--success)'
-                              : 'var(--text-muted)',
-                        }}
-                      >
-                        {task.status === 'in_progress'
-                          ? 'IN PROGRESS'
-                          : task.status === 'completed'
-                          ? 'COMPLETED'
-                          : 'READY'}
-                      </span>
-                    </td>
-                    <td>
-                      <div style={{ display: 'flex', gap: 6 }}>
-                        {task.status !== 'completed' && (
-                          <button
-                            className="btn btn-primary"
-                            style={{ padding: '4px 8px', fontSize: 11 }}
-                            onClick={() => onStartTask(task.title)}
-                            title="Start Timer for this task"
-                          >
-                            <Play size={12} />
-                            <span>Timer</span>
-                          </button>
-                        )}
-                        <button
-                          className="btn btn-secondary"
-                          style={{ padding: '4px 8px', fontSize: 11 }}
-                          onClick={() => toggleTaskStatus(task)}
-                        >
-                          {task.status === 'completed' ? (
-                            'Reopen'
-                          ) : (
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                              <CheckCircle2 size={12} color="var(--success)" />
-                              <span>Done</span>
-                            </div>
-                          )}
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 8 }}>
+                  <button type="button" className="btn-pill btn-pill-secondary" onClick={() => setIsAdding(false)}>
+                    Cancel
+                  </button>
+                  <button type="submit" className="btn-pill btn-pill-primary">
+                    Create Task
+                  </button>
+                </div>
+              </form>
+            </motion.div>
           </div>
         )}
-      </div>
-    </div>
+      </AnimatePresence>
+    </motion.div>
   );
 };

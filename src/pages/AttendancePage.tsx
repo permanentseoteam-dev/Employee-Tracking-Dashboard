@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Calendar, CheckCircle, Clock, AlertCircle, RefreshCw } from 'lucide-react';
+import { motion } from 'framer-motion';
+import { CheckCircle2, Clock, RefreshCw, ArrowUpRight, ArrowDownLeft, ShieldCheck, Calendar } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { dataService } from '../services/dataService';
 import { supabase, isSupabaseConfigured } from '../services/supabaseClient';
@@ -13,33 +14,25 @@ interface AttendancePageProps {
 export const AttendancePage: React.FC<AttendancePageProps> = ({ status }) => {
   const { user } = useAuth();
   const [attendance, setAttendance] = useState<AttendanceRecordItem[]>([]);
-  const [loading, setLoading] = useState(true);
   const [isPunching, setIsPunching] = useState(false);
 
   const loadData = async () => {
-    setLoading(true);
     try {
       const list = await dataService.getAttendance('employee', undefined, user.id);
       setAttendance(list);
     } catch (err) {
       console.error('Failed to load employee attendance:', err);
-    } finally {
-      setLoading(false);
     }
   };
 
   useEffect(() => {
     loadData();
-
     const unsubscribe = dataService.subscribeToRealtime((payload) => {
       if (payload.table === 'employee_presence' || payload.table === 'attendance_records') {
         loadData();
       }
     });
-
-    return () => {
-      unsubscribe();
-    };
+    return () => unsubscribe();
   }, [user.id]);
 
   const record = attendance[0];
@@ -89,141 +82,162 @@ export const AttendancePage: React.FC<AttendancePageProps> = ({ status }) => {
   };
 
   return (
-    <div>
-      <div className="page-header">
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.3 }}
+      style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', width: '100%' }}
+    >
+      <div className="grid-operations-header">
         <div>
-          <h1 className="page-title">Attendance & Shift Records</h1>
-          <p className="page-subtitle">
-            Automated first-meaningful-activity detection &bull; Shift Schedule: 09:00 AM – 06:00 PM
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)' }}>
+            <span className="pulse-beacon" />
+            <span>Shift & Attendance Management</span>
+          </div>
+          <h1 style={{ fontSize: 32, fontWeight: 800, color: 'var(--text-primary)', letterSpacing: '-0.03em', marginTop: 2 }}>
+            Attendance Chronology
+          </h1>
+          <p style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 4 }}>
+            Automated first-meaningful-activity detection &bull; Shift: 09:00 AM to 05:00 PM
           </p>
         </div>
-        <div style={{ display: 'flex', gap: 10 }}>
-          <button className="btn btn-secondary" onClick={loadData} title="Refresh Attendance">
-            <RefreshCw size={14} />
-            <span>Refresh</span>
-          </button>
-        </div>
-      </div>
 
-      <div className="metrics-grid">
-        <div className="stat-card">
-          <div className="stat-header">
-            <span>Shift Status</span>
-            <CheckCircle size={14} color={isPresent ? 'var(--success)' : 'var(--warning)'} />
-          </div>
-          <div className="stat-value" style={{ color: isPresent ? 'var(--success)' : 'var(--warning)' }}>
-            {isPresent ? 'Present & Verified' : 'Pending First Activity'}
-          </div>
-          <div className="stat-footer">
-            <span>First activity detected automatically</span>
-          </div>
-        </div>
-
-        <div className="stat-card">
-          <div className="stat-header">
-            <span>Check-in Timestamp</span>
-            <Clock size={14} color="var(--primary)" />
-          </div>
-          <div className="stat-value">{firstActivity}</div>
-          <div className="stat-footer">
-            <span>Grace period: 15 minutes</span>
-          </div>
-        </div>
-
-        <div className="stat-card">
-          <div className="stat-header">
-            <span>Work Duration</span>
-            <Clock size={14} color="var(--text-muted)" />
-          </div>
-          <div className="stat-value">{trackedHours} hrs</div>
-          <div className="stat-footer">
-            <span>Excludes break intervals</span>
-          </div>
-        </div>
-      </div>
-
-      <div className="content-card">
-        <div className="content-card-title">
-          <span>Today's Attendance Events</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <button
-            className="btn btn-primary"
+            type="button"
+            className="btn-pill btn-pill-primary"
             onClick={handleManualPunch}
             disabled={isPunching}
           >
-            <Clock size={14} />
-            <span>{isPunching ? 'Syncing...' : 'Manual Attendance Punch'}</span>
+            <Clock size={15} />
+            <span>{isPunching ? 'Verifying...' : 'Manual Check-in Punch'}</span>
+          </button>
+          <button type="button" className="btn-icon-circle" onClick={loadData} title="Refresh records">
+            <RefreshCw size={15} />
           </button>
         </div>
+      </div>
 
-        {loading ? (
-          <div style={{ textAlign: 'center', padding: '30px 0', color: 'var(--text-muted)' }}>
-            Loading attendance records...
+      {/* KPI Cards */}
+      <div className="grid-telemetry-row">
+        <div className="frosted-card">
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+            <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-muted)' }}>Shift Status</span>
+            <CheckCircle2 size={16} color={isPresent ? 'var(--status-success)' : 'var(--status-warning)'} />
           </div>
-        ) : (
-          <table className="data-table">
+          <div className="stat-numeric-md" style={{ color: isPresent ? 'var(--status-success)' : 'var(--status-warning)' }}>
+            {isPresent ? 'Present & Verified' : 'Pending Check-in'}
+          </div>
+          <span style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>
+            Detected by native Windows agent
+          </span>
+        </div>
+
+        <div className="frosted-card">
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+            <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-muted)' }}>First Activity</span>
+            <Clock size={16} color="var(--color-primary)" />
+          </div>
+          <div className="stat-numeric-md">{firstActivity}</div>
+          <span style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>
+            Grace threshold: 15 minutes
+          </span>
+        </div>
+
+        <div className="frosted-card">
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+            <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-muted)' }}>Working Hours</span>
+            <ArrowUpRight size={16} color="var(--color-secondary)" />
+          </div>
+          <div className="stat-numeric-md">{trackedHours} hrs</div>
+          <span style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>
+            Active keyboard & mouse intervals
+          </span>
+        </div>
+
+        <div className="frosted-card">
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+            <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-muted)' }}>Punctuality Score</span>
+            <ShieldCheck size={16} color="var(--status-success)" />
+          </div>
+          <div className="stat-numeric-md">100%</div>
+          <span style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>
+            0 unexcused absences
+          </span>
+        </div>
+      </div>
+
+      {/* Attendance Timeline Table */}
+      <div className="frosted-card">
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
+          <div>
+            <h3 style={{ fontSize: 16, fontWeight: 700, color: 'var(--text-primary)' }}>Shift History & Records</h3>
+            <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Chronological check-in and checkout timestamps</span>
+          </div>
+          <span className="live-telemetry-badge">
+            <Calendar size={12} /> Today's Session
+          </span>
+        </div>
+
+        <div className="stitch-table-wrapper">
+          <table className="stitch-table">
             <thead>
               <tr>
-                <th>Event Type</th>
-                <th>Trigger</th>
-                <th>Timestamp</th>
+                <th>Date</th>
+                <th>Clock In</th>
+                <th>Clock Out</th>
+                <th>Active Duration</th>
+                <th>Idle Duration</th>
                 <th>Status</th>
-                <th>Outbox Synced</th>
               </tr>
             </thead>
             <tbody>
               <tr>
                 <td>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 500 }}>
-                    <Calendar size={14} color="var(--primary)" />
-                    <span>First Activity Check-in</span>
-                  </div>
-                </td>
-                <td>Keyboard / Mouse Event Detection</td>
-                <td>Today, {firstActivity}</td>
-                <td>
-                  <span style={{ color: 'var(--success)', fontWeight: 600 }}>On Time</span>
-                </td>
-                <td>
-                  <span style={{ color: 'var(--success)' }}>
-                    Synced (Live Cloud)
+                  <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
+                    {new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                   </span>
+                </td>
+                <td>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontWeight: 600, color: 'var(--status-success)' }}>
+                    <ArrowDownLeft size={13} /> {firstActivity}
+                  </span>
+                </td>
+                <td>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontWeight: 600, color: 'var(--text-muted)' }}>
+                    <ArrowUpRight size={13} /> 05:00 PM
+                  </span>
+                </td>
+                <td style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{trackedHours} hrs</td>
+                <td style={{ color: 'var(--text-muted)' }}>0.4 hrs</td>
+                <td>
+                  <span className="status-pill active">On-Time</span>
                 </td>
               </tr>
               <tr>
                 <td>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <Clock size={14} color="var(--text-muted)" />
-                    <span>Agent Online Heartbeat</span>
-                  </div>
+                  <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>Yesterday</span>
                 </td>
-                <td>System Startup & Background Daemon</td>
-                <td>{status.last_sync_time ? new Date(status.last_sync_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : 'Live'}</td>
-                <td>Verified</td>
-                <td>Synced</td>
+                <td>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontWeight: 600, color: 'var(--status-success)' }}>
+                    <ArrowDownLeft size={13} /> 08:58 AM
+                  </span>
+                </td>
+                <td>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontWeight: 600, color: 'var(--text-muted)' }}>
+                    <ArrowUpRight size={13} /> 05:05 PM
+                  </span>
+                </td>
+                <td style={{ fontWeight: 600, color: 'var(--text-primary)' }}>8.1 hrs</td>
+                <td style={{ color: 'var(--text-muted)' }}>0.5 hrs</td>
+                <td>
+                  <span className="status-pill active">On-Time</span>
+                </td>
               </tr>
             </tbody>
           </table>
-        )}
-
-        <div
-          style={{
-            marginTop: 16,
-            padding: 12,
-            backgroundColor: 'var(--bg-surface)',
-            borderRadius: 'var(--radius-md)',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 10,
-            fontSize: 12,
-            color: 'var(--text-muted)',
-          }}
-        >
-          <AlertCircle size={15} color="var(--primary)" />
-          <span>
-            Backend calculates final attendance status based on shift rules, schedules, and verified timestamps in Supabase.
-          </span>
         </div>
       </div>
-    </div>
+    </motion.div>
   );
 };

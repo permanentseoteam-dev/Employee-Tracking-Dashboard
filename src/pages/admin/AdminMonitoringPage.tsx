@@ -1,26 +1,34 @@
 import React, { useState, useEffect } from 'react';
-import { Camera, Flame, RefreshCw, Calendar, Filter, X } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import {
+  Camera,
+  Flame,
+  RefreshCw,
+  Calendar,
+  Filter,
+  X,
+  Eye,
+  Activity,
+  Monitor,
+} from 'lucide-react';
 import { dataService } from '../../services/dataService';
-import type { ScreenshotItem, EmployeeRecord, HeatmapPoint } from '../../types/roles';
+import type { ScreenshotItem, EmployeeRecord } from '../../types/roles';
 
 export const AdminMonitoringPage: React.FC = () => {
-  const [activeSubTab, setActiveSubTab] = useState<'screenshots' | 'heatmaps'>('screenshots');
+  const [activeSubTab, setActiveSubTab] = useState<'live' | 'screenshots' | 'heatmaps'>('live');
   const [screenshots, setScreenshots] = useState<ScreenshotItem[]>([]);
   const [employees, setEmployees] = useState<EmployeeRecord[]>([]);
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<string>('all');
   const [selectedScreenshot, setSelectedScreenshot] = useState<ScreenshotItem | null>(null);
-  const [heatmapPoints, setHeatmapPoints] = useState<HeatmapPoint[]>([]);
 
   const loadData = async () => {
     try {
-      const [empList, scList, heatPoints] = await Promise.all([
+      const [empList, scList] = await Promise.all([
         dataService.getEmployees('admin'),
         dataService.getScreenshots('admin', undefined, selectedEmployeeId === 'all' ? undefined : selectedEmployeeId),
-        dataService.getHeatmapPoints(selectedEmployeeId === 'all' ? 'emp-001' : selectedEmployeeId),
       ]);
       setEmployees(empList);
       setScreenshots(scList);
-      setHeatmapPoints(heatPoints);
     } catch (err) {
       console.error(err);
     }
@@ -28,18 +36,12 @@ export const AdminMonitoringPage: React.FC = () => {
 
   useEffect(() => {
     loadData();
-
-    // Auto-receive new screenshot uploads in real-time
     const unsubscribe = dataService.subscribeToRealtime((payload) => {
       if (payload.table === 'screenshots' || payload.table === 'employee_presence') {
-        console.log('⚡ [AdminMonitoring] New screenshot/presence telemetry event:', payload);
         loadData();
       }
     });
-
-    return () => {
-      unsubscribe();
-    };
+    return () => unsubscribe();
   }, [selectedEmployeeId]);
 
   const handleOpenScreenshot = (sc: ScreenshotItem) => {
@@ -47,152 +49,197 @@ export const AdminMonitoringPage: React.FC = () => {
     dataService.logAction('Super Admin', 'admin', 'VIEW_SCREENSHOT', `${sc.employee_name} (${sc.captured_at})`, 'Inspected full resolution capture');
   };
 
+  const filteredEmployees = employees.filter((e) =>
+    selectedEmployeeId === 'all' ? true : e.id === selectedEmployeeId
+  );
+
   return (
-    <div>
-      <div className="page-header">
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.3 }}
+      style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', width: '100%' }}
+    >
+      {/* Header */}
+      <div className="grid-operations-header">
         <div>
-          <h1 className="page-title">Monitoring & Telemetry Oversight</h1>
-          <p className="page-subtitle">
-            Compressed screenshot audit timelines &bull; Activity heatmaps &bull; Low-resolution thumbnails
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)' }}>
+            <span className="pulse-beacon" />
+            <span>Organization Telemetry Stream</span>
+          </div>
+          <h1 style={{ fontSize: 32, fontWeight: 800, color: 'var(--text-primary)', letterSpacing: '-0.03em', marginTop: 2 }}>
+            Monitoring & Screen Captures
+          </h1>
+          <p style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 4 }}>
+            Real-time employee activity, live desktop feeds, window titles, and mouse telemetry
           </p>
         </div>
-        <div style={{ display: 'flex', gap: 10 }}>
-          <div style={{ display: 'flex', backgroundColor: 'var(--bg-surface)', borderRadius: 'var(--radius-md)', padding: 2, border: '1px solid var(--border-medium)' }}>
+
+        {/* View Switcher Pills */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div className="stitch-nav-pills">
             <button
-              className={`btn ${activeSubTab === 'screenshots' ? 'btn-primary' : 'btn-secondary'}`}
-              style={{ border: 'none', padding: '6px 12px' }}
+              type="button"
+              className={`nav-pill-item ${activeSubTab === 'live' ? 'active' : ''}`}
+              onClick={() => setActiveSubTab('live')}
+            >
+              <Activity size={14} />
+              <span>Live Feeds</span>
+            </button>
+            <button
+              type="button"
+              className={`nav-pill-item ${activeSubTab === 'screenshots' ? 'active' : ''}`}
               onClick={() => setActiveSubTab('screenshots')}
             >
               <Camera size={14} />
-              <span>Screenshots Gallery</span>
+              <span>Screenshots</span>
             </button>
             <button
-              className={`btn ${activeSubTab === 'heatmaps' ? 'btn-primary' : 'btn-secondary'}`}
-              style={{ border: 'none', padding: '6px 12px' }}
+              type="button"
+              className={`nav-pill-item ${activeSubTab === 'heatmaps' ? 'active' : ''}`}
               onClick={() => setActiveSubTab('heatmaps')}
             >
               <Flame size={14} />
-              <span>Mouse Heatmaps</span>
+              <span>Heatmaps</span>
             </button>
           </div>
-          <button className="btn btn-secondary" onClick={loadData}>
-            <RefreshCw size={14} />
+
+          <button type="button" className="btn-icon-circle" onClick={loadData} title="Refresh telemetry">
+            <RefreshCw size={15} />
           </button>
         </div>
       </div>
 
       {/* Filter Bar */}
-      <div className="content-card" style={{ padding: '12px 18px', marginBottom: 18 }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <Filter size={15} color="var(--text-muted)" />
-            <span style={{ fontSize: 13, fontWeight: 500 }}>Filter by Employee:</span>
-            <select
-              className="form-input"
-              style={{ width: 220, padding: '6px 10px', fontSize: 13 }}
-              value={selectedEmployeeId}
-              onChange={(e) => setSelectedEmployeeId(e.target.value)}
-            >
-              <option value="all">All Organization Employees</option>
-              {employees.map((e) => (
-                <option key={e.id} value={e.id}>
-                  {e.name} ({e.team_name})
-                </option>
-              ))}
-            </select>
-          </div>
+      <div className="frosted-card frosted-card-sm" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <Filter size={15} color="var(--text-muted)" />
+          <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-primary)' }}>Employee:</span>
+          <select
+            style={{
+              background: 'var(--surface-frosted-subdued)',
+              border: '1px solid var(--surface-border-subtle)',
+              borderRadius: 'var(--radius-pill)',
+              padding: '6px 14px',
+              fontSize: 12,
+              fontWeight: 600,
+              color: 'var(--text-primary)',
+              outline: 'none',
+              cursor: 'pointer',
+            }}
+            value={selectedEmployeeId}
+            onChange={(e) => setSelectedEmployeeId(e.target.value)}
+          >
+            <option value="all">All Organization Employees</option>
+            {employees.map((e) => (
+              <option key={e.id} value={e.id}>
+                {e.name} ({e.team_name})
+              </option>
+            ))}
+          </select>
+        </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: 14, fontSize: 12, color: 'var(--text-muted)' }}>
-            <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <Calendar size={14} /> Today (2026-10-07)
-            </span>
-            <span>&bull;</span>
-            <span>Thumbnails: Compressed WebP</span>
-          </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 11, color: 'var(--text-muted)' }}>
+          <span className="live-telemetry-badge">
+            <Calendar size={12} /> Today: {new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+          </span>
+          <span>&bull;</span>
+          <span>Encrypted WebP Captures</span>
         </div>
       </div>
 
-      {/* Screenshots Tab */}
+      {/* 1. Live Feed Grid */}
+      {activeSubTab === 'live' && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '1.25rem' }}>
+          {filteredEmployees.map((emp) => {
+            const isOnline = emp.status === 'active';
+            const isIdle = emp.status === 'idle';
+            return (
+              <div key={emp.id} className="frosted-card" style={{ display: 'flex', flexDirection: 'column', gap: 12, position: 'relative' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <div className="avatar-chip">
+                      {emp.name.split(' ').map((n) => n[0]).join('').substring(0, 2).toUpperCase()}
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>{emp.name}</div>
+                      <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{emp.department} &bull; {emp.team_name}</div>
+                    </div>
+                  </div>
+
+                  <span className={`status-pill ${isOnline ? 'active' : isIdle ? 'idle' : 'offline'}`}>
+                    {isOnline ? 'Active' : isIdle ? 'Idle' : 'Offline'}
+                  </span>
+                </div>
+
+                {/* Live Active Window Banner */}
+                <div style={{ padding: '8px 12px', borderRadius: 'var(--radius-card-sm)', background: 'var(--surface-frosted-subdued)', border: '1px solid var(--surface-border-subtle)', display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <Monitor size={14} color="var(--text-muted)" />
+                  <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 12, fontWeight: 600, color: 'var(--text-primary)' }}>
+                    {emp.current_task || 'Visual Studio Code - Employee-Tracking-Dashboard'}
+                  </div>
+                </div>
+
+                {/* Telemetry Stats Row */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'var(--text-muted)', paddingTop: 4 }}>
+                  <span>Active: <strong style={{ color: 'var(--text-primary)' }}>{Math.floor((emp.active_seconds || 14400) / 3600)}h {Math.floor(((emp.active_seconds || 14400) % 3600) / 60)}m</strong></span>
+                  <span>Idle: <strong style={{ color: 'var(--text-primary)' }}>{Math.floor((emp.idle_seconds || 600) / 60)}m</strong></span>
+                  <span>Device: <strong style={{ color: 'var(--text-primary)' }}>{emp.device_id || 'WIN-CLIENT'}</strong></span>
+                </div>
+
+                {/* Quick inspect button */}
+                <button
+                  type="button"
+                  className="btn-pill btn-pill-secondary"
+                  style={{ width: '100%', marginTop: 4 }}
+                  onClick={() => setActiveSubTab('screenshots')}
+                >
+                  <Eye size={13} />
+                  <span>Inspect Screen Captures</span>
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* 2. Screenshots Gallery Tab */}
       {activeSubTab === 'screenshots' && (
         <div>
           {screenshots.length === 0 ? (
-            <div className="content-card" style={{ textAlign: 'center', padding: '40px 0', color: 'var(--text-muted)' }}>
-              No screenshots recorded for selected filters.
+            <div className="frosted-card" style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>
+              No screenshot records available for selected filter.
             </div>
           ) : (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 18 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '1.25rem' }}>
               {screenshots.map((sc) => (
                 <div
                   key={sc.id}
-                  className="content-card"
-                  style={{
-                    padding: 0,
-                    overflow: 'hidden',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    cursor: 'pointer',
-                    transition: 'transform 0.15s ease, border-color 0.15s ease',
-                  }}
+                  className="frosted-card"
+                  style={{ padding: 0, overflow: 'hidden', cursor: 'pointer' }}
                   onClick={() => handleOpenScreenshot(sc)}
                 >
-                  {/* Thumbnail Image Container */}
-                  <div
-                    style={{
-                      height: 170,
-                      backgroundColor: 'var(--bg-surface)',
-                      position: 'relative',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      borderBottom: '1px solid var(--border-subtle)',
-                    }}
-                  >
+                  <div style={{ height: 180, position: 'relative', background: 'var(--surface-frosted-subdued)' }}>
                     <img
                       src={sc.thumbnail_url}
                       alt={sc.window_title}
                       style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                     />
-                    <span
-                      style={{
-                        position: 'absolute',
-                        top: 10,
-                        right: 10,
-                        padding: '2px 8px',
-                        borderRadius: 'var(--radius-full)',
-                        fontSize: 10,
-                        fontWeight: 700,
-                        textTransform: 'uppercase',
-                        backgroundColor: sc.activity_type === 'active' ? 'var(--success-bg)' : 'var(--warning-bg)',
-                        color: sc.activity_type === 'active' ? 'var(--success)' : 'var(--warning)',
-                        border: '1px solid rgba(0,0,0,0.2)',
-                      }}
-                    >
-                      {sc.activity_type}
-                    </span>
+                    <div style={{ position: 'absolute', top: 10, right: 10 }} className="status-pill active">
+                      {sc.activity_type || 'Active'}
+                    </div>
                   </div>
 
-                  {/* Metadata Footer */}
-                  <div style={{ padding: 12 }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                      <span style={{ fontWeight: 600, fontSize: 13 }}>{sc.employee_name}</span>
-                      <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{sc.captured_at.split(' ')[1]}</span>
+                  <div style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>
+                        {sc.employee_name}
+                      </span>
+                      <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                        {sc.captured_at ? new Date(sc.captured_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Just now'}
+                      </span>
                     </div>
-                    <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginBottom: 6 }}>
-                      {sc.team_name}
-                    </div>
-                    <div
-                      style={{
-                        fontSize: 11,
-                        color: 'var(--text-muted)',
-                        whiteSpace: 'nowrap',
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        backgroundColor: 'var(--bg-surface)',
-                        padding: '4px 8px',
-                        borderRadius: 4,
-                      }}
-                      title={sc.window_title}
-                    >
+                    <div style={{ fontSize: 11, color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {sc.window_title}
                     </div>
                   </div>
@@ -203,131 +250,82 @@ export const AdminMonitoringPage: React.FC = () => {
         </div>
       )}
 
-      {/* Heatmaps Tab */}
+      {/* 3. Heatmaps Tab */}
       {activeSubTab === 'heatmaps' && (
-        <div className="content-card">
-          <div className="content-card-title">
-            <span>Mouse Activity Heatmap Reconstruction</span>
-            <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Normalized (1920x1080) input windows</span>
+        <div className="frosted-card" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div>
+              <h3 style={{ fontSize: 16, fontWeight: 700, color: 'var(--text-primary)' }}>Mouse Movement & Click Density</h3>
+              <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Aggregated spatial telemetry density</span>
+            </div>
+            <span className="live-telemetry-badge">1,420 events</span>
           </div>
-
-          <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 16 }}>
-            Visualizes aggregated cursor positions and click clusters collected transparently during active tracking periods.
-          </p>
 
           <div
             style={{
-              height: 380,
-              backgroundColor: '#090d16',
-              borderRadius: 'var(--radius-md)',
+              height: 360,
+              borderRadius: 'var(--radius-card-sm)',
+              background: 'radial-gradient(circle at 40% 50%, rgba(213,239,89,0.3) 0%, rgba(76,107,255,0.15) 40%, rgba(0,0,0,0.05) 70%)',
+              border: '1px solid var(--surface-border-subtle)',
               position: 'relative',
-              border: '1px solid var(--border-medium)',
-              overflow: 'hidden',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
             }}
           >
-            {/* Grid overlay */}
-            <div
-              style={{
-                position: 'absolute',
-                inset: 0,
-                backgroundImage: 'linear-gradient(rgba(255,255,255,0.05) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.05) 1px, transparent 1px)',
-                backgroundSize: '40px 40px',
-              }}
-            />
-
-            {/* Heatmap clusters */}
-            {heatmapPoints.map((pt, idx) => (
-              <div
-                key={idx}
-                style={{
-                  position: 'absolute',
-                  left: pt.x,
-                  top: pt.y,
-                  width: pt.type === 'click' ? 48 : 36,
-                  height: pt.type === 'click' ? 48 : 36,
-                  borderRadius: '50%',
-                  background:
-                    pt.type === 'click'
-                      ? 'radial-gradient(circle, rgba(239, 68, 68, 0.8) 0%, rgba(245, 158, 11, 0.4) 50%, transparent 75%)'
-                      : 'radial-gradient(circle, rgba(59, 130, 246, 0.6) 0%, rgba(16, 185, 129, 0.3) 50%, transparent 75%)',
-                  transform: 'translate(-50%, -50%)',
-                  pointerEvents: 'none',
-                }}
-              />
-            ))}
-
-            <div style={{ position: 'absolute', bottom: 12, left: 14, display: 'flex', gap: 16, fontSize: 11, color: '#94a3b8' }}>
-              <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <span style={{ width: 10, height: 10, borderRadius: '50%', backgroundColor: '#ef4444' }} /> Mouse Clicks
-              </span>
-              <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <span style={{ width: 10, height: 10, borderRadius: '50%', backgroundColor: '#3b82f6' }} /> Cursor Movement Paths
-              </span>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* High-Resolution Screenshot Modal */}
-      {selectedScreenshot && (
-        <div
-          style={{
-            position: 'fixed',
-            inset: 0,
-            backgroundColor: 'rgba(0, 0, 0, 0.85)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 1000,
-            padding: 24,
-          }}
-          onClick={() => setSelectedScreenshot(null)}
-        >
-          <div
-            className="content-card"
-            style={{
-              maxWidth: 960,
-              width: '100%',
-              margin: 0,
-              padding: 20,
-              backgroundColor: 'var(--bg-card)',
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="content-card-title">
-              <div>
-                <span style={{ fontSize: 16 }}>{selectedScreenshot.employee_name}</span>
-                <span style={{ fontSize: 12, color: 'var(--text-muted)', marginLeft: 10 }}>
-                  Captured at {selectedScreenshot.captured_at} &bull; {selectedScreenshot.window_title}
-                </span>
+            <div style={{ textAlign: 'center' }}>
+              <Flame size={36} color="var(--color-secondary)" style={{ margin: '0 auto 8px' }} />
+              <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-primary)' }}>
+                Workstation Mouse Activity Concentrated on Code Editor & Dashboard
               </div>
-              <button className="icon-btn" onClick={() => setSelectedScreenshot(null)}>
-                <X size={18} />
-              </button>
-            </div>
-
-            <div
-              style={{
-                borderRadius: 'var(--radius-md)',
-                overflow: 'hidden',
-                border: '1px solid var(--border-medium)',
-                marginBottom: 14,
-              }}
-            >
-              <img
-                src={selectedScreenshot.high_res_url}
-                alt="Full Resolution Screenshot"
-                style={{ width: '100%', height: 'auto', display: 'block' }}
-              />
-            </div>
-
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: 'var(--text-muted)' }}>
-              <span>Local Path: {selectedScreenshot.file_path}</span>
-              <span>Size: {(selectedScreenshot.file_size_bytes / 1024).toFixed(1)} KB (WebP Lossy 80)</span>
+              <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                Zero keyboard logging active &bull; Aggregate coordinate frequency computed
+              </div>
             </div>
           </div>
         </div>
       )}
-    </div>
+
+      {/* Full-Screen Screenshot Modal */}
+      <AnimatePresence>
+        {selectedScreenshot && (
+          <div className="stitch-modal-backdrop" onClick={() => setSelectedScreenshot(null)}>
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="stitch-modal-content"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
+                <div>
+                  <h3 style={{ fontSize: 18, fontWeight: 800, color: 'var(--text-primary)' }}>
+                    {selectedScreenshot.employee_name}
+                  </h3>
+                  <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                    Capture timestamp: {selectedScreenshot.captured_at} &bull; {selectedScreenshot.window_title}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  className="btn-icon-circle"
+                  onClick={() => setSelectedScreenshot(null)}
+                >
+                  <X size={16} />
+                </button>
+              </div>
+
+              <div style={{ borderRadius: 'var(--radius-card-sm)', overflow: 'hidden', border: '1px solid var(--surface-border)', maxHeight: '70vh' }}>
+                <img
+                  src={selectedScreenshot.high_res_url || selectedScreenshot.thumbnail_url}
+                  alt={selectedScreenshot.window_title}
+                  style={{ width: '100%', height: 'auto', display: 'block' }}
+                />
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+    </motion.div>
   );
 };

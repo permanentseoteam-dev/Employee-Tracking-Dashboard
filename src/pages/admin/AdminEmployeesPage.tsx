@@ -84,12 +84,16 @@ export const AdminEmployeesPage: React.FC = () => {
     }
   };
 
-  const filtered = employees.filter((e) => {
+  const filtered = (employees || []).filter((e) => {
+    const name = e?.name || '';
+    const email = e?.email || '';
+    const team = e?.team_name || '';
+    const search = (searchQuery || '').toLowerCase();
     const matchesSearch =
-      e.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      e.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      e.team_name.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesDept = selectedDept === 'all' || e.department === selectedDept;
+      name.toLowerCase().includes(search) ||
+      email.toLowerCase().includes(search) ||
+      team.toLowerCase().includes(search);
+    const matchesDept = selectedDept === 'all' || e?.department === selectedDept;
     return matchesSearch && matchesDept;
   });
 

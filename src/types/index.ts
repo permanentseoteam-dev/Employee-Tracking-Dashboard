@@ -49,5 +49,4 @@ export type NavTab =
   | 'tasks'
   | 'projects'
   | 'performance'
-  | 'timer'
-  | 'settings';
+  | 'timer';

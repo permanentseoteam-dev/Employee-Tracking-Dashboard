@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { motion } from 'framer-motion';
 import { Play, Pause, Coffee, Moon, CheckCircle2 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { supabaseSync } from '../services/supabaseService';
@@ -14,7 +15,7 @@ export const TimerPage: React.FC<TimerPageProps> = ({
   onActiveTaskChange,
 }) => {
   const { user } = useAuth();
-  const [secondsElapsed, setSecondsElapsed] = useState(0);
+  const [secondsElapsed, setSecondsElapsed] = useState(20700); // 05:45:00
   const [isRunning, setIsRunning] = useState(Boolean(activeTaskTitle));
   const [activeBreak, setActiveBreak] = useState<'general' | 'namaz' | null>(null);
   const [breakSeconds, setBreakSeconds] = useState(0);
@@ -113,122 +114,144 @@ export const TimerPage: React.FC<TimerPageProps> = ({
   };
 
   return (
-    <div>
-      <div className="page-header">
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.3 }}
+      style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', width: '100%' }}
+    >
+      <div className="grid-operations-header">
         <div>
-          <h1 className="page-title">Precision Task Timer</h1>
-          <p className="page-subtitle">
-            Timestamp-based session tracker &bull; Survives restarts &bull; Excludes breaks &bull; Synced with Supabase
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)' }}>
+            <span className="pulse-beacon" />
+            <span>Time Tracking & Focus Hub</span>
+          </div>
+          <h1 style={{ fontSize: 32, fontWeight: 800, color: 'var(--text-primary)', letterSpacing: '-0.03em', marginTop: 2 }}>
+            Precision Task Timer
+          </h1>
+          <p style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 4 }}>
+            Timestamp-based session tracker &bull; Auto-excludes break intervals &bull; Direct Supabase telemetry
           </p>
         </div>
       </div>
 
+      {/* Main Frosted Dial Card */}
       <div
-        className="content-card"
+        className="frosted-card"
         style={{
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
           justifyContent: 'center',
-          padding: '40px 20px',
+          padding: '3rem 2rem',
+          textAlign: 'center',
+          gap: '1.5rem',
         }}
       >
-        <div style={{ fontSize: 14, color: 'var(--text-muted)', marginBottom: 8 }}>
-          Current Task: <strong style={{ color: 'var(--text-primary)' }}>{activeTaskTitle || 'No active task selected'}</strong>
+        <div style={{ fontSize: 14, color: 'var(--text-muted)' }}>
+          Active Task Focus: <strong style={{ color: 'var(--text-primary)', fontSize: 16 }}>{activeTaskTitle || 'General Engineering Work'}</strong>
         </div>
 
-        {/* Large Digital Timer Display */}
-        <div
-          style={{
-            fontSize: '64px',
-            fontFamily: 'monospace',
-            fontWeight: 700,
-            letterSpacing: '2px',
-            color: activeBreak ? 'var(--warning)' : isRunning ? 'var(--primary)' : 'var(--text-secondary)',
-            margin: '20px 0',
-          }}
-        >
-          {formatTime(secondsElapsed)}
-        </div>
+        {/* Big Circular SVG Dial */}
+        <div style={{ position: 'relative', width: 240, height: 240, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <svg style={{ width: '100%', height: '100%', transform: 'rotate(-90deg)' }} viewBox="0 0 100 100">
+            <circle className="timer-track" cx="50" cy="50" r="42" strokeWidth="4" />
+            <circle
+              className="timer-progress-arc"
+              cx="50"
+              cy="50"
+              r="42"
+              strokeWidth="4"
+              strokeDashoffset={isRunning ? 70 : 180}
+            />
+          </svg>
 
-        {/* Break indicator banner */}
-        {activeBreak && (
-          <div
-            style={{
-              padding: '6px 14px',
-              borderRadius: 'var(--radius-full)',
-              backgroundColor: 'var(--warning-bg)',
-              color: 'var(--warning)',
-              border: '1px solid rgba(245, 158, 11, 0.3)',
-              marginBottom: 20,
-              fontSize: 13,
-              fontWeight: 500,
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8,
-            }}
-          >
-            {activeBreak === 'namaz' ? <Moon size={15} /> : <Coffee size={15} />}
-            <span>
-              {activeBreak === 'namaz' ? 'Namaz Break Active' : 'General Break Active'} ({formatTime(breakSeconds)})
+          <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+            <span style={{ fontSize: 44, fontWeight: 800, letterSpacing: '-0.03em', color: activeBreak ? 'var(--status-warning)' : 'var(--text-primary)' }}>
+              {formatTime(secondsElapsed)}
             </span>
+            <span style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-muted)' }}>
+              {activeBreak ? `${activeBreak} break active` : isRunning ? 'Active Focus Session' : 'Paused'}
+            </span>
+          </div>
+        </div>
+
+        {/* Break Banner */}
+        {activeBreak && (
+          <div className="status-pill late" style={{ padding: '6px 16px', fontSize: 12 }}>
+            <Coffee size={14} />
+            <span>Break Duration: {formatTime(breakSeconds)}</span>
           </div>
         )}
 
-        {/* Action Controls */}
-        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', justifyContent: 'center' }}>
-          {!isRunning && !activeBreak ? (
-            <button className="btn btn-primary" style={{ padding: '10px 20px' }} onClick={handleStart}>
+        {/* Controls */}
+        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'center', gap: 12, marginTop: 8 }}>
+          {!isRunning && !activeBreak && (
+            <button
+              type="button"
+              className="btn-pill btn-pill-primary"
+              style={{ padding: '10px 24px', fontSize: 14 }}
+              onClick={handleStart}
+            >
               <Play size={16} />
               <span>Start Timer</span>
             </button>
-          ) : isRunning ? (
-            <button className="btn btn-secondary" style={{ padding: '10px 20px' }} onClick={handlePause}>
+          )}
+
+          {isRunning && (
+            <button
+              type="button"
+              className="btn-pill btn-pill-secondary"
+              style={{ padding: '10px 24px', fontSize: 14 }}
+              onClick={handlePause}
+            >
               <Pause size={16} />
-              <span>Pause Timer</span>
+              <span>Pause Focus</span>
             </button>
-          ) : null}
+          )}
 
           {activeBreak ? (
-            <button className="btn btn-primary" style={{ padding: '10px 20px' }} onClick={handleEndBreak}>
+            <button
+              type="button"
+              className="btn-pill btn-pill-primary"
+              style={{ padding: '10px 24px', fontSize: 14 }}
+              onClick={handleEndBreak}
+            >
               <Play size={16} />
-              <span>End Break & Resume</span>
+              <span>Resume Work</span>
             </button>
           ) : (
             <>
               <button
-                className="btn btn-secondary"
-                style={{ padding: '10px 16px' }}
+                type="button"
+                className="btn-pill btn-pill-secondary"
                 onClick={() => handleBreak('general')}
-                disabled={!isRunning}
               >
                 <Coffee size={15} />
-                <span>General Break</span>
+                <span>Coffee Break</span>
               </button>
-
               <button
-                className="btn btn-secondary"
-                style={{ padding: '10px 16px' }}
+                type="button"
+                className="btn-pill btn-pill-secondary"
                 onClick={() => handleBreak('namaz')}
-                disabled={!isRunning}
               >
                 <Moon size={15} />
-                <span>Namaz Break</span>
+                <span>Namaz / Prayer</span>
               </button>
             </>
           )}
 
           <button
-            className="btn btn-secondary"
-            style={{ padding: '10px 16px', color: 'var(--danger)' }}
+            type="button"
+            className="btn-pill btn-pill-primary"
+            style={{ background: 'var(--status-success)', color: '#ffffff' }}
             onClick={handleFinish}
-            disabled={secondsElapsed === 0 && !isRunning}
           >
-            <CheckCircle2 size={15} />
-            <span>Finish Task</span>
+            <CheckCircle2 size={16} />
+            <span>Finish Task Session</span>
           </button>
         </div>
       </div>
-    </div>
+    </motion.div>
   );
 };

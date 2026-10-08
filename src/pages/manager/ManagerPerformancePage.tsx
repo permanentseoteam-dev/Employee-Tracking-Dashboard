@@ -79,15 +79,15 @@ export const ManagerPerformancePage: React.FC = () => {
                             : 'var(--warning)',
                       }}
                     >
-                      {emp.attendance_status.replace('_', ' ')}
+                      {(emp?.attendance_status || '').replace('_', ' ')}
                     </span>
                   </td>
-                  <td style={{ fontWeight: 600 }}>{(emp.active_seconds / 3600).toFixed(1)} hrs</td>
-                  <td style={{ color: emp.idle_seconds > 3600 ? 'var(--warning)' : 'var(--text-muted)' }}>
-                    {(emp.idle_seconds / 3600).toFixed(1)} hrs
+                  <td style={{ fontWeight: 600 }}>{(((emp?.active_seconds || 0) / 3600)).toFixed(1)} hrs</td>
+                  <td style={{ color: (emp?.idle_seconds || 0) > 3600 ? 'var(--warning)' : 'var(--text-muted)' }}>
+                    {(((emp?.idle_seconds || 0) / 3600)).toFixed(1)} hrs
                   </td>
                   <td style={{ fontWeight: 700, color: '#f59e0b', fontSize: 14 }}>
-                    ⭐ {emp.stars}
+                    ⭐ {emp?.stars ?? 0}
                   </td>
                   <td style={{ maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {emp.current_task || 'None'}

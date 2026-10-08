@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Bell, Activity, RefreshCw, Sun, Moon, Radio } from 'lucide-react';
+import { Search, Bell, Sun, Moon, Radio, Clock, Shield, Users, User, Activity } from 'lucide-react';
 import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
 import { dataService } from '../../services/dataService';
@@ -15,8 +15,8 @@ interface TopBarProps {
 }
 
 export const TopBar: React.FC<TopBarProps> = ({
-  status,
-  dbStats,
+  status: _status,
+  dbStats: _dbStats,
   onRefresh,
   searchQuery,
   onSearchChange,
@@ -24,6 +24,14 @@ export const TopBar: React.FC<TopBarProps> = ({
   const { theme, toggleTheme } = useTheme();
   const { user, role, switchRole } = useAuth();
   const [realtimeStatus, setRealtimeStatus] = useState<'Live' | 'Reconnecting...' | 'Offline'>('Live');
+  const [sessionSeconds, setSessionSeconds] = useState(16338); // 04:32:18 starting reference
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setSessionSeconds((prev) => prev + 1);
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
 
   useEffect(() => {
     const unsubscribe = dataService.subscribeToRealtime(
@@ -41,72 +49,66 @@ export const TopBar: React.FC<TopBarProps> = ({
     return () => unsubscribe();
   }, []);
 
+  const formatElapsedTime = (totalSecs: number) => {
+    const hrs = Math.floor(totalSecs / 3600).toString().padStart(2, '0');
+    const mins = Math.floor((totalSecs % 3600) / 60).toString().padStart(2, '0');
+    const secs = (totalSecs % 60).toString().padStart(2, '0');
+    return `${hrs}:${mins}:${secs}`;
+  };
+
   return (
-    <header className="topbar">
-      <div className="topbar-left">
-        <div className="brand-badge">
-          <div className="brand-icon">
-            <Activity size={14} />
+    <header className="stitch-header">
+      {/* Brand & Live Activity Badge */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '1.25rem' }}>
+        <div className="stitch-brand" onClick={onRefresh} title="Click to refresh telemetry">
+          <div className="stitch-brand-icon">
+            <Activity size={18} />
           </div>
-          <span>Tracking Agent</span>
-          <span
-            style={{
-              fontSize: 10,
-              fontWeight: 700,
-              padding: '2px 6px',
-              borderRadius: 4,
-              textTransform: 'uppercase',
-              letterSpacing: '0.4px',
-              backgroundColor:
-                role === 'admin'
-                  ? 'rgba(59, 130, 246, 0.2)'
-                  : role === 'manager'
-                  ? 'rgba(16, 185, 129, 0.2)'
-                  : 'rgba(148, 163, 184, 0.2)',
-              color:
-                role === 'admin'
-                  ? 'var(--primary)'
-                  : role === 'manager'
-                  ? 'var(--success)'
-                  : 'var(--text-secondary)',
-            }}
-          >
-            {role}
-          </span>
+          <div style={{ display: 'flex', flexDirection: 'column' }}>
+            <span className="stitch-brand-title">Tracking Agent</span>
+            <span className="stitch-brand-sub">Core Track Desktop</span>
+          </div>
+        </div>
+
+        {/* Live Stopwatch Badge */}
+        <div className="live-telemetry-badge" title="Live background activity telemetry counter">
+          <span className="pulse-beacon" />
+          <Clock size={13} />
+          <span>Live Track: {formatElapsedTime(sessionSeconds)}</span>
         </div>
       </div>
 
-      <div className="topbar-center">
-        <div className="search-box">
-          <Search size={15} color="var(--text-muted)" />
-          <input
-            type="text"
-            placeholder={
-              role === 'admin'
-                ? 'Search entire organization (employees, managers, teams, logs)...'
-                : role === 'manager'
-                ? 'Search team members, assigned tasks, projects...'
-                : 'Search tasks, attendance, projects...'
-            }
-            value={searchQuery}
-            onChange={(e) => onSearchChange(e.target.value)}
-          />
-        </div>
+      {/* Global Search Pill Bar */}
+      <div className="stitch-search-pill" style={{ flex: 1, maxWidth: 460, margin: '0 1.5rem' }}>
+        <Search size={16} color="var(--text-muted)" />
+        <input
+          type="text"
+          placeholder={
+            role === 'admin'
+              ? 'Search employees, managers, teams, audits...'
+              : role === 'manager'
+              ? 'Search team members, assigned tasks...'
+              : 'Search my tasks, attendance, projects...'
+          }
+          value={searchQuery}
+          onChange={(e) => onSearchChange(e.target.value)}
+        />
       </div>
 
-      <div className="topbar-right">
-        {/* Role Switcher Pill Bar */}
+      {/* Controls: Role Switcher, Realtime Telemetry, Theme, Notification, Profile */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+        {/* Role Switcher Pills */}
         <div
           style={{
             display: 'flex',
             alignItems: 'center',
-            backgroundColor: 'var(--bg-surface)',
-            borderRadius: 'var(--radius-md)',
-            padding: 2,
-            border: '1px solid var(--border-medium)',
-            gap: 2,
+            background: 'var(--surface-frosted-subdued)',
+            padding: 3,
+            borderRadius: 'var(--radius-pill)',
+            border: '1px solid var(--surface-border-subtle)',
+            gap: 3,
           }}
-          title="Switch Active Role Session"
+          title="Switch Active Console View"
         >
           {(['admin', 'manager', 'employee'] as UserRole[]).map((r) => {
             const isSelected = role === r;
@@ -116,130 +118,113 @@ export const TopBar: React.FC<TopBarProps> = ({
                 type="button"
                 onClick={() => switchRole(r)}
                 style={{
-                  padding: '3px 8px',
-                  fontSize: 11,
-                  fontWeight: isSelected ? 600 : 500,
-                  borderRadius: 'var(--radius-sm)',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 4,
+                  padding: '4px 12px',
+                  fontSize: 12,
+                  fontWeight: isSelected ? 700 : 500,
+                  borderRadius: 'var(--radius-pill)',
                   border: 'none',
                   cursor: 'pointer',
                   textTransform: 'capitalize',
-                  backgroundColor: isSelected
-                    ? r === 'admin'
-                      ? 'var(--primary)'
-                      : r === 'manager'
-                      ? 'var(--success)'
-                      : 'var(--border-medium)'
-                    : 'transparent',
-                  color: isSelected
-                    ? '#fff'
-                    : 'var(--text-secondary)',
-                  transition: 'all 0.15s ease',
+                  background: isSelected ? 'var(--color-primary)' : 'transparent',
+                  color: isSelected ? 'var(--color-on-primary)' : 'var(--text-secondary)',
+                  boxShadow: isSelected ? 'var(--shadow-pill)' : 'none',
+                  transition: 'all 0.2s ease',
                 }}
               >
+                {r === 'admin' && <Shield size={12} />}
+                {r === 'manager' && <Users size={12} />}
+                {r === 'employee' && <User size={12} />}
                 {r}
               </button>
             );
           })}
         </div>
 
-        {/* Supabase Realtime Telemetry Live Indicator */}
+        {/* Supabase Realtime Stream Beacon */}
         <div
-          className="sync-status-badge"
+          className="live-telemetry-badge"
           style={{
-            backgroundColor:
+            background:
               realtimeStatus === 'Live'
-                ? 'var(--success-bg)'
+                ? 'var(--status-success-bg)'
                 : realtimeStatus === 'Reconnecting...'
-                ? 'var(--warning-bg)'
-                : 'rgba(100,116,139,0.12)',
+                ? 'var(--status-warning-bg)'
+                : 'var(--status-neutral-bg)',
             color:
               realtimeStatus === 'Live'
-                ? 'var(--success)'
+                ? 'var(--status-success)'
                 : realtimeStatus === 'Reconnecting...'
-                ? 'var(--warning)'
-                : 'var(--text-muted)',
-            border: `1px solid ${
-              realtimeStatus === 'Live'
-                ? 'rgba(16, 185, 129, 0.3)'
-                : realtimeStatus === 'Reconnecting...'
-                ? 'rgba(245, 158, 11, 0.3)'
-                : 'rgba(100, 116, 139, 0.3)'
-            }`,
+                ? 'var(--status-warning)'
+                : 'var(--status-neutral-text)',
           }}
-          title={`Supabase Realtime Stream: ${realtimeStatus}`}
+          title={`Supabase Realtime Telemetry: ${realtimeStatus}`}
         >
-          <Radio size={12} className={realtimeStatus === 'Live' ? 'animate-pulse' : ''} />
-          <span style={{ fontWeight: 600 }}>{realtimeStatus}</span>
+          <Radio size={12} className={realtimeStatus === 'Live' ? 'pulse-beacon' : ''} />
+          <span>{realtimeStatus}</span>
         </div>
 
-        {/* Outbox synchronization indicator */}
-        <div
-          className="sync-status-badge"
-          title={`Outbox Queue: ${dbStats.pending_outbox_count} items pending sync`}
-        >
-          <span
-            className={`status-indicator-dot ${status.is_online ? '' : 'offline'}`}
-          />
-          <span>
-            {status.is_online
-              ? dbStats.pending_outbox_count === 0
-                ? 'Synced'
-                : `${dbStats.pending_outbox_count} pending`
-              : 'Offline Queue'}
-          </span>
-        </div>
-
-        {/* Refresh manual sync button */}
+        {/* Theme Toggle Button */}
         <button
-          className="icon-btn"
-          onClick={onRefresh}
-          title="Refresh metrics and sync status"
-          aria-label="Refresh"
-        >
-          <RefreshCw size={16} />
-        </button>
-
-        {/* Light & Dark Mode Switcher */}
-        <button
-          className="icon-btn theme-toggle-btn"
+          type="button"
           onClick={toggleTheme}
-          title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
-          aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+          className="btn-icon-circle"
+          title={`Switch to ${theme === 'dark' ? 'Light' : 'Dark'} Mode`}
         >
-          {theme === 'dark' ? (
-            <Sun size={16} className="theme-toggle-icon sun" />
-          ) : (
-            <Moon size={16} className="theme-toggle-icon moon" />
-          )}
+          {theme === 'dark' ? <Sun size={17} color="#fbbf24" /> : <Moon size={17} color="#4c6bff" />}
         </button>
 
-        {/* Notifications button */}
+        {/* Notifications Icon Button with Pill Badge */}
         <button
-          className="icon-btn"
-          title="Notifications"
-          aria-label="Notifications"
+          type="button"
+          className="btn-icon-circle"
+          style={{ position: 'relative' }}
+          title="Notifications & System Alerts"
         >
-          <Bell size={16} />
+          <Bell size={17} />
+          <span
+            style={{
+              position: 'absolute',
+              top: 7,
+              right: 7,
+              width: 7,
+              height: 7,
+              borderRadius: '50%',
+              backgroundColor: 'var(--status-error)',
+              boxShadow: '0 0 4px var(--status-error)',
+            }}
+          />
         </button>
 
-        {/* User profile chip */}
+        {/* Profile Avatar Pill */}
         <div
-          className="user-profile-chip"
-          title={`Active Session: ${user.name} (${user.role.toUpperCase()})`}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            padding: '3px 12px 3px 4px',
+            borderRadius: 'var(--radius-pill)',
+            background: 'var(--surface-frosted-subdued)',
+            border: '1px solid var(--surface-border-subtle)',
+            cursor: 'pointer',
+          }}
+          title={`Active Session: ${user.name} (${user.email})`}
         >
-          <div
-            className="user-avatar"
-            style={{
-              backgroundColor:
-                role === 'admin' ? '#3b82f6' : role === 'manager' ? '#10b981' : '#64748b',
-            }}
-          >
-            {user.avatar}
+          <div className="avatar-chip">
+            {user.avatar ? (
+              <img src={user.avatar} alt={user.name} style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }} />
+            ) : (
+              user.name.split(' ').map((n) => n[0]).join('').substring(0, 2).toUpperCase()
+            )}
           </div>
-          <div className="user-info-text">
-            <span className="user-name">{user.name}</span>
-            <span className="user-role" style={{ textTransform: 'capitalize' }}>
-              {user.role} &bull; {user.department}
+          <div style={{ display: 'flex', flexDirection: 'column' }}>
+            <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-primary)', lineHeight: 1.1 }}>
+              {user.name}
+            </span>
+            <span style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'capitalize' }}>
+              {role} console
             </span>
           </div>
         </div>

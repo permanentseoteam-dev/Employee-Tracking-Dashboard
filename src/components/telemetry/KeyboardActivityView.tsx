@@ -8,11 +8,14 @@ import {
   CheckCircle2,
   TrendingUp,
   Activity,
+  Clock,
 } from 'lucide-react';
 import { dataService } from '../../services/dataService';
 
 interface KeyboardActivityViewProps {
   selectedEmployeeName?: string;
+  showBreakSchedule?: boolean;
+  role?: 'admin' | 'manager' | 'employee';
 }
 
 // 8 Default Employees
@@ -89,7 +92,10 @@ function getKeypressCellColor(val: number, min = 300, max = 3400) {
 
 export const KeyboardActivityView: React.FC<KeyboardActivityViewProps> = ({
   selectedEmployeeName,
+  showBreakSchedule,
+  role = 'admin',
 }) => {
+  const showBreaks = showBreakSchedule !== undefined ? showBreakSchedule : role !== 'admin';
   const [employeesList, setEmployeesList] = useState<string[]>(DEFAULT_EMPLOYEES);
   const [hoveredCell, setHoveredCell] = useState<{
     row: number;
@@ -218,6 +224,24 @@ export const KeyboardActivityView: React.FC<KeyboardActivityViewProps> = ({
             24,396 keys logged (Engineering Team)
           </span>
         </div>
+
+        {/* Authorized Breaks Card (Manager & Employee Only) */}
+        {showBreaks && (
+          <div className="frosted-card" style={{ padding: '1rem 1.25rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+              <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-muted)' }}>Authorized Breaks</span>
+              <div style={{ width: 28, height: 28, borderRadius: '50%', background: 'rgba(139, 92, 246, 0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#8b5cf6' }}>
+                <Clock size={15} />
+              </div>
+            </div>
+            <div style={{ fontSize: 24, fontWeight: 800, color: 'var(--text-primary)', letterSpacing: '-0.02em' }}>
+              1h 30m <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-muted)' }}>total</span>
+            </div>
+            <span style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2, display: 'block' }}>
+              ☕ 11:00 AM (30m) &bull; 🕌 01:00 PM (60m)
+            </span>
+          </div>
+        )}
       </div>
 
       {/* 2. Main Keystroke Counts Heatmap Card */}
@@ -280,6 +304,85 @@ export const KeyboardActivityView: React.FC<KeyboardActivityViewProps> = ({
           </div>
         </div>
 
+        {/* Coffee & Namaz Break Schedule Banner (Manager & Employee Only) */}
+        {showBreaks && (
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              flexWrap: 'wrap',
+              gap: 10,
+              padding: '10px 16px',
+              borderRadius: 'var(--radius-card-sm)',
+              background: 'rgba(99, 102, 241, 0.08)',
+              border: '1px solid rgba(99, 102, 241, 0.22)',
+              fontSize: 12,
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 800, color: 'var(--color-primary)' }}>
+                <Clock size={14} />
+                <span>OFFICIAL RECESS & BREAK WINDOWS:</span>
+              </div>
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  background: 'rgba(245, 158, 11, 0.14)',
+                  color: '#d97706',
+                  border: '1px solid rgba(245, 158, 11, 0.28)',
+                  padding: '3px 10px',
+                  borderRadius: 20,
+                  fontWeight: 700,
+                  fontSize: 11,
+                }}
+              >
+                <span>☕</span>
+                <span>Coffee Break: 11:00 AM – 11:30 AM</span>
+              </div>
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  background: 'rgba(16, 185, 129, 0.14)',
+                  color: '#059669',
+                  border: '1px solid rgba(16, 185, 129, 0.28)',
+                  padding: '3px 10px',
+                  borderRadius: 20,
+                  fontWeight: 700,
+                  fontSize: 11,
+                }}
+              >
+                <span>🕌</span>
+                <span>Zuhr Namaz & Lunch: 01:00 PM – 02:00 PM</span>
+              </div>
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  background: 'rgba(139, 92, 246, 0.14)',
+                  color: '#7c3aed',
+                  border: '1px solid rgba(139, 92, 246, 0.28)',
+                  padding: '3px 10px',
+                  borderRadius: 20,
+                  fontWeight: 700,
+                  fontSize: 11,
+                }}
+              >
+                <span>🕌</span>
+                <span>Asr Prayer: 04:30 PM – 04:45 PM</span>
+              </div>
+            </div>
+            <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+              Excused from typing minimums
+            </span>
+          </div>
+        )}
+
         {/* 2D Matrix Table */}
         <div style={{ width: '100%', overflowX: 'auto', paddingBottom: 6 }}>
           <div style={{ minWidth: 720 }}>
@@ -296,20 +399,68 @@ export const KeyboardActivityView: React.FC<KeyboardActivityViewProps> = ({
               <div style={{ fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)', paddingLeft: 6 }}>
                 EMPLOYEE
               </div>
-              {TIME_SLOTS.map((slot) => (
-                <div
-                  key={slot}
-                  style={{
-                    fontSize: 11,
-                    fontWeight: 700,
-                    textAlign: 'center',
-                    color: 'var(--text-secondary)',
-                    letterSpacing: '-0.01em',
-                  }}
-                >
-                  {slot}
-                </div>
-              ))}
+              {TIME_SLOTS.map((slot) => {
+                const isCoffeeSlot = showBreaks && slot === '11:00';
+                const isNamazSlot = showBreaks && slot === '13:00';
+
+                return (
+                  <div
+                    key={slot}
+                    style={{
+                      fontSize: 11,
+                      fontWeight: 700,
+                      textAlign: 'center',
+                      color: isCoffeeSlot ? '#d97706' : isNamazSlot ? '#059669' : 'var(--text-secondary)',
+                      letterSpacing: '-0.01em',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      gap: 2,
+                    }}
+                    title={
+                      isCoffeeSlot
+                        ? '11:00 AM – 11:30 AM: Official Coffee Break'
+                        : isNamazSlot
+                        ? '01:00 PM – 02:00 PM: Official Zuhr Namaz & Lunch Break'
+                        : slot
+                    }
+                  >
+                    <span>{slot}</span>
+                    {isCoffeeSlot && (
+                      <span
+                        style={{
+                          fontSize: 8.5,
+                          fontWeight: 800,
+                          padding: '1px 3px',
+                          borderRadius: 4,
+                          background: 'rgba(245, 158, 11, 0.2)',
+                          color: '#d97706',
+                          whiteSpace: 'nowrap',
+                          lineHeight: 1.1,
+                        }}
+                      >
+                        ☕ Coffee
+                      </span>
+                    )}
+                    {isNamazSlot && (
+                      <span
+                        style={{
+                          fontSize: 8.5,
+                          fontWeight: 800,
+                          padding: '1px 3px',
+                          borderRadius: 4,
+                          background: 'rgba(16, 185, 129, 0.2)',
+                          color: '#059669',
+                          whiteSpace: 'nowrap',
+                          lineHeight: 1.1,
+                        }}
+                      >
+                        🕌 Namaz
+                      </span>
+                    )}
+                  </div>
+                );
+              })}
               <div style={{ fontSize: 11, fontWeight: 800, textAlign: 'center', color: 'var(--text-muted)' }}>
                 TOTAL
               </div>
@@ -600,6 +751,50 @@ export const KeyboardActivityView: React.FC<KeyboardActivityViewProps> = ({
                   </div>
                 </div>
               </div>
+
+              {showBreaks && selectedCell.timeSlot === '11:00' && (
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    background: 'rgba(245, 158, 11, 0.14)',
+                    border: '1px solid rgba(245, 158, 11, 0.32)',
+                    padding: '10px 14px',
+                    borderRadius: 8,
+                    color: '#d97706',
+                    fontSize: 12,
+                    fontWeight: 600,
+                  }}
+                >
+                  <span style={{ fontSize: 18 }}>☕</span>
+                  <span>
+                    <strong>Official Coffee Break (11:00 AM – 11:30 AM):</strong> Authorized rest period. Keystroke volume during this recess is excused from minimum activity expectations.
+                  </span>
+                </div>
+              )}
+
+              {showBreaks && selectedCell.timeSlot === '13:00' && (
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    background: 'rgba(16, 185, 129, 0.14)',
+                    border: '1px solid rgba(16, 185, 129, 0.32)',
+                    padding: '10px 14px',
+                    borderRadius: 8,
+                    color: '#059669',
+                    fontSize: 12,
+                    fontWeight: 600,
+                  }}
+                >
+                  <span style={{ fontSize: 18 }}>🕌</span>
+                  <span>
+                    <strong>Official Zuhr Namaz & Lunch Break (01:00 PM – 02:00 PM):</strong> Designated prayer and meal recess. Keystroke pause is fully authorized.
+                  </span>
+                </div>
+              )}
 
               <div
                 style={{

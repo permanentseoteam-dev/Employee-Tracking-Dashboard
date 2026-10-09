@@ -169,12 +169,17 @@ export function getHeatmapColor(value: number, min = 10, max = 100): {
 interface MatrixHeatmapProps {
   initialPreset?: 'hourly' | 'weekly';
   selectedEmployeeName?: string;
+  showBreakSchedule?: boolean;
+  role?: 'admin' | 'manager' | 'employee';
 }
 
 export const MatrixHeatmap: React.FC<MatrixHeatmapProps> = ({
   initialPreset = 'hourly',
   selectedEmployeeName,
+  showBreakSchedule,
+  role = 'admin',
 }) => {
+  const showBreaks = showBreakSchedule !== undefined ? showBreakSchedule : role !== 'admin';
   const [activeMode, setActiveMode] = useState<'hourly' | 'weekly'>(initialPreset);
   const [employeesList, setEmployeesList] = useState<string[]>(DEFAULT_EMPLOYEES);
   const [showValues, setShowValues] = useState(true);
@@ -306,6 +311,85 @@ export const MatrixHeatmap: React.FC<MatrixHeatmapProps> = ({
         </div>
       </div>
 
+      {/* Coffee & Namaz Break Schedule Banner (Manager & Employee Roles Only - Excluded on Admin) */}
+      {showBreaks && activeMode === 'hourly' && (
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            flexWrap: 'wrap',
+            gap: 10,
+            padding: '10px 16px',
+            borderRadius: 'var(--radius-card-sm)',
+            background: 'rgba(99, 102, 241, 0.08)',
+            border: '1px solid rgba(99, 102, 241, 0.22)',
+            fontSize: 12,
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 800, color: 'var(--color-primary)' }}>
+              <Clock size={14} />
+              <span>OFFICIAL RECESS & BREAK WINDOWS:</span>
+            </div>
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                background: 'rgba(245, 158, 11, 0.14)',
+                color: '#d97706',
+                border: '1px solid rgba(245, 158, 11, 0.28)',
+                padding: '3px 10px',
+                borderRadius: 20,
+                fontWeight: 700,
+                fontSize: 11,
+              }}
+            >
+              <span>☕</span>
+              <span>Coffee Break: 11:00 AM – 11:30 AM</span>
+            </div>
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                background: 'rgba(16, 185, 129, 0.14)',
+                color: '#059669',
+                border: '1px solid rgba(16, 185, 129, 0.28)',
+                padding: '3px 10px',
+                borderRadius: 20,
+                fontWeight: 700,
+                fontSize: 11,
+              }}
+            >
+              <span>🕌</span>
+              <span>Zuhr Namaz & Lunch: 01:00 PM – 02:00 PM</span>
+            </div>
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                background: 'rgba(139, 92, 246, 0.14)',
+                color: '#7c3aed',
+                border: '1px solid rgba(139, 92, 246, 0.28)',
+                padding: '3px 10px',
+                borderRadius: 20,
+                fontWeight: 700,
+                fontSize: 11,
+              }}
+            >
+              <span>🕌</span>
+              <span>Asr Prayer: 04:30 PM – 04:45 PM</span>
+            </div>
+          </div>
+          <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+            Authorized recess &bull; Zero penalty on activity scoring
+          </span>
+        </div>
+      )}
+
       {/* Main Matrix and Colorbar Container (Clean, centered with exact screenshot aesthetics) */}
       <div
         style={{
@@ -421,23 +505,70 @@ export const MatrixHeatmap: React.FC<MatrixHeatmapProps> = ({
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 10 }}>
               <div style={{ width: 105 }} /> {/* Spacer for Y label alignment */}
               <div style={{ display: 'flex' }}>
-                {currentDataset.xLabels.map((colLabel) => (
-                  <div
-                    key={colLabel}
-                    style={{
-                      width: 58,
-                      textAlign: 'center',
-                      fontSize: 12,
-                      fontWeight: 800,
-                      color: 'var(--text-primary)',
-                      fontFamily: 'Inter, system-ui, sans-serif',
-                      userSelect: 'none',
-                    }}
-                    title={colLabel}
-                  >
-                    {colLabel}
-                  </div>
-                ))}
+                {currentDataset.xLabels.map((colLabel) => {
+                  const isCoffeeSlot = showBreaks && activeMode === 'hourly' && colLabel === '11:00';
+                  const isNamazSlot = showBreaks && activeMode === 'hourly' && colLabel === '13:00';
+
+                  return (
+                    <div
+                      key={colLabel}
+                      style={{
+                        width: 58,
+                        textAlign: 'center',
+                        fontSize: 12,
+                        fontWeight: 800,
+                        color: isCoffeeSlot ? '#d97706' : isNamazSlot ? '#059669' : 'var(--text-primary)',
+                        fontFamily: 'Inter, system-ui, sans-serif',
+                        userSelect: 'none',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        gap: 2,
+                      }}
+                      title={
+                        isCoffeeSlot
+                          ? '11:00 AM – 11:30 AM: Official Coffee Break'
+                          : isNamazSlot
+                          ? '01:00 PM – 02:00 PM: Official Zuhr Namaz & Lunch Break'
+                          : colLabel
+                      }
+                    >
+                      <span>{colLabel}</span>
+                      {isCoffeeSlot && (
+                        <span
+                          style={{
+                            fontSize: 9,
+                            fontWeight: 800,
+                            padding: '1px 3px',
+                            borderRadius: 4,
+                            background: 'rgba(245, 158, 11, 0.2)',
+                            color: '#d97706',
+                            whiteSpace: 'nowrap',
+                            lineHeight: 1.1,
+                          }}
+                        >
+                          ☕ Coffee
+                        </span>
+                      )}
+                      {isNamazSlot && (
+                        <span
+                          style={{
+                            fontSize: 9,
+                            fontWeight: 800,
+                            padding: '1px 3px',
+                            borderRadius: 4,
+                            background: 'rgba(16, 185, 129, 0.2)',
+                            color: '#059669',
+                            whiteSpace: 'nowrap',
+                            lineHeight: 1.1,
+                          }}
+                        >
+                          🕌 Namaz
+                        </span>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             </div>
 
@@ -629,6 +760,50 @@ export const MatrixHeatmap: React.FC<MatrixHeatmapProps> = ({
                     </div>
                   </div>
                 </div>
+
+                {showBreaks && selectedCell.colLabel === '11:00' && (
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 8,
+                      background: 'rgba(245, 158, 11, 0.15)',
+                      border: '1px solid rgba(245, 158, 11, 0.32)',
+                      padding: '10px 14px',
+                      borderRadius: 8,
+                      color: '#d97706',
+                      fontSize: 12,
+                      fontWeight: 600,
+                    }}
+                  >
+                    <span style={{ fontSize: 18 }}>☕</span>
+                    <span>
+                      <strong>Official Coffee Break (11:00 AM – 11:30 AM):</strong> Authorized rest period. Workstation inactivity during this interval is fully excused from performance scoring.
+                    </span>
+                  </div>
+                )}
+
+                {showBreaks && selectedCell.colLabel === '13:00' && (
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 8,
+                      background: 'rgba(16, 185, 129, 0.15)',
+                      border: '1px solid rgba(16, 185, 129, 0.32)',
+                      padding: '10px 14px',
+                      borderRadius: 8,
+                      color: '#059669',
+                      fontSize: 12,
+                      fontWeight: 600,
+                    }}
+                  >
+                    <span style={{ fontSize: 18 }}>🕌</span>
+                    <span>
+                      <strong>Official Zuhr Namaz & Lunch Break (01:00 PM – 02:00 PM):</strong> Designated prayer and meal recess. Inactivity is certified compliant.
+                    </span>
+                  </div>
+                )}
 
                 <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 12px', background: 'var(--surface-frosted-subdued)', borderRadius: 'var(--radius-card-sm)', fontSize: 12 }}>
                   <span style={{ color: 'var(--text-muted)' }}>Privacy Guarantee:</span>

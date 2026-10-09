@@ -274,7 +274,7 @@ export const AdminPerformancePage: React.FC = () => {
       </div>
 
       {activeTab === 'heatmap' ? (
-        <MatrixHeatmap initialPreset="hourly" />
+        <MatrixHeatmap initialPreset="hourly" role="admin" showBreakSchedule={false} />
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(420px, 1fr))', gap: '1.5rem' }}>
           {/* Star Rules Configuration (Fully Editable) */}

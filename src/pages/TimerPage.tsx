@@ -175,7 +175,7 @@ export const TimerPage: React.FC<TimerPageProps> = ({
               {formatTime(secondsElapsed)}
             </span>
             <span style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-muted)' }}>
-              {activeBreak ? `${activeBreak} break active` : isRunning ? 'Active Focus Session' : 'Paused'}
+              {activeBreak === 'general' ? 'Coffee Break Active (11:00 – 11:30 AM)' : activeBreak === 'namaz' ? 'Namaz / Prayer Recess Active (01:00 – 02:00 PM)' : isRunning ? 'Active Focus Session' : 'Paused'}
             </span>
           </div>
         </div>
@@ -184,7 +184,9 @@ export const TimerPage: React.FC<TimerPageProps> = ({
         {activeBreak && (
           <div className="status-pill late" style={{ padding: '6px 16px', fontSize: 12 }}>
             <Coffee size={14} />
-            <span>Break Duration: {formatTime(breakSeconds)}</span>
+            <span>
+              {activeBreak === 'general' ? 'Coffee Break (11:00 – 11:30 AM)' : 'Namaz / Prayer (01:00 – 02:00 PM)'}: {formatTime(breakSeconds)}
+            </span>
           </div>
         )}
 
@@ -230,17 +232,19 @@ export const TimerPage: React.FC<TimerPageProps> = ({
                 type="button"
                 className="btn-pill btn-pill-secondary"
                 onClick={() => handleBreak('general')}
+                title="Designated Coffee Break: 11:00 AM – 11:30 AM"
               >
                 <Coffee size={15} />
-                <span>Coffee Break</span>
+                <span>Coffee Break (11:00–11:30 AM)</span>
               </button>
               <button
                 type="button"
                 className="btn-pill btn-pill-secondary"
                 onClick={() => handleBreak('namaz')}
+                title="Designated Namaz Break: 01:00 PM – 02:00 PM"
               >
                 <Moon size={15} />
-                <span>Namaz / Prayer</span>
+                <span>Namaz / Prayer (01:00–02:00 PM)</span>
               </button>
             </>
           )}

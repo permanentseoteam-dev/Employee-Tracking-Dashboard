@@ -98,7 +98,7 @@ export const AttendancePage: React.FC<AttendancePageProps> = ({ status }) => {
             Attendance Chronology
           </h1>
           <p style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 4 }}>
-            Automated first-meaningful-activity detection &bull; Shift: 09:00 AM to 05:00 PM
+            Automated first-meaningful-activity detection &bull; Shift: 09:00 AM – 05:00 PM &bull; ☕ Coffee: 11:00–11:30 AM &bull; 🕌 Namaz: 01:00–02:00 PM
           </p>
         </div>
 

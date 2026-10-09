@@ -1,14 +1,19 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Keyboard, MousePointer, ShieldCheck, CheckCircle2, Star, Trophy, Activity } from 'lucide-react';
+import { Keyboard, MousePointer, ShieldCheck, CheckCircle2, Star, Trophy, Activity, Flame, Clock } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
+import { MatrixHeatmap } from '../components/telemetry/MatrixHeatmap';
+import { KeyboardActivityView } from '../components/telemetry/KeyboardActivityView';
 import type { DbStats } from '../types';
-
 
 interface PerformancePageProps {
   dbStats: DbStats;
 }
 
 export const PerformancePage: React.FC<PerformancePageProps> = ({ dbStats }) => {
+  const { user } = useAuth();
+  const [activeTab, setActiveTab] = useState<'merits' | 'heatmap' | 'keyboard'>('merits');
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 8 }}
@@ -20,21 +25,146 @@ export const PerformancePage: React.FC<PerformancePageProps> = ({ dbStats }) => 
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)' }}>
             <span className="pulse-beacon" />
-            <span>Workforce Analytics</span>
+            <span>Workforce Analytics &bull; Shift 09:00 AM – 05:00 PM</span>
           </div>
           <h1 style={{ fontSize: 32, fontWeight: 800, color: 'var(--text-primary)', letterSpacing: '-0.03em', marginTop: 2 }}>
-            Performance & Star Rewards
+            Performance & Telemetry
           </h1>
           <p style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 4 }}>
-            Gamified sprint accomplishments &bull; Aggregate activity counts &bull; Zero keystroke recording policy
+            Sprint accomplishments &bull; Keystroke counts &bull; Mouse heatmap &bull; Verified Coffee & Namaz schedule
           </p>
         </div>
 
-        <div className="live-telemetry-badge" style={{ background: 'var(--color-secondary-container)', color: 'var(--color-on-secondary-container)' }}>
-          <Trophy size={14} />
-          <span>Sprint Rank: Exemplary</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          <div className="stitch-nav-pills">
+            <button
+              type="button"
+              className={`nav-pill-item ${activeTab === 'merits' ? 'active' : ''}`}
+              onClick={() => setActiveTab('merits')}
+            >
+              <Trophy size={14} />
+              <span>Merits & Stars</span>
+            </button>
+            <button
+              type="button"
+              className={`nav-pill-item ${activeTab === 'heatmap' ? 'active' : ''}`}
+              onClick={() => setActiveTab('heatmap')}
+            >
+              <Flame size={14} />
+              <span>Mouse Heatmap</span>
+            </button>
+            <button
+              type="button"
+              className={`nav-pill-item ${activeTab === 'keyboard' ? 'active' : ''}`}
+              onClick={() => setActiveTab('keyboard')}
+            >
+              <Keyboard size={14} />
+              <span>Keyboard Activity</span>
+            </button>
+          </div>
+
+          <div className="live-telemetry-badge" style={{ background: 'var(--color-secondary-container)', color: 'var(--color-on-secondary-container)' }}>
+            <Trophy size={14} />
+            <span>Sprint Rank: Exemplary</span>
+          </div>
         </div>
       </div>
+
+      {activeTab === 'heatmap' && (
+        <MatrixHeatmap
+          initialPreset="hourly"
+          role="employee"
+          showBreakSchedule={true}
+          selectedEmployeeName={user?.name || 'Arsal'}
+        />
+      )}
+
+      {activeTab === 'keyboard' && (
+        <KeyboardActivityView
+          role="employee"
+          showBreakSchedule={true}
+          selectedEmployeeName={user?.name || 'Arsal'}
+        />
+      )}
+
+      {activeTab === 'merits' && (
+        <>
+          {/* Coffee & Namaz Break Schedule Banner */}
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              flexWrap: 'wrap',
+              gap: 10,
+              padding: '10px 16px',
+              borderRadius: 'var(--radius-card-sm)',
+              background: 'rgba(99, 102, 241, 0.08)',
+              border: '1px solid rgba(99, 102, 241, 0.22)',
+              fontSize: 12,
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 800, color: 'var(--color-primary)' }}>
+                <Clock size={14} />
+                <span>OFFICIAL RECESS & BREAK SCHEDULE:</span>
+              </div>
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  background: 'rgba(245, 158, 11, 0.14)',
+                  color: '#d97706',
+                  border: '1px solid rgba(245, 158, 11, 0.28)',
+                  padding: '3px 10px',
+                  borderRadius: 20,
+                  fontWeight: 700,
+                  fontSize: 11,
+                }}
+              >
+                <span>☕</span>
+                <span>Coffee Break: 11:00 AM – 11:30 AM</span>
+              </div>
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  background: 'rgba(16, 185, 129, 0.14)',
+                  color: '#059669',
+                  border: '1px solid rgba(16, 185, 129, 0.28)',
+                  padding: '3px 10px',
+                  borderRadius: 20,
+                  fontWeight: 700,
+                  fontSize: 11,
+                }}
+              >
+                <span>🕌</span>
+                <span>Zuhr Namaz & Lunch: 01:00 PM – 02:00 PM</span>
+              </div>
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  background: 'rgba(139, 92, 246, 0.14)',
+                  color: '#7c3aed',
+                  border: '1px solid rgba(139, 92, 246, 0.28)',
+                  padding: '3px 10px',
+                  borderRadius: 20,
+                  fontWeight: 700,
+                  fontSize: 11,
+                }}
+              >
+                <span>🕌</span>
+                <span>Asr Prayer: 04:30 PM – 04:45 PM</span>
+              </div>
+            </div>
+            <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+              Excused from telemetry minimums
+            </span>
+          </div>
 
       {/* KPI Row */}
       <div className="grid-telemetry-row">
@@ -206,6 +336,8 @@ export const PerformancePage: React.FC<PerformancePageProps> = ({ dbStats }) => 
           </table>
         </div>
       </div>
+        </>
+      )}
     </motion.div>
   );
 };

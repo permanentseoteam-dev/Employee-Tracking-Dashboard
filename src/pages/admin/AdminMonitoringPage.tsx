@@ -1037,6 +1037,8 @@ export const AdminMonitoringPage: React.FC<AdminMonitoringPageProps> = ({ initia
       {activeSubTab === 'heatmaps' && (
         <MatrixHeatmap
           initialPreset="hourly"
+          role="admin"
+          showBreakSchedule={false}
           selectedEmployeeName={
             selectedEmployeeId === 'all'
               ? undefined
@@ -1048,6 +1050,8 @@ export const AdminMonitoringPage: React.FC<AdminMonitoringPageProps> = ({ initia
       {/* 4. Keyboard Activity Tab */}
       {activeSubTab === 'keyboard' && (
         <KeyboardActivityView
+          role="admin"
+          showBreakSchedule={false}
           selectedEmployeeName={
             selectedEmployeeId === 'all'
               ? undefined

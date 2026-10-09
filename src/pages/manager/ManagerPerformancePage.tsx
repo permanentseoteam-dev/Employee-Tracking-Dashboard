@@ -1,14 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { RefreshCw, Award, Star, Plus, Minus, X, Flame, Sliders } from 'lucide-react';
+import { RefreshCw, Award, Star, Plus, Minus, X, Flame, Sliders, Keyboard } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { dataService } from '../../services/dataService';
 import { MatrixHeatmap } from '../../components/telemetry/MatrixHeatmap';
+import { KeyboardActivityView } from '../../components/telemetry/KeyboardActivityView';
 import type { EmployeeRecord } from '../../types/roles';
 
 export const ManagerPerformancePage: React.FC = () => {
   const { user } = useAuth();
-  const [activeTab, setActiveTab] = useState<'ledger' | 'heatmap'>('ledger');
+  const [activeTab, setActiveTab] = useState<'ledger' | 'heatmap' | 'keyboard'>('ledger');
   const [employees, setEmployees] = useState<EmployeeRecord[]>([]);
 
   // Star Modal State
@@ -142,6 +143,14 @@ export const ManagerPerformancePage: React.FC = () => {
               <Flame size={14} />
               <span>Activity Heatmap</span>
             </button>
+            <button
+              type="button"
+              className={`nav-pill-item ${activeTab === 'keyboard' ? 'active' : ''}`}
+              onClick={() => setActiveTab('keyboard')}
+            >
+              <Keyboard size={14} />
+              <span>Keyboard Activity</span>
+            </button>
           </div>
 
           <button className="btn-pill btn-pill-secondary" onClick={loadData}>
@@ -168,7 +177,9 @@ export const ManagerPerformancePage: React.FC = () => {
       </div>
 
       {activeTab === 'heatmap' ? (
-        <MatrixHeatmap initialPreset="hourly" />
+        <MatrixHeatmap initialPreset="hourly" role="manager" showBreakSchedule={true} />
+      ) : activeTab === 'keyboard' ? (
+        <KeyboardActivityView role="manager" showBreakSchedule={true} />
       ) : (
         <div className="frosted-card" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           <div className="content-card-title">

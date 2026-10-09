@@ -20,6 +20,8 @@ import type {
   BreakType,
   BreakTelemetryHourlyState,
 } from '../types/roles';
+import type { AgentRuntimeConfig } from '../types';
+import { DEFAULT_AGENT_RUNTIME_CONFIG } from '../types';
 import { supabase, isSupabaseConfigured } from './supabaseClient';
 import { supabaseSync } from './supabaseService';
 import { generateWorkstationRecordingClip } from '../utils/screenRecordingGenerator';
@@ -2913,6 +2915,91 @@ export const dataService = {
       unsubscribeSupabase();
     };
   },
+
+  /** Global office-hours policy for desktop agents (agent_runtime_config). */
+  getAgentRuntimeConfig: async (): Promise<AgentRuntimeConfig> => {
+    const { data, error } = await supabase
+      .from('agent_runtime_config')
+      .select('*')
+      .eq('id', 1)
+      .maybeSingle();
+
+    if (error || !data) {
+      return { ...DEFAULT_AGENT_RUNTIME_CONFIG };
+    }
+
+    return {
+      id: data.id ?? 1,
+      enabled: data.enabled ?? true,
+      work_start: normalizeTimeHHMM(data.work_start) || '09:00',
+      work_end: normalizeTimeHHMM(data.work_end) || '17:00',
+      work_days: Array.isArray(data.work_days) && data.work_days.length
+        ? data.work_days.map((d: string) => String(d).toLowerCase())
+        : [...DEFAULT_AGENT_RUNTIME_CONFIG.work_days],
+      capture_outside_hours: Boolean(data.capture_outside_hours),
+      timezone_note: data.timezone_note || DEFAULT_AGENT_RUNTIME_CONFIG.timezone_note,
+      updated_at: data.updated_at,
+    };
+  },
+
+  updateAgentRuntimeConfig: async (
+    role: UserRole,
+    config: AgentRuntimeConfig
+  ): Promise<AgentRuntimeConfig> => {
+    if (role !== 'admin') {
+      throw new Error('403 Forbidden: Only Admin can change office-hours policy');
+    }
+
+    const payload = {
+      id: 1,
+      enabled: config.enabled,
+      work_start: toPgTime(config.work_start),
+      work_end: toPgTime(config.work_end),
+      work_days: config.work_days,
+      capture_outside_hours: config.capture_outside_hours,
+      timezone_note: config.timezone_note || DEFAULT_AGENT_RUNTIME_CONFIG.timezone_note,
+      updated_at: new Date().toISOString(),
+    };
+
+    const { data, error } = await supabase
+      .from('agent_runtime_config')
+      .upsert(payload, { onConflict: 'id' })
+      .select()
+      .maybeSingle();
+
+    if (error) {
+      throw new Error(
+        error.message.includes('schema cache') || error.code === '42P01'
+          ? 'Run supabase/migrations/006_agent_office_hours.sql in the Supabase SQL editor first.'
+          : error.message
+      );
+    }
+
+    return {
+      id: data?.id ?? 1,
+      enabled: data?.enabled ?? payload.enabled,
+      work_start: normalizeTimeHHMM(data?.work_start ?? payload.work_start) || '09:00',
+      work_end: normalizeTimeHHMM(data?.work_end ?? payload.work_end) || '17:00',
+      work_days: data?.work_days ?? payload.work_days,
+      capture_outside_hours: data?.capture_outside_hours ?? payload.capture_outside_hours,
+      timezone_note: data?.timezone_note ?? payload.timezone_note,
+      updated_at: data?.updated_at ?? payload.updated_at,
+    };
+  },
 };
+
+function normalizeTimeHHMM(raw: string | null | undefined): string {
+  if (!raw) return '';
+  const parts = String(raw).trim().split(':');
+  if (parts.length < 2) return '';
+  const h = parts[0].padStart(2, '0');
+  const m = parts[1].padStart(2, '0');
+  return `${h}:${m}`;
+}
+
+function toPgTime(hhmm: string): string {
+  const n = normalizeTimeHHMM(hhmm) || '09:00';
+  return `${n}:00`;
+}
 
 

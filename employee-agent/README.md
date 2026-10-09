@@ -26,9 +26,26 @@ Wait for Next Interval (e.g., 60s)
 Repeat
 ```
 
+## Office hours
+
+Screenshot capture is gated by office hours (default Mon–Fri 09:00–17:00, workstation local clock).
+
+Env overrides:
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `OFFICE_HOURS_ENABLED` | `true` | When false, capture 24/7 |
+| `WORK_START` | `09:00` | Local start time |
+| `WORK_END` | `17:00` | Local end time |
+| `WORK_DAYS` | `mon,tue,wed,thu,fri` | Allowed weekdays |
+| `CAPTURE_OUTSIDE_HOURS` | `false` | Force capture outside the window |
+| `CONFIG_REFRESH_SECONDS` | `300` | How often to re-fetch Supabase policy |
+
+Remote policy: `public.agent_runtime_config` (single row `id=1`), editable in Admin → Settings. Env values apply until the first successful remote fetch.
+
 ## Running the Agent
 
 ```powershell
 $env:CARGO_TARGET_DIR="C:\Users\ok\.cargo_targets\employee_agent_mvp"
-cargo run
+cargo run --release
 ```

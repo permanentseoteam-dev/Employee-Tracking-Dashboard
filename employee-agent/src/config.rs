@@ -1,3 +1,4 @@
+use crate::office_hours::OfficeHoursConfig;
 use std::env;
 
 #[derive(Debug, Clone)]
@@ -10,6 +11,8 @@ pub struct AgentConfig {
     pub heartbeat_interval_secs: u64,
     pub idle_threshold_secs: u64,
     pub screenshot_quality: u8,
+    pub config_refresh_secs: u64,
+    pub office_hours: OfficeHoursConfig,
 }
 
 impl AgentConfig {
@@ -53,6 +56,13 @@ impl AgentConfig {
             .and_then(|s| s.parse::<u8>().ok())
             .unwrap_or(70);
 
+        let config_refresh_secs = env::var("CONFIG_REFRESH_SECONDS")
+            .ok()
+            .and_then(|s| s.parse::<u64>().ok())
+            .unwrap_or(300);
+
+        let office_hours = OfficeHoursConfig::from_env_defaults();
+
         Ok(Self {
             supabase_url,
             supabase_anon_key,
@@ -62,6 +72,8 @@ impl AgentConfig {
             heartbeat_interval_secs,
             idle_threshold_secs,
             screenshot_quality,
+            config_refresh_secs,
+            office_hours,
         })
     }
 }

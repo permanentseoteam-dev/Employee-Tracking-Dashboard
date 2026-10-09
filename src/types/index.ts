@@ -28,6 +28,28 @@ export interface AppConfig {
   version: number;
 }
 
+/** Remote policy polled by EmployeeAgent (public.agent_runtime_config). */
+export interface AgentRuntimeConfig {
+  id: number;
+  enabled: boolean;
+  work_start: string;
+  work_end: string;
+  work_days: string[];
+  capture_outside_hours: boolean;
+  timezone_note: string;
+  updated_at?: string;
+}
+
+export const DEFAULT_AGENT_RUNTIME_CONFIG: AgentRuntimeConfig = {
+  id: 1,
+  enabled: true,
+  work_start: '09:00',
+  work_end: '17:00',
+  work_days: ['mon', 'tue', 'wed', 'thu', 'fri'],
+  capture_outside_hours: false,
+  timezone_note: 'Uses each workstation local clock',
+};
+
 export interface DbStats {
   schema_version: number;
   pending_outbox_count: number;

@@ -1,6 +1,7 @@
 use crate::auth::AuthManager;
 use crate::compression::CompressedScreenshot;
 use crate::device::DeviceInfo;
+use crate::office_hours::RemoteOfficeHoursRow;
 use chrono::{DateTime, Utc};
 use reqwest::header::CONTENT_TYPE;
 use reqwest::Client;
@@ -193,5 +194,31 @@ impl SupabaseUploader {
         let _ = self.client.post(&legacy_url).json(&[legacy_record]).send().await;
 
         Ok(())
+    }
+
+    /// Pull single-row office-hours policy from public.agent_runtime_config (if present).
+    pub async fn fetch_office_hours_config(&self) -> Result<Option<RemoteOfficeHoursRow>, String> {
+        let url = format!(
+            "{}/rest/v1/agent_runtime_config?id=eq.1&select=enabled,work_start,work_end,work_days,capture_outside_hours",
+            self.base_url
+        );
+        let resp = self
+            .client
+            .get(&url)
+            .send()
+            .await
+            .map_err(|e| format!("Office-hours config request failed: {}", e))?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            return Err(format!("Office-hours config HTTP {}: {}", status, body));
+        }
+
+        let rows: Vec<RemoteOfficeHoursRow> = resp
+            .json()
+            .await
+            .map_err(|e| format!("Office-hours config parse failed: {}", e))?;
+        Ok(rows.into_iter().next())
     }
 }

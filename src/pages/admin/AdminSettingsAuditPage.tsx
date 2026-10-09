@@ -18,7 +18,8 @@ import { useAuth } from '../../context/AuthContext';
 import { api } from '../../services/tauriBridge';
 import { supabase } from '../../services/supabaseClient';
 import type { AuditLogItem } from '../../types/roles';
-import type { AppConfig } from '../../types';
+import type { AgentRuntimeConfig, AppConfig } from '../../types';
+import { DEFAULT_AGENT_RUNTIME_CONFIG } from '../../types';
 
 interface AdminSettingsAuditPageProps {
   initialView?: 'all' | 'settings' | 'audit-logs';
@@ -34,13 +35,26 @@ interface AgentTelemetryInfo {
   status: string;
 }
 
+const WORK_DAY_OPTIONS: { id: string; label: string }[] = [
+  { id: 'mon', label: 'Mon' },
+  { id: 'tue', label: 'Tue' },
+  { id: 'wed', label: 'Wed' },
+  { id: 'thu', label: 'Thu' },
+  { id: 'fri', label: 'Fri' },
+  { id: 'sat', label: 'Sat' },
+  { id: 'sun', label: 'Sun' },
+];
+
 export const AdminSettingsAuditPage: React.FC<AdminSettingsAuditPageProps> = ({ initialView = 'all' }) => {
   const { navigate } = useAuth();
   const [activeView, setActiveView] = useState<'all' | 'settings' | 'audit-logs'>(initialView);
   const [config, setConfig] = useState<AppConfig | null>(null);
+  const [officeHours, setOfficeHours] = useState<AgentRuntimeConfig>({ ...DEFAULT_AGENT_RUNTIME_CONFIG });
   const [auditLogs, setAuditLogs] = useState<AuditLogItem[]>([]);
   const [isSaving, setIsSaving] = useState(false);
+  const [isSavingHours, setIsSavingHours] = useState(false);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
+  const [hoursMessage, setHoursMessage] = useState<string | null>(null);
   const [lastSyncTime, setLastSyncTime] = useState<string>('');
   const [agentTelemetry, setAgentTelemetry] = useState<AgentTelemetryInfo>({
     deviceId: 'WIN-DESKTOP-QUVQI4B-ok',
@@ -74,8 +88,9 @@ export const AdminSettingsAuditPage: React.FC<AdminSettingsAuditPageProps> = ({ 
 
   const loadData = async () => {
     try {
-      const [cfg, logs, presenceRes, latestEventRes] = await Promise.all([
+      const [cfg, hours, logs, presenceRes, latestEventRes] = await Promise.all([
         api.getAppConfig(),
+        dataService.getAgentRuntimeConfig(),
         dataService.getAuditLogs('admin'),
         supabase
           .from('employee_presence')
@@ -90,6 +105,7 @@ export const AdminSettingsAuditPage: React.FC<AdminSettingsAuditPageProps> = ({ 
       ]);
 
       setConfig(cfg);
+      setOfficeHours(hours);
       setAuditLogs(logs);
 
       const now = new Date();
@@ -169,6 +185,42 @@ export const AdminSettingsAuditPage: React.FC<AdminSettingsAuditPageProps> = ({ 
       alert(err.message);
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const toggleWorkDay = (day: string) => {
+    setOfficeHours((prev) => {
+      const has = prev.work_days.includes(day);
+      const work_days = has
+        ? prev.work_days.filter((d) => d !== day)
+        : [...prev.work_days, day];
+      return { ...prev, work_days };
+    });
+  };
+
+  const handleSaveOfficeHours = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!officeHours.work_days.length) {
+      alert('Select at least one work day.');
+      return;
+    }
+    setIsSavingHours(true);
+    try {
+      const saved = await dataService.updateAgentRuntimeConfig('admin', officeHours);
+      setOfficeHours(saved);
+      dataService.logAction(
+        'Super Admin',
+        'admin',
+        'UPDATE_OFFICE_HOURS',
+        `${saved.work_start}–${saved.work_end} [${saved.work_days.join(',')}] enabled=${saved.enabled}`,
+        'Updated agent office-hours capture policy'
+      );
+      setHoursMessage('Office hours saved. Agents refresh this policy within ~5 minutes.');
+      setTimeout(() => setHoursMessage(null), 4000);
+    } catch (err: any) {
+      alert(err.message || String(err));
+    } finally {
+      setIsSavingHours(false);
     }
   };
 
@@ -314,6 +366,108 @@ export const AdminSettingsAuditPage: React.FC<AdminSettingsAuditPageProps> = ({ 
               </div>
             </form>
           )}
+
+          {/* Office hours — remote policy for EmployeeAgent */}
+          <form className="frosted-card" onSubmit={handleSaveOfficeHours} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <div className="content-card-title">
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Clock size={18} color="var(--color-secondary)" />
+                <span style={{ fontSize: 16, fontWeight: 700 }}>Office Hours Capture Window</span>
+              </div>
+              <span className="live-telemetry-badge">Agent policy</span>
+            </div>
+
+            <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: 0, lineHeight: 1.45 }}>
+              Screenshots pause outside this window on each workstation&apos;s local clock. Agents poll Supabase about every 5 minutes.
+            </p>
+
+            {hoursMessage && (
+              <div
+                style={{
+                  padding: '10px 14px',
+                  background: 'var(--status-success-bg)',
+                  color: 'var(--status-success)',
+                  borderRadius: 'var(--radius-card-sm)',
+                  fontSize: 12,
+                  fontWeight: 600,
+                }}
+              >
+                {hoursMessage}
+              </div>
+            )}
+
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer', color: 'var(--text-primary)' }}>
+              <input
+                type="checkbox"
+                checked={officeHours.enabled}
+                onChange={(e) => setOfficeHours({ ...officeHours, enabled: e.target.checked })}
+              />
+              <span>Enforce office hours (disable to capture 24/7)</span>
+            </label>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <div className="stitch-form-group">
+                <label className="stitch-label">Work start</label>
+                <input
+                  type="time"
+                  className="stitch-input"
+                  value={officeHours.work_start}
+                  onChange={(e) => setOfficeHours({ ...officeHours, work_start: e.target.value })}
+                  disabled={!officeHours.enabled}
+                />
+              </div>
+              <div className="stitch-form-group">
+                <label className="stitch-label">Work end</label>
+                <input
+                  type="time"
+                  className="stitch-input"
+                  value={officeHours.work_end}
+                  onChange={(e) => setOfficeHours({ ...officeHours, work_end: e.target.value })}
+                  disabled={!officeHours.enabled}
+                />
+              </div>
+            </div>
+
+            <div className="stitch-form-group">
+              <label className="stitch-label">Work days</label>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                {WORK_DAY_OPTIONS.map((d) => {
+                  const active = officeHours.work_days.includes(d.id);
+                  return (
+                    <button
+                      key={d.id}
+                      type="button"
+                      className={`nav-pill-item ${active ? 'active' : ''}`}
+                      onClick={() => toggleWorkDay(d.id)}
+                      disabled={!officeHours.enabled}
+                      style={{ opacity: officeHours.enabled ? 1 : 0.5 }}
+                    >
+                      {d.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer', color: 'var(--text-primary)' }}>
+              <input
+                type="checkbox"
+                checked={officeHours.capture_outside_hours}
+                onChange={(e) =>
+                  setOfficeHours({ ...officeHours, capture_outside_hours: e.target.checked })
+                }
+                disabled={!officeHours.enabled}
+              />
+              <span>Still capture outside hours (override)</span>
+            </label>
+
+            <div style={{ marginTop: 'auto', paddingTop: 8 }}>
+              <button type="submit" className="btn-pill btn-pill-primary" disabled={isSavingHours} style={{ width: '100%' }}>
+                <Save size={15} />
+                <span>{isSavingHours ? 'Saving Office Hours...' : 'Save Office Hours Policy'}</span>
+              </button>
+            </div>
+          </form>
 
           {/* Live Agent Synchronization & Realtime Telemetry Status */}
           <div className="frosted-card" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>

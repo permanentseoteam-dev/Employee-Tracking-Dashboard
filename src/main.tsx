@@ -2,6 +2,7 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
 import { FocusClockPopoutPage } from './pages/FocusClockPopoutPage';
+import { AppUpdatePrompt } from './components/common/AppUpdatePrompt';
 import { ThemeProvider } from './context/ThemeContext';
 import { AuthProvider } from './context/AuthContext';
 import { ErrorBoundary } from './components/ErrorBoundary';
@@ -20,6 +21,7 @@ ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
       ) : (
         <AuthProvider>
           <ThemeProvider>
+            <AppUpdatePrompt />
             <App />
           </ThemeProvider>
         </AuthProvider>

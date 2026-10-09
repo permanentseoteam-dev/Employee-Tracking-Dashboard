@@ -25,6 +25,16 @@ import { supabaseSync } from './supabaseService';
 import { generateWorkstationRecordingClip } from '../utils/screenRecordingGenerator';
 
 
+export const ADMIN_USER_ID = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
+
+export const isAdminRecord = (id?: string, name?: string, email?: string): boolean => {
+  if (!id && !name && !email) return false;
+  if (id === ADMIN_USER_ID) return true;
+  if (email && (email.toLowerCase().includes('admin') || email.toLowerCase() === 'arsal.admin@company.com')) return true;
+  if (name && (name.toLowerCase().includes('admin') || name.toLowerCase().includes('(admin)'))) return true;
+  return false;
+};
+
 // ============================================================================
 // Rule Configurations
 // ============================================================================
@@ -219,10 +229,21 @@ export const dataService = {
 
       const rawEmpRows = empRes.data || [];
       // Only keep Arsal and filter out any dummy users
-      const filteredEmpRows = rawEmpRows.filter((e: any) =>
+      let filteredEmpRows = rawEmpRows.filter((e: any) =>
         (e.full_name?.toLowerCase().includes('arsal') || e.email?.toLowerCase().includes('arsal'))
       );
-      const empRows = filteredEmpRows.length > 0 ? filteredEmpRows : rawEmpRows;
+      if (filteredEmpRows.length === 0) filteredEmpRows = rawEmpRows;
+
+      // When role === 'manager', strictly filter out any admin user or manager self-records
+      if (role === 'manager') {
+        filteredEmpRows = filteredEmpRows.filter((e: any) =>
+          !isAdminRecord(e.id, e.full_name, e.email) &&
+          !isAdminRecord(e.user_id, e.full_name, e.email) &&
+          e.role !== 'admin' &&
+          (managerId ? e.id !== managerId && e.user_id !== managerId : true)
+        );
+      }
+      const empRows = filteredEmpRows;
       if (empRows.length === 0) return [];
 
       const presenceRows = presRes.data || [];
@@ -233,7 +254,7 @@ export const dataService = {
       const taskRows = taskRes.data || [];
       const mgrRows = mgrRes.data || [];
 
-      return empRows.map((e: any) => {
+      const mappedEmployees: EmployeeRecord[] = empRows.map((e: any) => {
         const isMatchingEmp = (candId?: string) =>
           candId === e.id ||
           candId === e.user_id ||
@@ -330,6 +351,11 @@ export const dataService = {
           joined_at: e.created_at ? e.created_at.split('T')[0] : '2026-01-01',
         };
       });
+
+      if (role === 'manager') {
+        return mappedEmployees.filter((r) => !isAdminRecord(r.id, r.name, r.email));
+      }
+      return mappedEmployees;
     } catch (err) {
       console.error('getEmployees Supabase Error:', err);
       return [];
@@ -657,10 +683,19 @@ export const dataService = {
         const emp = empList.find((e: any) => e.id === s.employee_id);
         const empName = emp?.full_name || (s.employee_id?.includes('cccc') || s.employee_id?.includes('d9b4') ? 'Arsal' : 'Michael Chen');
 
-
-        // Manager permission enforcement: only see screenshots of assigned employees
-        if (role === 'manager' && managerId && emp?.manager_id && emp.manager_id !== managerId) {
-          continue;
+        // Manager permission enforcement: strictly block any admin activity or screenshots
+        if (role === 'manager') {
+          if (
+            s.employee_id === ADMIN_USER_ID ||
+            isAdminRecord(s.employee_id, empName) ||
+            (s.storage_path && s.storage_path.toLowerCase().includes('admin')) ||
+            (s.window_title && s.window_title.toLowerCase().includes('admin'))
+          ) {
+            continue;
+          }
+          if (managerId && emp?.manager_id && emp.manager_id !== managerId) {
+            continue;
+          }
         }
 
         // Employee permission enforcement: only see own screenshots
@@ -802,9 +837,14 @@ export const dataService = {
       }
     }
 
-    // Role filtering
-    if (role === 'manager' && managerId) {
-      list = list.filter((r) => r.employee_id !== managerId);
+    // Role filtering: strictly block any admin screen recordings for manager
+    if (role === 'manager') {
+      list = list.filter((r) =>
+        r.employee_id !== ADMIN_USER_ID &&
+        !isAdminRecord(r.employee_id, r.employee_name) &&
+        !(r.employee_name || '').toLowerCase().includes('admin') &&
+        (managerId ? r.employee_id !== managerId : true)
+      );
     }
     if (employeeId && employeeId !== 'all') {
       list = list.filter((r) => r.employee_id === employeeId);

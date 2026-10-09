@@ -6,7 +6,6 @@ import {
   RotateCcw,
   Clock,
   HardDrive,
-  Shield,
   ArrowUpRight,
   Calendar,
   CheckSquare,
@@ -25,7 +24,6 @@ interface DashboardPageProps {
 export const DashboardPage: React.FC<DashboardPageProps> = ({
   status,
   dbStats,
-  systemInfo,
   onNavigateToTab,
 }) => {
   const { user } = useAuth();
@@ -328,39 +326,6 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
             <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
               <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--text-muted)' }} /> Queue
             </span>
-          </div>
-        </div>
-      </div>
-
-      {/* 3. Lower Privacy & Architecture Card */}
-      <div className="frosted-card">
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
-          <div>
-            <h3 style={{ fontSize: 16, fontWeight: 700, color: 'var(--text-primary)' }}>Privacy & Transparent Telemetry</h3>
-            <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Local Workstation ID: {systemInfo.device_id} ({systemInfo.hostname})</span>
-          </div>
-          <span className="status-pill active">Verified Secure</span>
-        </div>
-
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1rem' }}>
-          <div style={{ padding: '1rem', borderRadius: 'var(--radius-card-sm)', background: 'var(--surface-frosted-subdued)', border: '1px solid var(--surface-border-subtle)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 700, marginBottom: 4, color: 'var(--text-primary)' }}>
-              <Shield size={16} color="var(--status-success)" />
-              <span>Zero Keylogging Guarantee</span>
-            </div>
-            <p style={{ fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.5 }}>
-              Actual keystrokes and sensitive text are never recorded. Only aggregate activity intensity and idle time are tracked.
-            </p>
-          </div>
-
-          <div style={{ padding: '1rem', borderRadius: 'var(--radius-card-sm)', background: 'var(--surface-frosted-subdued)', border: '1px solid var(--surface-border-subtle)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 700, marginBottom: 4, color: 'var(--text-primary)' }}>
-              <HardDrive size={16} color="var(--color-tertiary)" />
-              <span>Offline Outbox & Idempotency</span>
-            </div>
-            <p style={{ fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.5 }}>
-              All activity events and captures are queued locally in SQLite and synchronized automatically when online.
-            </p>
           </div>
         </div>
       </div>

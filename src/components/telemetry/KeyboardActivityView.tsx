@@ -39,7 +39,8 @@ const TIME_SLOTS = [
 const zeroRow = () => TIME_SLOTS.map(() => 0);
 
 // Color mapping for keystrokes intensity (from dark indigo to bright peach/cream)
-function getKeypressCellColor(val: number, min = 300, max = 3400) {
+function getKeypressCellColor(val: number, min = 0, max = 100) {
+  if (max <= min) max = min + 1;
   const norm = Math.max(0, Math.min(1, (val - min) / (max - min)));
 
   let bg = '#1e1b4b';
@@ -101,6 +102,14 @@ export const KeyboardActivityView: React.FC<KeyboardActivityViewProps> = ({
   const [breakSnapshot, setBreakSnapshot] = useState<BreakTelemetrySnapshot | null>(null);
   const [syncFeedback, setSyncFeedback] = useState<string | null>(null);
   const [liveKeysArray, setLiveKeysArray] = useState<number[] | null>(null);
+  const [liveByEmployee, setLiveByEmployee] = useState<Record<string, number[]>>({});
+
+  const telemetryFilter =
+    selectedEmployeeName && selectedEmployeeName !== 'all'
+      ? selectedEmployeeName
+      : role === 'employee'
+        ? user.id || user.name
+        : undefined;
 
   useEffect(() => {
     const managerId = role === 'manager' ? user.id : undefined;
@@ -121,13 +130,14 @@ export const KeyboardActivityView: React.FC<KeyboardActivityViewProps> = ({
       }
     });
 
-    dataService.getLatestBreakTelemetry().then((snap) => {
+    dataService.getLatestBreakTelemetry(role === 'employee' ? user.id : undefined).then((snap) => {
       if (snap) setBreakSnapshot(snap);
     });
 
     const loadLiveKeys = () => {
-      dataService.getLiveKeystrokeTelemetry(role, selectedEmployeeName).then((res) => {
+      dataService.getLiveKeystrokeTelemetry(role, telemetryFilter).then((res) => {
         setLiveKeysArray(res?.hourlyKeysArray?.length ? res.hourlyKeysArray : zeroRow());
+        setLiveByEmployee(res?.byEmployeeName || {});
       });
     };
     loadLiveKeys();
@@ -137,12 +147,12 @@ export const KeyboardActivityView: React.FC<KeyboardActivityViewProps> = ({
       setBreakSnapshot(snap);
       if (action === 'saved') {
         setSyncFeedback(
-          `💾 Keystroke state saved to Supabase (Bucket: screenshots, Table: activity_events). Preserved at ${snap?.current_time_slot}.`
+          `Keystroke state saved to Supabase at ${snap?.current_time_slot}.`
         );
         setTimeout(() => setSyncFeedback(null), 6000);
       } else if (action === 'resumed') {
         setSyncFeedback(
-          `⚡ Resumed work! Keystrokes continuing at ${snap?.current_time_slot} on top of preserved state.`
+          `Resumed work at ${snap?.current_time_slot} from preserved live keystroke state.`
         );
         setTimeout(() => setSyncFeedback(null), 6000);
       }
@@ -152,15 +162,18 @@ export const KeyboardActivityView: React.FC<KeyboardActivityViewProps> = ({
       unsubscribe();
       clearInterval(liveKeysTimer);
     };
-  }, [selectedEmployeeName]);
+  }, [selectedEmployeeName, role, user.id, user.name, telemetryFilter]);
 
 
   const handleTriggerBreak = async (type: BreakType) => {
     try {
+      const keysRes = await dataService.getLiveKeystrokeTelemetry(role, telemetryFilter);
       const snap = await dataService.saveBreakTelemetrySnapshot({
         breakType: type,
-        employeeName: selectedEmployeeName || 'Arsal',
+        employeeId: role === 'employee' ? user.id : undefined,
+        employeeName: selectedEmployeeName || user.name || 'Employee',
         timeSlot: type === 'coffee' ? '11:00' : '13:00',
+        keyboardData: [keysRes.hourlyKeysArray || zeroRow()],
       });
       setBreakSnapshot(snap);
     } catch (e) {
@@ -171,10 +184,11 @@ export const KeyboardActivityView: React.FC<KeyboardActivityViewProps> = ({
   const handleResumeBreak = async () => {
     try {
       const resumed = await dataService.resumeBreakTelemetry({
-        employeeName: selectedEmployeeName || 'Arsal',
+        employeeId: role === 'employee' ? user.id : undefined,
+        employeeName: selectedEmployeeName || user.name || 'Employee',
         breakSeconds: 1800,
       });
-      setBreakSnapshot(resumed);
+      if (resumed) setBreakSnapshot(resumed);
     } catch (e) {
       console.error(e);
     }
@@ -193,31 +207,45 @@ export const KeyboardActivityView: React.FC<KeyboardActivityViewProps> = ({
         eName.split('(')[0].trim() === sName.split('(')[0].trim()
       );
     });
-    activeEmployees = match ? [match] : [];
+    activeEmployees = match ? [match] : selectedEmployeeName ? [selectedEmployeeName] : [];
   }
 
   if (role === 'manager') {
     activeEmployees = activeEmployees.filter((empName) => !empName.toLowerCase().includes('admin'));
   }
 
-  const liveRow = liveKeysArray && liveKeysArray.length === TIME_SLOTS.length ? liveKeysArray : zeroRow();
-  let activeMatrixData: number[][] = activeEmployees.map(() => [...liveRow]);
+  const resolveLiveRow = (empLabel: string): number[] => {
+    const bare = empLabel.split('(')[0].trim();
+    if (liveByEmployee[empLabel]?.length === TIME_SLOTS.length) return liveByEmployee[empLabel];
+    if (liveByEmployee[bare]?.length === TIME_SLOTS.length) return liveByEmployee[bare];
+    // Single-employee filter: shared aggregate row is that person
+    if (activeEmployees.length === 1 && liveKeysArray?.length === TIME_SLOTS.length) {
+      return liveKeysArray;
+    }
+    return zeroRow();
+  };
 
-  // Adjust row for break continuation if active or resumed
-  if (showBreaks && breakSnapshot) {
+  let activeMatrixData: number[][] = activeEmployees.map((emp) => [...resolveLiveRow(emp)]);
+
+  // Adjust row for break continuation if active or resumed (real preserved values only)
+  if (showBreaks && breakSnapshot?.hourly_state) {
     const sIdx = breakSnapshot.time_slot_index;
     if (sIdx >= 0) {
       activeMatrixData = activeMatrixData.map((row) => {
         const newRow = [...row];
         if (breakSnapshot.status === 'active_break') {
-          newRow[sIdx] = breakSnapshot.hourly_state.pre_break_keys;
+          const preserved = breakSnapshot.hourly_state.pre_break_keys;
+          if (typeof preserved === 'number') newRow[sIdx] = preserved;
         } else if (breakSnapshot.status === 'resumed') {
-          newRow[sIdx] = breakSnapshot.hourly_state.adjusted_total_keys || newRow[sIdx];
+          const adjusted = breakSnapshot.hourly_state.adjusted_total_keys;
+          if (typeof adjusted === 'number') newRow[sIdx] = adjusted;
         }
         return newRow;
       });
     }
   }
+
+  const dataMax = Math.max(1, ...activeMatrixData.flat(), ...(liveKeysArray || []));
 
   // Calculate totals
 
@@ -371,24 +399,6 @@ export const KeyboardActivityView: React.FC<KeyboardActivityViewProps> = ({
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-            {/* Privacy verification chip */}
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 5,
-                background: 'rgba(16, 185, 129, 0.12)',
-                color: 'var(--status-success)',
-                padding: '4px 10px',
-                borderRadius: 20,
-                fontSize: 11,
-                fontWeight: 700,
-              }}
-            >
-              <CheckCircle2 size={13} />
-              <span>Zero Keylogging Guarantee</span>
-            </div>
-
             <button
               type="button"
               className="btn-pill btn-pill-secondary"
@@ -724,7 +734,7 @@ export const KeyboardActivityView: React.FC<KeyboardActivityViewProps> = ({
                     {/* Hourly Keypress Value Cells */}
                     {rowData.map((val, cIdx) => {
                       const timeSlot = TIME_SLOTS[cIdx];
-                      const { bg, textColor } = getKeypressCellColor(val);
+                      const { bg, textColor } = getKeypressCellColor(val, 0, dataMax);
                       const isHovered = hoveredCell?.row === rIdx && hoveredCell?.col === cIdx;
 
                       return (
@@ -991,7 +1001,7 @@ export const KeyboardActivityView: React.FC<KeyboardActivityViewProps> = ({
                     <div>
                       <span style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Pre-Break Keys:</span>
                       <div style={{ fontWeight: 800, color: 'var(--text-primary)' }}>
-                        {(breakSnapshot?.hourly_state?.pre_break_keys || 1520).toLocaleString()} keys (Preserved)
+                        {(breakSnapshot?.hourly_state?.pre_break_keys ?? 0).toLocaleString()} keys (Preserved)
                       </div>
                     </div>
                     <div>
@@ -1078,22 +1088,6 @@ export const KeyboardActivityView: React.FC<KeyboardActivityViewProps> = ({
               )}
 
 
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 8,
-                  padding: '8px 12px',
-                  background: 'rgba(16, 185, 129, 0.1)',
-                  borderRadius: 8,
-                  fontSize: 11,
-                  color: 'var(--status-success)',
-                  fontWeight: 600,
-                }}
-              >
-                <CheckCircle2 size={14} />
-                <span>Zero Keylogging Guarantee: Keystroke characters are never logged.</span>
-              </div>
             </motion.div>
           </div>
         )}

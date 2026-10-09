@@ -6,7 +6,6 @@ import {
   FolderKanban,
   Award,
   Timer,
-  ShieldCheck,
 } from 'lucide-react';
 import type { AgentStatusDto, NavTab } from '../../types';
 
@@ -104,21 +103,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>v{status.agent_version}</span>
         </div>
 
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 6,
-            marginTop: 8,
-            paddingTop: 8,
-            borderTop: '1px solid var(--surface-border-subtle)',
-            fontSize: 10,
-            color: 'var(--text-muted)',
-          }}
-        >
-          <ShieldCheck size={13} color="var(--status-success)" />
-          <span>Zero Keylogging Verified</span>
-        </div>
       </div>
     </aside>
   );

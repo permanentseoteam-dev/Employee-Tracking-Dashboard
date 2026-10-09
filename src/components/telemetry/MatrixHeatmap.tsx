@@ -185,6 +185,14 @@ export const MatrixHeatmap: React.FC<MatrixHeatmapProps> = ({
   const [breakSnapshot, setBreakSnapshot] = useState<BreakTelemetrySnapshot | null>(null);
   const [syncFeedback, setSyncFeedback] = useState<string | null>(null);
   const [liveMouseArray, setLiveMouseArray] = useState<number[] | null>(null);
+  const [liveMouseByEmployee, setLiveMouseByEmployee] = useState<Record<string, number[]>>({});
+
+  const telemetryFilter =
+    selectedEmployeeName && selectedEmployeeName !== 'all'
+      ? selectedEmployeeName
+      : role === 'employee'
+        ? user.id || user.name
+        : undefined;
 
   useEffect(() => {
     const managerId = role === 'manager' ? user.id : undefined;
@@ -204,15 +212,16 @@ export const MatrixHeatmap: React.FC<MatrixHeatmapProps> = ({
       }
     });
 
-    dataService.getLatestBreakTelemetry().then((snap) => {
+    dataService.getLatestBreakTelemetry(role === 'employee' ? user.id : undefined).then((snap) => {
       if (snap) setBreakSnapshot(snap);
     });
 
     const loadLiveMouse = () => {
-      dataService.getLiveMouseTelemetry(role, selectedEmployeeName).then((res) => {
+      dataService.getLiveMouseTelemetry(role, telemetryFilter).then((res) => {
         setLiveMouseArray(
           res?.hourlyIntensityArray?.length ? res.hourlyIntensityArray : zeroHourlyRow()
         );
+        setLiveMouseByEmployee(res?.byEmployeeName || {});
       });
     };
     loadLiveMouse();
@@ -221,14 +230,10 @@ export const MatrixHeatmap: React.FC<MatrixHeatmapProps> = ({
     const unsubscribe = dataService.subscribeToBreakTelemetry((snap, action) => {
       setBreakSnapshot(snap);
       if (action === 'saved') {
-        setSyncFeedback(
-          `💾 Snapshot saved to Supabase (Bucket: screenshots, Table: activity_events). State locked at ${snap?.current_time_slot}.`
-        );
+        setSyncFeedback(`Snapshot saved at ${snap?.current_time_slot}.`);
         setTimeout(() => setSyncFeedback(null), 6000);
       } else if (action === 'resumed') {
-        setSyncFeedback(
-          `⚡ Resumed from last state! Telemetry continues at ${snap?.current_time_slot} without losing progress.`
-        );
+        setSyncFeedback(`Resumed telemetry at ${snap?.current_time_slot}.`);
         setTimeout(() => setSyncFeedback(null), 6000);
       }
     });
@@ -237,15 +242,22 @@ export const MatrixHeatmap: React.FC<MatrixHeatmapProps> = ({
       unsubscribe();
       clearInterval(liveMouseTimer);
     };
-  }, [selectedEmployeeName]);
+  }, [selectedEmployeeName, role, user.id, user.name, telemetryFilter]);
 
 
   const handleTriggerBreak = async (type: BreakType) => {
     try {
+      const [keysRes, mouseRes] = await Promise.all([
+        dataService.getLiveKeystrokeTelemetry(role, telemetryFilter),
+        dataService.getLiveMouseTelemetry(role, telemetryFilter),
+      ]);
       const snap = await dataService.saveBreakTelemetrySnapshot({
         breakType: type,
-        employeeName: selectedEmployeeName || 'Arsal',
+        employeeId: role === 'employee' ? user.id : undefined,
+        employeeName: selectedEmployeeName || user.name || 'Employee',
         timeSlot: type === 'coffee' ? '11:00' : '13:00',
+        keyboardData: [keysRes.hourlyKeysArray || zeroHourlyRow()],
+        heatmapData: [mouseRes.hourlyIntensityArray || zeroHourlyRow()],
       });
       setBreakSnapshot(snap);
     } catch (e) {
@@ -256,10 +268,11 @@ export const MatrixHeatmap: React.FC<MatrixHeatmapProps> = ({
   const handleResumeBreak = async () => {
     try {
       const resumed = await dataService.resumeBreakTelemetry({
-        employeeName: selectedEmployeeName || 'Arsal',
+        employeeId: role === 'employee' ? user.id : undefined,
+        employeeName: selectedEmployeeName || user.name || 'Employee',
         breakSeconds: 1800,
       });
-      setBreakSnapshot(resumed);
+      if (resumed) setBreakSnapshot(resumed);
     } catch (e) {
       console.error(e);
     }
@@ -288,25 +301,33 @@ export const MatrixHeatmap: React.FC<MatrixHeatmapProps> = ({
     filteredEmployees = filteredEmployees.filter((empName) => !empName.toLowerCase().includes('admin'));
   }
 
-  const liveRow =
-    activeMode === 'hourly'
-      ? liveMouseArray && liveMouseArray.length === DEFAULT_TIME_SLOTS.length
-        ? liveMouseArray.map((v) => Math.min(100, Math.max(0, v)))
-        : zeroHourlyRow()
-      : zeroWeeklyRow();
+  const resolveMouseRow = (empLabel: string): number[] => {
+    if (activeMode !== 'hourly') return zeroWeeklyRow();
+    const bare = empLabel.split('(')[0].trim();
+    const fromMap = liveMouseByEmployee[empLabel] || liveMouseByEmployee[bare];
+    if (fromMap?.length === DEFAULT_TIME_SLOTS.length) {
+      return fromMap.map((v) => Math.min(100, Math.max(0, v)));
+    }
+    if (filteredEmployees.length === 1 && liveMouseArray?.length === DEFAULT_TIME_SLOTS.length) {
+      return liveMouseArray.map((v) => Math.min(100, Math.max(0, v)));
+    }
+    return zeroHourlyRow();
+  };
 
-  let filteredData: number[][] = filteredEmployees.map(() => [...liveRow]);
+  let filteredData: number[][] = filteredEmployees.map((emp) => [...resolveMouseRow(emp)]);
 
   // Adjust row for break continuation if break is active or resumed
-  if (showBreaks && activeMode === 'hourly' && breakSnapshot) {
+  if (showBreaks && activeMode === 'hourly' && breakSnapshot?.hourly_state) {
     const sIdx = breakSnapshot.time_slot_index;
     if (sIdx >= 0) {
       filteredData = filteredData.map((row) => {
         const newRow = [...row];
         if (breakSnapshot.status === 'active_break') {
-          newRow[sIdx] = breakSnapshot.hourly_state.pre_break_heatmap_pct;
+          const v = breakSnapshot.hourly_state.pre_break_heatmap_pct;
+          if (typeof v === 'number') newRow[sIdx] = v;
         } else if (breakSnapshot.status === 'resumed') {
-          newRow[sIdx] = breakSnapshot.hourly_state.adjusted_heatmap_pct || newRow[sIdx];
+          const v = breakSnapshot.hourly_state.adjusted_heatmap_pct;
+          if (typeof v === 'number') newRow[sIdx] = v;
         }
         return newRow;
       });
@@ -1083,13 +1104,6 @@ export const MatrixHeatmap: React.FC<MatrixHeatmapProps> = ({
                   </div>
                 )}
 
-
-                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 12px', background: 'var(--surface-frosted-subdued)', borderRadius: 'var(--radius-card-sm)', fontSize: 12 }}>
-                  <span style={{ color: 'var(--text-muted)' }}>Privacy Guarantee:</span>
-                  <span style={{ color: 'var(--status-success)', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 4 }}>
-                    <CheckCircle2 size={13} /> Zero Keylogging &bull; Aggregate Telemetry Only
-                  </span>
-                </div>
 
                 <button
                   type="button"

@@ -48,7 +48,7 @@ export const TopBar: React.FC<TopBarProps> = ({
   onSearchChange,
 }) => {
   const { theme, toggleTheme } = useTheme();
-  const { user, role, switchRole, signOut } = useAuth();
+  const { user, role, switchRole, signOut, isAuthenticated } = useAuth();
   const [realtimeStatus, setRealtimeStatus] = useState<'Live' | 'Reconnecting...' | 'Offline'>('Live');
   const [sessionSeconds, setSessionSeconds] = useState(16338); // 04:32:18 starting reference
   const [imgError, setImgError] = useState(false);
@@ -270,7 +270,7 @@ export const TopBar: React.FC<TopBarProps> = ({
 
       {/* Controls: Role Switcher, Realtime Telemetry, Theme, Notification, Profile */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-        {/* Role Switcher Pills */}
+        {/* Role switcher — demo only when not signed in. Authenticated users stay on profile role. */}
         <div
           style={{
             display: 'flex',
@@ -280,15 +280,22 @@ export const TopBar: React.FC<TopBarProps> = ({
             borderRadius: 'var(--radius-pill)',
             border: '1px solid var(--surface-border-subtle)',
             gap: 3,
+            opacity: isAuthenticated ? 0.85 : 1,
           }}
-          title="Switch Active Console View"
+          title={
+            isAuthenticated
+              ? `Signed in as ${role} — role switch locked`
+              : 'Demo: switch console view (not available when signed in)'
+          }
         >
           {(['admin', 'manager', 'employee'] as UserRole[]).map((r) => {
             const isSelected = role === r;
+            const lockedOut = isAuthenticated && r !== role;
             return (
               <button
                 key={r}
                 type="button"
+                disabled={lockedOut}
                 onClick={() => switchRole(r)}
                 style={{
                   display: 'inline-flex',
@@ -299,12 +306,13 @@ export const TopBar: React.FC<TopBarProps> = ({
                   fontWeight: isSelected ? 700 : 500,
                   borderRadius: 'var(--radius-pill)',
                   border: 'none',
-                  cursor: 'pointer',
+                  cursor: lockedOut ? 'not-allowed' : 'pointer',
                   textTransform: 'capitalize',
                   background: isSelected ? 'var(--color-primary)' : 'transparent',
                   color: isSelected ? 'var(--color-on-primary)' : 'var(--text-secondary)',
                   boxShadow: isSelected ? 'var(--shadow-pill)' : 'none',
                   transition: 'all 0.2s ease',
+                  opacity: lockedOut ? 0.4 : 1,
                 }}
               >
                 {r === 'admin' && <Shield size={12} />}

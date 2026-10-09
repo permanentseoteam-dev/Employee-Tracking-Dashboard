@@ -1,10 +1,10 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
 import type { User, Session } from '@supabase/supabase-js';
 import { supabase } from '../services/supabaseClient';
 import { supabaseAuth } from '../services/supabaseService';
 import type { UserProfile, UserRole } from '../types/roles';
 
-// Default profiles matching seeded Supabase database users
+/** Demo-only profiles used when Supabase auth is not signed in. */
 const DEFAULT_PROFILES: Record<UserRole, UserProfile> = {
   admin: {
     id: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
@@ -44,6 +44,8 @@ interface AuthContextType {
   session: Session | null;
   isLoading: boolean;
   isConfigured: boolean;
+  /** True when signed in via Supabase — role switching is locked to the profile role. */
+  isAuthenticated: boolean;
   currentRoute: string;
   navigate: (path: string) => void;
   switchRole: (role: UserRole) => void;
@@ -81,19 +83,72 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [currentRoute, setCurrentRoute] = useState<string>(initialRoute);
   const isConfigured = supabaseAuth.isConfigured();
 
-  // Listen to browser Back (<-) and Forward (->) button events
+  const sessionRef = useRef<Session | null>(null);
+  const profileRoleRef = useRef<UserRole | null>(null);
+  const userRef = useRef(user);
+  userRef.current = user;
+  sessionRef.current = session;
+
+  const isAuthenticated = Boolean(session?.user);
+
+  const clampRouteToRole = (path: string, allowedRole: UserRole): string => {
+    const targetRole = getRoleFromPath(path);
+    if (targetRole === allowedRole) return path.startsWith('/') ? path : `/${path}`;
+    const rest = path.replace(/^\/(admin|manager|employee)/, '') || '/dashboard';
+    return `/${allowedRole}${rest.startsWith('/') ? rest : `/${rest}`}`;
+  };
+
+  const syncSupabaseProfile = async (sUser: User | null) => {
+    if (!sUser || !isConfigured) return;
+
+    try {
+      const p = await supabaseAuth.getProfile(sUser.id);
+      if (p) {
+        const uRole = p.role as UserRole;
+        profileRoleRef.current = uRole;
+        setRole(uRole);
+        setUser({
+          id: p.id,
+          name: p.full_name || sUser.email?.split('@')[0] || 'User',
+          email: p.email || sUser.email || '',
+          role: uRole,
+          avatar: (p.full_name || sUser.email || 'U').substring(0, 2).toUpperCase(),
+          department: p.department || 'General',
+          team_id: p.team_id,
+        });
+        const safeRoute = clampRouteToRole(getRouteFromHash(), uRole);
+        setCurrentRoute(safeRoute);
+        if (window.location.hash !== `#${safeRoute}`) {
+          window.location.hash = safeRoute;
+        }
+      }
+    } catch (err) {
+      console.warn('Failed to load profile from Supabase:', err);
+    }
+  };
+
+  // Browser back/forward + hash sync
   useEffect(() => {
     const syncRouteFromLocation = () => {
-      const route = getRouteFromHash();
-      const targetRole = getRoleFromPath(route);
+      let route = getRouteFromHash();
+      const lockedRole = sessionRef.current?.user ? profileRoleRef.current : null;
 
-      setRole((prevRole) => {
-        if (prevRole !== targetRole) {
-          setUser(DEFAULT_PROFILES[targetRole]);
-          return targetRole;
+      if (lockedRole) {
+        route = clampRouteToRole(route, lockedRole);
+        setRole(lockedRole);
+        if (window.location.hash !== `#${route}`) {
+          window.location.hash = route;
         }
-        return prevRole;
-      });
+      } else {
+        const targetRole = getRoleFromPath(route);
+        setRole((prevRole) => {
+          if (prevRole !== targetRole) {
+            setUser(DEFAULT_PROFILES[targetRole]);
+            return targetRole;
+          }
+          return prevRole;
+        });
+      }
 
       setCurrentRoute(route);
     };
@@ -101,7 +156,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     window.addEventListener('hashchange', syncRouteFromLocation);
     window.addEventListener('popstate', syncRouteFromLocation);
 
-    // Initial check
     if (!window.location.hash) {
       window.location.hash = initialRoute;
     } else {
@@ -114,29 +168,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   }, []);
 
-  const syncSupabaseProfile = async (sUser: User | null) => {
-    if (!sUser || !isConfigured) return;
-
-    try {
-      const p = await supabaseAuth.getProfile(sUser.id);
-      if (p) {
-        const uRole = p.role as UserRole;
-        setRole(uRole);
-        setUser({
-          id: p.id,
-          name: p.full_name || sUser.email?.split('@')[0] || 'User',
-          email: p.email || sUser.email || '',
-          role: uRole,
-          avatar: (p.full_name || sUser.email || 'U').substring(0, 2).toUpperCase(),
-          department: p.department || 'General',
-          team_id: p.team_id,
-        });
-      }
-    } catch (err) {
-      console.warn('Failed to load profile from Supabase:', err);
-    }
-  };
-
   useEffect(() => {
     if (!isConfigured) {
       setIsLoading(false);
@@ -145,6 +176,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     supabaseAuth.getSession().then((sess) => {
       setSession(sess);
+      sessionRef.current = sess;
       setSupabaseUser(sess?.user ?? null);
       if (sess?.user) {
         syncSupabaseProfile(sess.user);
@@ -155,9 +187,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const { data: authListener } = supabase.auth.onAuthStateChange(
       async (_event, currentSession) => {
         setSession(currentSession);
+        sessionRef.current = currentSession;
         setSupabaseUser(currentSession?.user ?? null);
         if (currentSession?.user) {
           await syncSupabaseProfile(currentSession.user);
+        } else {
+          profileRoleRef.current = null;
         }
         setIsLoading(false);
       }
@@ -169,6 +204,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [isConfigured]);
 
   const switchRole = (newRole: UserRole) => {
+    // Authenticated users cannot escalate / switch roles — only demo mode may.
+    if (sessionRef.current?.user && profileRoleRef.current) {
+      const locked = profileRoleRef.current;
+      if (newRole !== locked) {
+        console.warn(`Role switch blocked: authenticated as ${locked}`);
+        return;
+      }
+      const defaultRoute = `/${locked}/dashboard`;
+      setCurrentRoute(defaultRoute);
+      if (window.location.hash !== `#${defaultRoute}`) {
+        window.location.hash = defaultRoute;
+      }
+      return;
+    }
+
     setRole(newRole);
     setUser(DEFAULT_PROFILES[newRole]);
     const defaultRoute = `/${newRole}/dashboard`;
@@ -180,16 +230,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const navigate = (path: string) => {
     const normalized = path.startsWith('/') ? path : `/${path}`;
-    const targetRole = getRoleFromPath(normalized);
+    const lockedRole = sessionRef.current?.user ? profileRoleRef.current : null;
+    const safePath = lockedRole ? clampRouteToRole(normalized, lockedRole) : normalized;
+    const targetRole = getRoleFromPath(safePath);
 
-    if (targetRole !== role) {
+    if (!lockedRole && targetRole !== role) {
       setRole(targetRole);
       setUser(DEFAULT_PROFILES[targetRole]);
+    } else if (lockedRole) {
+      setRole(lockedRole);
     }
 
-    setCurrentRoute(normalized);
-    if (window.location.hash !== `#${normalized}`) {
-      window.location.hash = normalized;
+    setCurrentRoute(safePath);
+    if (window.location.hash !== `#${safePath}`) {
+      window.location.hash = safePath;
     }
   };
 
@@ -199,6 +253,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const { user: authedUser, session: newSession } = await supabaseAuth.signIn(email, password);
       setSupabaseUser(authedUser);
       setSession(newSession);
+      sessionRef.current = newSession;
       if (authedUser) {
         await syncSupabaseProfile(authedUser);
       }
@@ -215,9 +270,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   ) => {
     setIsLoading(true);
     try {
-      const { user: newUser, session: newSession } = await supabaseAuth.signUp(email, password, fullName, userRole);
+      const { user: newUser, session: newSession } = await supabaseAuth.signUp(
+        email,
+        password,
+        fullName,
+        userRole
+      );
       setSupabaseUser(newUser);
       setSession(newSession);
+      sessionRef.current = newSession;
       if (newUser) {
         await syncSupabaseProfile(newUser);
       }
@@ -234,6 +295,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
       setSupabaseUser(null);
       setSession(null);
+      sessionRef.current = null;
+      profileRoleRef.current = null;
       setUser(DEFAULT_PROFILES[role]);
     } finally {
       setIsLoading(false);
@@ -255,6 +318,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         session,
         isLoading,
         isConfigured,
+        isAuthenticated,
         currentRoute,
         navigate,
         switchRole,

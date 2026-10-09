@@ -23,6 +23,7 @@ import {
 import { dataService } from '../../services/dataService';
 import { useAuth } from '../../context/AuthContext';
 import { FocusSessionWidget } from '../../components/timer/FocusSessionWidget';
+import { downloadCsv } from '../../utils/csvExport';
 import type { EmployeeRecord } from '../../types/roles';
 
 interface AdminDashboardPageProps {
@@ -632,7 +633,28 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({ onNaviga
                 type="button"
                 className="btn-icon-circle accent"
                 title="Export CSV"
-                onClick={() => alert('Exporting live roster telemetry CSV')}
+                onClick={() => {
+                  try {
+                    downloadCsv(
+                      `roster-telemetry-${new Date().toISOString().slice(0, 10)}.csv`,
+                      filteredEmployees.map((e) => ({
+                        name: e.name,
+                        email: e.email,
+                        department: e.department,
+                        status: e.status,
+                        active_hours: (e.active_seconds / 3600).toFixed(2),
+                        idle_hours: (e.idle_seconds / 3600).toFixed(2),
+                        keys: e.key_press_count ?? 0,
+                        clicks: e.mouse_click_count ?? 0,
+                        stars: e.stars,
+                        device: e.device_name || e.device_id,
+                        last_activity: e.last_activity_at || '',
+                      }))
+                    );
+                  } catch (err: any) {
+                    alert(err.message || 'Export failed');
+                  }
+                }}
               >
                 <Download size={15} />
               </button>

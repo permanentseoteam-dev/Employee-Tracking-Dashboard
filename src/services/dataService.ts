@@ -190,7 +190,7 @@ export const dataService = {
       if (role === 'manager' && managerId) {
         query = query.eq('manager_id', managerId);
       } else if (role === 'employee' && employeeId) {
-        query = query.or(`id.eq.${employeeId},user_id.eq.${employeeId},email.eq.arsal@company.com`);
+        query = query.or(`id.eq.${employeeId},user_id.eq.${employeeId}`);
       }
 
       const [
@@ -203,6 +203,7 @@ export const dataService = {
         legacyScRes,
         taskRes,
         mgrRes,
+        starBalRes,
       ] = await Promise.all([
         query,
         supabase.from('employee_presence').select('*').order('updated_at', { ascending: false }),
@@ -213,14 +214,10 @@ export const dataService = {
         supabase.from('screenshots').select('*').order('captured_at', { ascending: false }).limit(50),
         supabase.from('tasks').select('*').eq('status', 'in_progress'),
         supabase.from('users').select('id, full_name, email').eq('role', 'manager'),
+        supabase.from('employee_star_balances').select('employee_id, stars'),
       ]);
 
-      const rawEmpRows = empRes.data || [];
-      // Only keep Arsal and filter out any dummy users
-      let filteredEmpRows = rawEmpRows.filter((e: any) =>
-        (e.full_name?.toLowerCase().includes('arsal') || e.email?.toLowerCase().includes('arsal'))
-      );
-      if (filteredEmpRows.length === 0) filteredEmpRows = rawEmpRows;
+      let filteredEmpRows = empRes.data || [];
 
       // When role === 'manager', strictly filter out any admin user or manager self-records
       if (role === 'manager') {
@@ -232,6 +229,12 @@ export const dataService = {
         );
       }
       const empRows = filteredEmpRows;
+      const starBalanceRows = starBalRes.data || [];
+      for (const row of starBalanceRows) {
+        if (row?.employee_id != null) {
+          employeeStarsMap.set(String(row.employee_id), Number(row.stars) || 0);
+        }
+      }
       if (empRows.length === 0) return [];
 
       const presenceRows = presRes.data || [];
@@ -246,10 +249,7 @@ export const dataService = {
 
       const mappedEmployees: EmployeeRecord[] = empRows.map((e: any) => {
         const isMatchingEmp = (candId?: string) =>
-          candId === e.id ||
-          candId === e.user_id ||
-          (e.full_name?.toLowerCase().includes('arsal') &&
-            (candId === 'cccccccc-cccc-cccc-cccc-cccccccccccc' || candId === 'd9b4bfb3-9953-522d-84af-3de709e7caa8'));
+          !!candId && (candId === e.id || candId === e.user_id);
 
         // 1. Presence & Activity (prioritize active presence if one is active)
         const empPresences = presenceRows.filter((p: any) => isMatchingEmp(p.employee_id));
@@ -261,9 +261,9 @@ export const dataService = {
         // 2. Primary Connected Device
         const empDevices = deviceRows.filter((d: any) => isMatchingEmp(d.employee_id));
         const primaryDevice = empDevices[0] || (e.devices && e.devices[0]);
-        const deviceIdentifier = primaryDevice?.device_identifier || primaryDevice?.device_name || 'WIN-WORKSTATION';
-        const deviceName = primaryDevice?.device_name || 'Desktop Workstation';
-        const osVersion = primaryDevice?.os_version || 'Windows 11 x86_64';
+        const deviceIdentifier = primaryDevice?.device_identifier || primaryDevice?.device_name || '—';
+        const deviceName = primaryDevice?.device_name || '—';
+        const osVersion = primaryDevice?.os_version || '—';
 
         // 3. Daily Aggregate Telemetry (Keys, Mouse, Active Time, Idle Time)
         const empAggregates = aggregateRows.filter((a: any) => isMatchingEmp(a.employee_id));
@@ -277,7 +277,6 @@ export const dataService = {
         const empEvents = eventRows.filter((ev: any) => isMatchingEmp(ev.employee_id));
         const latestEvent = empEvents[0];
         const activeWindow =
-
           latestEvent?.metadata?.window ||
           latestEvent?.metadata?.window_title ||
           activeTask?.title ||
@@ -299,28 +298,30 @@ export const dataService = {
         }
 
         // 6. Presence Status Calculation
-        let status: 'active' | 'idle' | 'offline' | 'on_break' = 'active';
-        let firstActivity = '09:00 AM';
+        let status: 'active' | 'idle' | 'offline' | 'on_break' = 'offline';
+        let firstActivity = '—';
 
         if (presence) {
-          status = presence.status as any;
+          status = (presence.status as any) || 'offline';
           if (presence.last_activity_at) {
             const d = new Date(presence.last_activity_at);
             firstActivity = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
           }
         } else if (e.status) {
           status = e.status;
+        } else if (latestEvent || totalActiveSecs > 0) {
+          status = 'active';
         }
 
         return {
           id: e.id,
-          name: e.full_name || 'Arsal',
-          email: e.email || 'arsal@company.com',
-          department: e.department || 'Engineering',
-          team_id: 'team-backend',
-          team_name: e.department ? `${e.department} Team` : 'Core Backend Team',
-          manager_id: e.manager_id || 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
-          manager_name: mgr?.full_name || 'Arsal (Manager)',
+          name: e.full_name || e.email || 'Unknown employee',
+          email: e.email || '',
+          department: e.department || 'Unassigned',
+          team_id: e.team_id || '',
+          team_name: e.department ? `${e.department} Team` : 'Unassigned',
+          manager_id: e.manager_id || '',
+          manager_name: mgr?.full_name || 'Unassigned',
           status,
           attendance_status: status === 'offline' ? 'absent' : 'on_time',
           first_activity: firstActivity,
@@ -329,19 +330,21 @@ export const dataService = {
           key_press_count: totalKeys,
           mouse_move_count: totalMoves,
           mouse_click_count: totalClicks,
-          active_window: activeWindow === 'Visual Studio Code - Employee-Tracking-Dashboard' && !latestEvent
-            ? '—'
-            : activeWindow,
+          active_window: activeWindow || '—',
           last_screenshot: lastScStr,
           latest_screenshot_url: latestScUrl,
           latest_screenshot_time: latestSc?.captured_at || undefined,
           current_task: activeTask?.title || (latestEvent ? activeWindow : '—'),
-          stars: employeeStarsMap.get(e.id) ?? 0,
+          stars: employeeStarsMap.get(e.id) ?? employeeStarsMap.get(e.user_id) ?? 0,
           device_id: deviceIdentifier,
           device_name: deviceName,
           os_version: osVersion,
-          last_activity_at: presence?.last_activity_at || latestEvent?.occurred_at || primaryDevice?.last_seen_at || new Date().toISOString(),
-          joined_at: e.created_at ? e.created_at.split('T')[0] : '2026-01-01',
+          last_activity_at:
+            presence?.last_activity_at ||
+            latestEvent?.occurred_at ||
+            primaryDevice?.last_seen_at ||
+            undefined,
+          joined_at: e.created_at ? e.created_at.split('T')[0] : '',
         };
       });
 
@@ -692,19 +695,8 @@ export const dataService = {
         const emp = empList.find((e: any) => e.id === s.employee_id);
         const empName = emp?.full_name || 'Unknown employee';
 
-        if (filterEmployeeId && filterEmployeeId !== 'all') {
-          const isArsalFilter =
-            filterEmployeeId.includes('cccc') ||
-            filterEmployeeId.includes('d9b4') ||
-            filterEmployeeId.toLowerCase().includes('arsal');
-          const isArsalRow =
-            s.employee_id?.includes('cccc') ||
-            s.employee_id?.includes('d9b4') ||
-            empName.toLowerCase().includes('arsal');
-
-          if (isArsalFilter ? !isArsalRow : s.employee_id !== filterEmployeeId) {
-            continue;
-          }
+        if (filterEmployeeId && filterEmployeeId !== 'all' && s.employee_id !== filterEmployeeId) {
+          continue;
         }
 
         // Manager permission enforcement: strictly block any admin activity or screenshots
@@ -1135,17 +1127,8 @@ export const dataService = {
             continue;
           }
         }
-        if (employeeId && employeeId !== 'all') {
-          const isArsalFilter =
-            employeeId.includes('cccc') ||
-            employeeId.includes('d9b4') ||
-            employeeId.toLowerCase().includes('arsal');
-          const isArsalRow =
-            a.employee_id?.includes('cccc') ||
-            a.employee_id?.includes('d9b4');
-          if (isArsalFilter ? !isArsalRow : a.employee_id !== employeeId) {
-            continue;
-          }
+        if (employeeId && employeeId !== 'all' && a.employee_id !== employeeId) {
+          continue;
         }
 
         const keys = Number(a.key_press_count) || 0;
@@ -1206,17 +1189,8 @@ export const dataService = {
             continue;
           }
         }
-        if (employeeId && employeeId !== 'all') {
-          const isArsalFilter =
-            employeeId.includes('cccc') ||
-            employeeId.includes('d9b4') ||
-            employeeId.toLowerCase().includes('arsal');
-          const isArsalRow =
-            a.employee_id?.includes('cccc') ||
-            a.employee_id?.includes('d9b4');
-          if (isArsalFilter ? !isArsalRow : a.employee_id !== employeeId) {
-            continue;
-          }
+        if (employeeId && employeeId !== 'all' && a.employee_id !== employeeId) {
+          continue;
         }
 
         const moves = Number(a.mouse_move_count) || 0;
@@ -1324,25 +1298,18 @@ export const dataService = {
       const allProjects = projRes.data || [];
       const allEmps = empRes.data || [];
 
-      // Determine team employees for the manager (e.g. Arsal)
-      const teamEmployees = allEmps.filter(
-        (e: any) =>
-          (managerId ? e.manager_id === managerId : true) ||
-          e.full_name?.toLowerCase().includes('arsal') ||
-          e.email?.toLowerCase().includes('arsal')
+      const teamEmployees = allEmps.filter((e: any) =>
+        managerId ? e.manager_id === managerId : true
       );
       const teamEmpIds = new Set<string>(
         teamEmployees.flatMap((e: any) => [e.id, e.user_id]).filter(Boolean)
       );
-      teamEmpIds.add('cccccccc-cccc-cccc-cccc-cccccccccccc');
-      teamEmpIds.add('d9b4bfb3-9953-522d-84af-3de709e7caa8');
 
       // Filter projects based on role
       let projRows = allProjects;
 
       if (role === 'manager') {
         projRows = allProjects.filter((p: any) => {
-          // 1. STRICTLY EXCLUDE ANY ADMIN PROJECTS
           const isAdminProj =
             p.manager_id === ADMIN_USER_ID ||
             isAdminRecord(p.manager_id, p.manager_name) ||
@@ -1355,14 +1322,7 @@ export const dataService = {
             return false;
           }
 
-          // 2. MANAGER'S OWN PROJECT
-          const isManagerOwn =
-            (managerId && p.manager_id === managerId) ||
-            p.manager_id === 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb' ||
-            p.manager_name?.toLowerCase().includes('vance') ||
-            p.manager_name?.toLowerCase().includes('manager');
-
-          // 3. EMPLOYEE ACTIVITY PROJECT (project has tasks assigned to team employees)
+          const isManagerOwn = !!(managerId && p.manager_id === managerId);
           const tasks = p.tasks || [];
           const isEmployeeActivity = tasks.some((t: any) => teamEmpIds.has(t.assigned_to));
 
@@ -1371,13 +1331,7 @@ export const dataService = {
       } else if (role === 'employee' && _employeeId) {
         projRows = allProjects.filter((p: any) => {
           const tasks = p.tasks || [];
-          const isAssigned = tasks.some(
-            (t: any) =>
-              t.assigned_to === _employeeId ||
-              ((_employeeId.includes('cccc') || _employeeId.includes('d9b4')) &&
-                (t.assigned_to?.includes('cccc') || t.assigned_to?.includes('d9b4')))
-          );
-          return isAssigned || p.name?.toLowerCase().includes('agent');
+          return tasks.some((t: any) => t.assigned_to === _employeeId);
         });
       }
 
@@ -1385,23 +1339,18 @@ export const dataService = {
         const tasks = p.tasks || [];
         const total = tasks.length;
         const completed = tasks.filter((t: any) => t.status === 'completed').length;
-        const progress = total > 0 ? Math.round((completed / total) * 100) : 50;
+        const progress = total > 0 ? Math.round((completed / total) * 100) : 0;
 
         const assignedEmpIds = tasks.map((t: any) => t.assigned_to).filter(Boolean);
         const assignedEmps = allEmps
           .filter(
-            (e: any) =>
-              assignedEmpIds.includes(e.id) ||
-              assignedEmpIds.includes(e.user_id) ||
-              (assignedEmpIds.some((id: string) => id?.includes('cccc') || id?.includes('d9b4')) &&
-                e.full_name?.toLowerCase().includes('arsal'))
+            (e: any) => assignedEmpIds.includes(e.id) || assignedEmpIds.includes(e.user_id)
           )
-          .map((e: any) => e.full_name);
+          .map((e: any) => e.full_name)
+          .filter(Boolean);
 
         const hasEmployeeActivity = assignedEmpIds.some((id: string) => teamEmpIds.has(id));
-        const isManagerOwn =
-          (managerId && p.manager_id === managerId) ||
-          p.manager_id === 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb';
+        const isManagerOwn = !!(managerId && p.manager_id === managerId);
 
         let scopeType: 'manager_owned' | 'employee_activity' | 'organization' = 'organization';
         if (role === 'manager') {
@@ -1414,22 +1363,23 @@ export const dataService = {
           }
         }
 
+        const mgr = allEmps.find((e: any) => e.id === p.manager_id || e.user_id === p.manager_id);
+
         return {
           id: p.id,
           name: p.name,
-          code: p.name.substring(0, 4).toUpperCase(),
+          code: (p.name || 'PROJ').substring(0, 4).toUpperCase(),
           description: p.description || '',
-          manager_id: p.manager_id || 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
-          manager_name: p.manager_name || 'Alex Vance',
-          members_count: Math.max(1, assignedEmps.length + 1),
+          manager_id: p.manager_id || '',
+          manager_name: p.manager_name || mgr?.full_name || 'Unassigned',
+          members_count: Math.max(assignedEmps.length, total > 0 ? 1 : 0),
           status: p.status === 'active' ? 'active' : p.status === 'completed' ? 'completed' : 'on_hold',
           progress_percentage: progress,
-          total_tasks: total || 2,
-          completed_tasks: completed || 1,
-          due_date: '2026-11-30',
+          total_tasks: total,
+          completed_tasks: completed,
+          due_date: p.due_date || '',
           scope_type: scopeType,
-          assigned_employees:
-            assignedEmps.length > 0 ? Array.from(new Set(assignedEmps)) : (hasEmployeeActivity ? ['Arsal'] : []),
+          assigned_employees: Array.from(new Set(assignedEmps)),
         };
       });
     } catch (err) {
@@ -1477,97 +1427,24 @@ export const dataService = {
       console.warn('Failed to parse folders from localStorage:', e);
     }
 
-    if (!folders || folders.length === 0) {
-      // Default seeded folders with embedded files
-      folders = [
-        {
-          id: `folder-specs-${projectId}`,
-          name: 'Specifications & Briefs',
-          project_id: projectId,
-          created_at: new Date(Date.now() - 86400000 * 3).toISOString().split('T')[0],
-          color: '#3b82f6',
-          files: [
-            {
-              id: `file-spec-1`,
-              name: 'Architecture_System_Spec.pdf',
-              size: 2450000,
-              size_formatted: '2.4 MB',
-              mime_type: 'application/pdf',
-              uploaded_at: '2026-10-05 09:30',
-              uploaded_by: 'Alex Vance',
-              data_url: '',
-              description: 'Core Rust agent daemon & Supabase sync schema specification',
-            },
-            {
-              id: `file-spec-2`,
-              name: 'Telemetry_Data_Model.json',
-              size: 42000,
-              size_formatted: '42 KB',
-              mime_type: 'application/json',
-              uploaded_at: '2026-10-06 14:15',
-              uploaded_by: 'Arsal',
-              data_url: '',
-              description: 'JSON schema for 60s aggregate window payload',
-            },
-          ],
-        },
-        {
-          id: `folder-assets-${projectId}`,
-          name: 'UI Designs & Wireframes',
-          project_id: projectId,
-          created_at: new Date(Date.now() - 86400000 * 2).toISOString().split('T')[0],
-          color: '#8b5cf6',
-          files: [
-            {
-              id: `file-asset-1`,
-              name: 'Desktop_Agent_Figma_Mockup.png',
-              size: 1120000,
-              size_formatted: '1.1 MB',
-              mime_type: 'image/png',
-              uploaded_at: '2026-10-07 11:20',
-              uploaded_by: 'Jessica Lee',
-              data_url: '',
-              description: 'Glassmorphic TopBar and telemetry widget preview',
-            },
-          ],
-        },
-        {
-          id: `folder-deliverables-${projectId}`,
-          name: 'Sprint Deliverables & Builds',
-          project_id: projectId,
-          created_at: new Date(Date.now() - 86400000 * 1).toISOString().split('T')[0],
-          color: '#10b981',
-          files: [
-            {
-              id: `file-build-1`,
-              name: 'EmployeeAgent-Setup.exe',
-              size: 5800000,
-              size_formatted: '5.8 MB',
-              mime_type: 'application/octet-stream',
-              uploaded_at: '2026-10-08 07:30',
-              uploaded_by: 'Super Admin',
-              data_url: '',
-              description: 'Compiled production Windows x64 binary setup installer',
-            },
-            {
-              id: `file-build-2`,
-              name: 'Outbox_Telemetry_Module.rs',
-              size: 184000,
-              size_formatted: '184 KB',
-              mime_type: 'text/plain',
-              uploaded_at: '2026-10-08 11:45',
-              uploaded_by: 'Arsal',
-              data_url: '',
-              description: 'Agent SQLite offline retry queue implementation',
-            },
-          ],
-        },
-      ];
+    if (!folders) folders = [];
 
+    // Purge legacy demo seed folders (no real uploaded payloads)
+    const before = folders.length;
+    folders = folders.filter((f) => {
+      const isSeedId =
+        f.id.startsWith('folder-specs-') ||
+        f.id.startsWith('folder-assets-') ||
+        f.id.startsWith('folder-deliverables-');
+      if (!isSeedId) return true;
+      const hasRealFile = (f.files || []).some((file) => !!file.data_url);
+      return hasRealFile;
+    });
+    if (folders.length !== before) {
       try {
         localStorage.setItem(`stitch_project_folders_${projectId}`, JSON.stringify(folders));
-      } catch (e) {
-        // Ignore storage quota
+      } catch {
+        /* ignore */
       }
     }
 
@@ -1978,6 +1855,18 @@ export const dataService = {
 
   // 11. Rules & Configuration
   getStarRules: async (_role: UserRole): Promise<StarRuleItem[]> => {
+    if (isSupabaseConfigured()) {
+      const { data, error } = await supabase.from('star_rules').select('*').order('id');
+      if (!error && data?.length) {
+        starRulesStore = data.map((r: any) => ({
+          id: r.id,
+          name: r.name,
+          condition: r.condition || '',
+          star_delta: Number(r.star_delta) || 0,
+          is_active: Boolean(r.is_active),
+        }));
+      }
+    }
     return [...starRulesStore];
   },
 
@@ -1990,10 +1879,27 @@ export const dataService = {
       rule.star_delta = starDelta;
       rule.is_active = isActive;
     }
+    if (isSupabaseConfigured()) {
+      await supabase
+        .from('star_rules')
+        .update({ star_delta: starDelta, is_active: isActive, updated_at: new Date().toISOString() })
+        .eq('id', id);
+    }
     return rule;
   },
 
   getAttendanceRules: async (_role: UserRole): Promise<AttendanceRuleConfig> => {
+    if (isSupabaseConfigured()) {
+      const { data } = await supabase.from('attendance_rule_config').select('*').eq('id', 1).maybeSingle();
+      if (data) {
+        attendanceRulesStore = {
+          work_start_time: data.work_start_time || '09:00',
+          work_end_time: data.work_end_time || '17:00',
+          grace_period_minutes: Number(data.grace_period_minutes) || 15,
+          late_threshold_minutes: Number(data.late_threshold_minutes) || 30,
+        };
+      }
+    }
     return { ...attendanceRulesStore };
   },
 
@@ -2002,26 +1908,65 @@ export const dataService = {
       throw new Error('403 Forbidden: Only Admin can configure attendance rules');
     }
     attendanceRulesStore = { ...newRules };
+    if (isSupabaseConfigured()) {
+      await supabase.from('attendance_rule_config').upsert(
+        {
+          id: 1,
+          work_start_time: newRules.work_start_time,
+          work_end_time: newRules.work_end_time,
+          grace_period_minutes: newRules.grace_period_minutes,
+          late_threshold_minutes: newRules.late_threshold_minutes,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'id' }
+      );
+    }
     return attendanceRulesStore;
   },
 
-  // 12. Heatmap points
-  getHeatmapPoints: async (_employeeId: string): Promise<HeatmapPoint[]> => {
-    return [
-      { x: 250, y: 180, intensity: 0.9, type: 'click' },
-      { x: 280, y: 210, intensity: 0.7, type: 'move' },
-      { x: 310, y: 230, intensity: 0.8, type: 'click' },
-      { x: 500, y: 350, intensity: 0.6, type: 'move' },
-      { x: 520, y: 370, intensity: 0.9, type: 'click' },
-      { x: 700, y: 200, intensity: 0.5, type: 'move' },
-      { x: 800, y: 450, intensity: 0.8, type: 'click' },
-      { x: 820, y: 460, intensity: 0.4, type: 'move' },
-    ];
+  // 12. Heatmap points — only real pointer samples from activity_events metadata
+  getHeatmapPoints: async (employeeId: string): Promise<HeatmapPoint[]> => {
+    if (!isSupabaseConfigured() || !employeeId) return [];
+    try {
+      const { data, error } = await supabase
+        .from('activity_events')
+        .select('metadata, occurred_at')
+        .eq('employee_id', employeeId)
+        .order('occurred_at', { ascending: false })
+        .limit(500);
+      if (error || !data) return [];
+
+      const points: HeatmapPoint[] = [];
+      for (const row of data) {
+        const meta = row.metadata || {};
+        const samples = Array.isArray(meta.pointer_samples)
+          ? meta.pointer_samples
+          : Array.isArray(meta.heatmap_points)
+            ? meta.heatmap_points
+            : meta.x != null && meta.y != null
+              ? [{ x: meta.x, y: meta.y, type: meta.type || 'click', intensity: meta.intensity }]
+              : [];
+        for (const s of samples) {
+          const x = Number(s.x);
+          const y = Number(s.y);
+          if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
+          points.push({
+            x,
+            y,
+            intensity: Math.max(0, Math.min(1, Number(s.intensity) || 0.5)),
+            type: s.type === 'move' ? 'move' : 'click',
+          });
+        }
+      }
+      return points;
+    } catch {
+      return [];
+    }
   },
 
   // 13. Merit Stars & Incentive Mutations
   getEmployeeStars: (employeeId: string): number => {
-    return employeeStarsMap.get(employeeId) ?? (employeeId.includes('bbbb') ? 25 : 20);
+    return employeeStarsMap.get(employeeId) ?? 0;
   },
 
   awardEmployeeStars: async (
@@ -2040,18 +1985,44 @@ export const dataService = {
     if (role === 'manager') {
       const isSelf =
         employeeId === managerId ||
-        employeeId === 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb' ||
-        employeeId.toLowerCase().includes('manager') ||
-        (awardedBy && (awardedBy.toLowerCase().includes(employeeId.toLowerCase()) || employeeId.toLowerCase().includes(awardedBy.toLowerCase())));
+        (awardedBy &&
+          (awardedBy.toLowerCase().includes(employeeId.toLowerCase()) ||
+            employeeId.toLowerCase().includes(awardedBy.toLowerCase())));
 
       if (isSelf) {
         throw new Error('403 Forbidden: Managers cannot edit or award stars to themselves.');
       }
     }
 
-    const current = employeeStarsMap.get(employeeId) ?? 20;
+    let current = employeeStarsMap.get(employeeId);
+    if (current === undefined && isSupabaseConfigured()) {
+      const { data } = await supabase
+        .from('employee_star_balances')
+        .select('stars')
+        .eq('employee_id', employeeId)
+        .maybeSingle();
+      current = data?.stars != null ? Number(data.stars) : 0;
+    }
+    if (current === undefined) current = 0;
+
     const updated = Math.max(0, current + starDelta);
     employeeStarsMap.set(employeeId, updated);
+
+    if (isSupabaseConfigured()) {
+      await supabase.from('employee_star_balances').upsert(
+        { employee_id: employeeId, stars: updated, updated_at: new Date().toISOString() },
+        { onConflict: 'employee_id' }
+      );
+      await supabase.from('star_award_events').insert([
+        {
+          employee_id: employeeId,
+          star_delta: starDelta,
+          reason,
+          awarded_by: awardedBy,
+          awarded_by_role: role,
+        },
+      ]);
+    }
 
     dataService.logAction(
       awardedBy,
@@ -2079,9 +2050,9 @@ export const dataService = {
     if (role === 'manager') {
       const isSelf =
         employeeId === managerId ||
-        employeeId === 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb' ||
-        employeeId.toLowerCase().includes('manager') ||
-        (setBy && (setBy.toLowerCase().includes(employeeId.toLowerCase()) || employeeId.toLowerCase().includes(setBy.toLowerCase())));
+        (setBy &&
+          (setBy.toLowerCase().includes(employeeId.toLowerCase()) ||
+            employeeId.toLowerCase().includes(setBy.toLowerCase())));
 
       if (isSelf) {
         throw new Error('403 Forbidden: Managers cannot modify their own star balance.');
@@ -2090,6 +2061,22 @@ export const dataService = {
 
     const updated = Math.max(0, exactStars);
     employeeStarsMap.set(employeeId, updated);
+
+    if (isSupabaseConfigured()) {
+      await supabase.from('employee_star_balances').upsert(
+        { employee_id: employeeId, stars: updated, updated_at: new Date().toISOString() },
+        { onConflict: 'employee_id' }
+      );
+      await supabase.from('star_award_events').insert([
+        {
+          employee_id: employeeId,
+          star_delta: 0,
+          reason: reason || `Set balance to ${updated}`,
+          awarded_by: setBy,
+          awarded_by_role: role,
+        },
+      ]);
+    }
 
     dataService.logAction(
       setBy,
@@ -2113,6 +2100,15 @@ export const dataService = {
       id: `sr-${Date.now()}`,
     };
     starRulesStore = [...starRulesStore, rule];
+    if (isSupabaseConfigured()) {
+      await supabase.from('star_rules').upsert({
+        id: rule.id,
+        name: rule.name,
+        condition: rule.condition,
+        star_delta: rule.star_delta,
+        is_active: rule.is_active,
+      });
+    }
 
     dataService.logAction(
       'Super Admin',
@@ -2127,6 +2123,9 @@ export const dataService = {
   deleteStarRule: async (role: UserRole, id: string): Promise<void> => {
     if (role !== 'admin') {
       throw new Error('403 Forbidden: Only Admin can delete star rules');
+    }
+    if (isSupabaseConfigured()) {
+      await supabase.from('star_rules').delete().eq('id', id);
     }
     const target = starRulesStore.find((r) => r.id === id);
     starRulesStore = starRulesStore.filter((r) => r.id !== id);
@@ -2155,6 +2154,16 @@ export const dataService = {
 
     const updated = { ...starRulesStore[idx], ...updates };
     starRulesStore[idx] = updated;
+    if (isSupabaseConfigured()) {
+      await supabase.from('star_rules').upsert({
+        id: updated.id,
+        name: updated.name,
+        condition: updated.condition,
+        star_delta: updated.star_delta,
+        is_active: updated.is_active,
+        updated_at: new Date().toISOString(),
+      });
+    }
 
     dataService.logAction(
       'Super Admin',
@@ -2193,6 +2202,38 @@ export const dataService = {
     }
 
     const key = 'stitch_payroll_records';
+
+    if (isSupabaseConfigured()) {
+      const { data, error } = await supabase.from('employee_salaries').select('*').order('employee_name');
+      if (!error && data) {
+        const mapped = data.map((r: any) => ({
+          id: r.id,
+          employee_id: r.employee_id,
+          employee_name: r.employee_name,
+          email: r.email || '',
+          department: r.department || '',
+          team_name: r.team_name || '',
+          base_salary: Number(r.base_salary) || 0,
+          currency: r.currency || 'USD',
+          pay_frequency: (r.pay_frequency || 'monthly') as EmployeeSalaryRecord['pay_frequency'],
+          bonus_amount: Number(r.bonus_amount) || 0,
+          deduction_amount: Number(r.deduction_amount) || 0,
+          net_salary: Number(r.net_salary) || 0,
+          payment_status: (r.payment_status || 'scheduled') as EmployeeSalaryRecord['payment_status'],
+          next_pay_date: r.next_pay_date || '',
+          bank_account_mask: r.bank_account_mask || '',
+          last_payment_date: r.last_payment_date || '',
+          notes: r.notes || '',
+        })) as EmployeeSalaryRecord[];
+        try {
+          localStorage.setItem(key, JSON.stringify(mapped));
+        } catch {
+          /* ignore */
+        }
+        return mapped;
+      }
+    }
+
     let storedSalaries: EmployeeSalaryRecord[] = [];
     try {
       const raw = localStorage.getItem(key);
@@ -2201,182 +2242,16 @@ export const dataService = {
       console.error('Error parsing stored salaries:', e);
     }
 
-    if (storedSalaries.length === 0) {
-      // Seed default salary roster for existing company employees
-      storedSalaries = [
-        {
-          id: 'sal-001',
-          employee_id: 'cccccccc-cccc-cccc-cccc-cccccccccccc',
-          employee_name: 'Arsal',
-          email: 'arsal@company.com',
-          department: 'Engineering',
-          team_name: 'Core Backend Team',
-          base_salary: 6200,
-          currency: 'USD',
-          pay_frequency: 'monthly',
-          bonus_amount: 450,
-          deduction_amount: 0,
-          net_salary: 6650,
-          payment_status: 'paid',
-          next_pay_date: '2026-11-01',
-          bank_account_mask: '•••• 4821',
-          last_payment_date: '2026-10-01',
-          notes: 'Senior Systems Engineer - Performance tier A+',
-        },
-        {
-          id: 'sal-002',
-          employee_id: 'emp-elena',
-          employee_name: 'Elena Vance',
-          email: 'elena.vance@company.com',
-          department: 'Engineering',
-          team_name: 'UI & Web Architecture',
-          base_salary: 5800,
-          currency: 'USD',
-          pay_frequency: 'monthly',
-          bonus_amount: 300,
-          deduction_amount: 0,
-          net_salary: 6100,
-          payment_status: 'processing',
-          next_pay_date: '2026-10-15',
-          bank_account_mask: '•••• 7731',
-          last_payment_date: '2026-09-30',
-          notes: 'Full-Stack Developer - Sprint 42 Lead',
-        },
-        {
-          id: 'sal-003',
-          employee_id: 'emp-marcus',
-          employee_name: 'Marcus Bell',
-          email: 'marcus.bell@company.com',
-          department: 'Engineering',
-          team_name: 'Mobile & Cloud Infrastructure',
-          base_salary: 5400,
-          currency: 'USD',
-          pay_frequency: 'monthly',
-          bonus_amount: 250,
-          deduction_amount: 0,
-          net_salary: 5650,
-          payment_status: 'paid',
-          next_pay_date: '2026-11-01',
-          bank_account_mask: '•••• 3349',
-          last_payment_date: '2026-10-01',
-          notes: 'Cloud DevOps Specialist',
-        },
-        {
-          id: 'sal-004',
-          employee_id: 'emp-sarah',
-          employee_name: 'Sarah Chen',
-          email: 'sarah.chen@company.com',
-          department: 'Product',
-          team_name: 'Core Backend Team',
-          base_salary: 7100,
-          currency: 'USD',
-          pay_frequency: 'monthly',
-          bonus_amount: 600,
-          deduction_amount: 0,
-          net_salary: 7700,
-          payment_status: 'scheduled',
-          next_pay_date: '2026-10-31',
-          bank_account_mask: '•••• 8820',
-          last_payment_date: '2026-09-30',
-          notes: 'Product Architect & Technical Lead',
-        },
-        {
-          id: 'sal-005',
-          employee_id: 'emp-david',
-          employee_name: 'David Kim',
-          email: 'david.kim@company.com',
-          department: 'Quality Assurance',
-          team_name: 'UI & Web Architecture',
-          base_salary: 4900,
-          currency: 'USD',
-          pay_frequency: 'monthly',
-          bonus_amount: 200,
-          deduction_amount: 0,
-          net_salary: 5100,
-          payment_status: 'paid',
-          next_pay_date: '2026-11-01',
-          bank_account_mask: '•••• 5519',
-          last_payment_date: '2026-10-01',
-          notes: 'Automation QA Specialist',
-        },
-        {
-          id: 'sal-006',
-          employee_id: 'emp-jessica',
-          employee_name: 'Jessica Lee',
-          email: 'jessica.lee@company.com',
-          department: 'Design',
-          team_name: 'UI & Web Architecture',
-          base_salary: 6600,
-          currency: 'USD',
-          pay_frequency: 'monthly',
-          bonus_amount: 500,
-          deduction_amount: 0,
-          net_salary: 7100,
-          payment_status: 'paid',
-          next_pay_date: '2026-11-01',
-          bank_account_mask: '•••• 9012',
-          last_payment_date: '2026-10-01',
-          notes: 'Principal Product & Interaction Designer',
-        },
-        {
-          id: 'sal-007',
-          employee_id: 'emp-michael',
-          employee_name: 'Michael Torres',
-          email: 'michael.torres@company.com',
-          department: 'Operations',
-          team_name: 'Mobile & Cloud Infrastructure',
-          base_salary: 5200,
-          currency: 'USD',
-          pay_frequency: 'monthly',
-          bonus_amount: 0,
-          deduction_amount: 0,
-          net_salary: 5200,
-          payment_status: 'pending',
-          next_pay_date: '2026-10-15',
-          bank_account_mask: '•••• 6641',
-          last_payment_date: '2026-09-30',
-          notes: 'Infrastructure Operations Associate',
-        },
-      ];
-      localStorage.setItem(key, JSON.stringify(storedSalaries));
-    }
-
-    // Synchronize with any other employees found in the organization
+    // Strip known fake seed IDs if still present in old localStorage
+    storedSalaries = storedSalaries.filter(
+      (s) =>
+        !['sal-001', 'sal-002', 'sal-003', 'sal-004', 'sal-005', 'sal-006', 'sal-007'].includes(s.id) &&
+        !String(s.employee_id || '').startsWith('emp-')
+    );
     try {
-      const allEmps = await dataService.getEmployees('admin');
-      let updated = false;
-      allEmps.forEach((emp) => {
-        const exists = storedSalaries.some(
-          (s) => s.employee_id === emp.id || s.email.toLowerCase() === emp.email.toLowerCase()
-        );
-        if (!exists) {
-          storedSalaries.push({
-            id: `sal-${emp.id}`,
-            employee_id: emp.id,
-            employee_name: emp.name,
-            email: emp.email,
-            department: emp.department || 'Engineering',
-            team_name: emp.team_name || 'Core Team',
-            base_salary: 5500,
-            currency: 'USD',
-            pay_frequency: 'monthly',
-            bonus_amount: 0,
-            deduction_amount: 0,
-            net_salary: 5500,
-            payment_status: 'pending',
-            next_pay_date: '2026-11-01',
-            bank_account_mask: '•••• 0000',
-            last_payment_date: '2026-10-01',
-            notes: 'Active team member',
-          });
-          updated = true;
-        }
-      });
-      if (updated) {
-        localStorage.setItem(key, JSON.stringify(storedSalaries));
-      }
+      localStorage.setItem(key, JSON.stringify(storedSalaries));
     } catch {
-      // Continue with stored
+      /* ignore */
     }
 
     return storedSalaries;
@@ -2415,6 +2290,9 @@ export const dataService = {
 
     salaries[idx] = updated;
     localStorage.setItem(key, JSON.stringify(salaries));
+    if (isSupabaseConfigured()) {
+      await supabase.from('employee_salaries').upsert({ ...updated, updated_at: new Date().toISOString() });
+    }
 
     dataService.logAction(
       'Super Admin',
@@ -2447,6 +2325,9 @@ export const dataService = {
 
     salaries.push(record);
     localStorage.setItem(key, JSON.stringify(salaries));
+    if (isSupabaseConfigured()) {
+      await supabase.from('employee_salaries').upsert({ ...record, updated_at: new Date().toISOString() });
+    }
 
     dataService.logAction(
       'Super Admin',
@@ -2488,6 +2369,9 @@ export const dataService = {
 
     storedMessages.unshift(newMsg);
     localStorage.setItem(key, JSON.stringify(storedMessages));
+    if (isSupabaseConfigured()) {
+      await supabase.from('confidential_messages').upsert(newMsg);
+    }
 
     dataService.logAction(
       'Super Admin',
@@ -2504,7 +2388,7 @@ export const dataService = {
     role: UserRole,
     currentUserId: string,
     currentUserEmail?: string,
-    currentUserName?: string
+    _currentUserName?: string
   ): Promise<ConfidentialMessageItem[]> => {
     // SECURITY CONSTRAINT: Managers are strictly forbidden from viewing private employee messages
     if (role === 'manager') {
@@ -2513,38 +2397,40 @@ export const dataService = {
 
     const key = 'stitch_confidential_messages';
     let messages: ConfidentialMessageItem[] = [];
-    try {
-      const raw = localStorage.getItem(key);
-      if (raw) messages = JSON.parse(raw);
-    } catch (e) {
-      console.error(e);
+
+    if (isSupabaseConfigured()) {
+      const { data, error } = await supabase
+        .from('confidential_messages')
+        .select('*')
+        .order('sent_at', { ascending: false });
+      if (!error && data) {
+        messages = data.map((m: any) => ({
+          id: m.id,
+          recipient_id: m.recipient_id,
+          recipient_name: m.recipient_name,
+          recipient_email: m.recipient_email,
+          sender_id: m.sender_id,
+          sender_name: m.sender_name,
+          sender_role: m.sender_role,
+          subject: m.subject,
+          message_body: m.message_body,
+          salary_slip_reference: m.salary_slip_reference,
+          sent_at: m.sent_at,
+          is_read: Boolean(m.is_read),
+          priority: m.priority || 'normal',
+        }));
+      }
     }
 
-    // Default starter message for Arsal if no messages exist yet
-    if (messages.length === 0) {
-      messages = [
-        {
-          id: 'cmsg-init-01',
-          recipient_id: 'cccccccc-cccc-cccc-cccc-cccccccccccc',
-          recipient_name: 'Arsal',
-          recipient_email: 'arsal@company.com',
-          sender_id: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
-          sender_name: 'Super Admin',
-          sender_role: 'admin',
-          subject: 'October 2026 Compensation & Performance Star Bonus Confirmation',
-          message_body: 'Dear Arsal,\n\nYour monthly compensation for October 2026 has been successfully processed and disbursed. In recognition of your excellent delivery on the Rust Native Agent v1.4 and consistent attendance punctuality, a $450 performance bonus has been credited.\n\nPlease review your pay slip breakdown. If you have any inquiries regarding deductions or upcoming review cycles, please reply directly.\n\nBest regards,\nExecutive Administration',
-          salary_slip_reference: {
-            month: 'October 2026',
-            amount: 6650,
-            currency: 'USD',
-            pay_status: 'Disbursed (Direct Deposit)',
-          },
-          sent_at: '2026-10-01T10:00:00.000Z',
-          is_read: false,
-          priority: 'confidential',
-        },
-      ];
-      localStorage.setItem(key, JSON.stringify(messages));
+    if (!messages.length) {
+      try {
+        const raw = localStorage.getItem(key);
+        if (raw) messages = JSON.parse(raw);
+      } catch (e) {
+        console.error(e);
+      }
+      // Drop legacy demo seed message
+      messages = messages.filter((m) => m.id !== 'cmsg-init-01');
     }
 
     // Admin can review all confidential messages sent to employees
@@ -2555,11 +2441,11 @@ export const dataService = {
     // Employee role: ONLY return messages addressed specifically to THIS employee
     if (role === 'employee') {
       return messages.filter((m) => {
-        const idMatch = currentUserId && (m.recipient_id === currentUserId || m.recipient_id === 'cccccccc-cccc-cccc-cccc-cccccccccccc');
-        const emailMatch = currentUserEmail && m.recipient_email?.toLowerCase() === currentUserEmail.toLowerCase();
-        const nameMatch = currentUserName && m.recipient_name?.toLowerCase().includes(currentUserName.toLowerCase());
-        const arsalFallback = (!currentUserEmail || currentUserEmail.includes('arsal')) && m.recipient_name?.toLowerCase().includes('arsal');
-        return idMatch || emailMatch || nameMatch || arsalFallback;
+        const idMatch = !!currentUserId && m.recipient_id === currentUserId;
+        const emailMatch =
+          !!currentUserEmail &&
+          m.recipient_email?.toLowerCase() === currentUserEmail.toLowerCase();
+        return idMatch || emailMatch;
       });
     }
 

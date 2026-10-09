@@ -57,13 +57,13 @@ export const AdminSettingsAuditPage: React.FC<AdminSettingsAuditPageProps> = ({ 
   const [hoursMessage, setHoursMessage] = useState<string | null>(null);
   const [lastSyncTime, setLastSyncTime] = useState<string>('');
   const [agentTelemetry, setAgentTelemetry] = useState<AgentTelemetryInfo>({
-    deviceId: 'WIN-DESKTOP-QUVQI4B-ok',
-    deviceName: 'DESKTOP-QUVQI4B',
+    deviceId: '—',
+    deviceName: 'Awaiting agent…',
     lastHeartbeatTime: 'Checking agent...',
     rawHeartbeat: '',
-    activeWindow: 'Desktop / Background',
-    isOnline: true,
-    status: 'active',
+    activeWindow: '—',
+    isOnline: false,
+    status: 'offline',
   });
 
   useEffect(() => {
@@ -125,16 +125,16 @@ export const AdminSettingsAuditPage: React.FC<AdminSettingsAuditPageProps> = ({ 
       }
 
       setAgentTelemetry({
-        deviceId: p?.device_id || ev?.device_id || 'WIN-DESKTOP-QUVQI4B-ok',
-        deviceName: 'DESKTOP-QUVQI4B (Arsal)',
-        lastHeartbeatTime: formatLocalTime(hbTime),
+        deviceId: p?.device_id || ev?.device_id || '—',
+        deviceName: p?.device_name || ev?.metadata?.device_name || p?.device_id || 'Unnamed device',
+        lastHeartbeatTime: hbTime ? formatLocalTime(hbTime) : 'No heartbeat yet',
         rawHeartbeat: hbTime || '',
         activeWindow:
           ev?.metadata?.window ||
           ev?.metadata?.window_title ||
-          'Visual Studio Code - Employee-Tracking-Dashboard',
+          '—',
         isOnline: isAgentActive,
-        status: p?.status || (isAgentActive ? 'active' : 'idle'),
+        status: p?.status || (isAgentActive ? 'active' : 'offline'),
       });
     } catch (err) {
       console.error('Error loading settings and audit data:', err);

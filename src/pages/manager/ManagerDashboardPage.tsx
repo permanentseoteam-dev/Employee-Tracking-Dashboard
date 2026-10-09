@@ -24,6 +24,7 @@ import {
 import { useAuth } from '../../context/AuthContext';
 import { dataService, isAdminRecord } from '../../services/dataService';
 import { FocusSessionWidget } from '../../components/timer/FocusSessionWidget';
+import { downloadCsv } from '../../utils/csvExport';
 import type { EmployeeRecord } from '../../types/roles';
 
 interface ManagerDashboardPageProps {
@@ -536,7 +537,25 @@ export const ManagerDashboardPage: React.FC<ManagerDashboardPageProps> = ({ onNa
                 type="button"
                 className="btn-icon-circle accent"
                 title="Export CSV"
-                onClick={() => alert('Exporting team telemetry')}
+                onClick={() => {
+                  try {
+                    downloadCsv(
+                      `team-telemetry-${new Date().toISOString().slice(0, 10)}.csv`,
+                      filteredTeam.map((e) => ({
+                        name: e.name,
+                        email: e.email,
+                        status: e.status,
+                        active_hours: (e.active_seconds / 3600).toFixed(2),
+                        idle_hours: (e.idle_seconds / 3600).toFixed(2),
+                        stars: e.stars,
+                        current_task: e.current_task || '',
+                        last_activity: e.last_activity_at || '',
+                      }))
+                    );
+                  } catch (err: any) {
+                    alert(err.message || 'Export failed');
+                  }
+                }}
               >
                 <Download size={15} />
               </button>

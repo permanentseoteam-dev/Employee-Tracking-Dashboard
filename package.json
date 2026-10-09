@@ -1,7 +1,7 @@
 {
   "name": "employee-tracking-dashboard",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.1.1",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -10,11 +10,13 @@
     "tauri": "tauri",
     "prepare:agent": "node scripts/prepare-agent-bundle.mjs",
     "build:agent": "cargo build --release --manifest-path employee-agent/Cargo.toml",
-    "build:desktop": "npm run prepare:agent && npm run tauri -- build"
+    "build:desktop": "node scripts/build-desktop-signed.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.117.3",
     "@tauri-apps/api": "^2.1.1",
+    "@tauri-apps/plugin-process": "^2.4.0",
+    "@tauri-apps/plugin-updater": "^2.13.2",
     "framer-motion": "^14.0.0",
     "lucide-react": "^1.16.0",
     "react": "^18.3.1",

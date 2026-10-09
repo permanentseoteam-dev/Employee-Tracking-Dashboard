@@ -46,6 +46,13 @@ Tray:
 - `status.json` written by agent (heartbeat / collection / upload timestamps)
 - Office-hours + `PAUSE` for policy
 
+## Auto-update (desktop)
+
+- Channel: GitHub Releases `latest.json` for `permanentseoteam-dev/Employee-Tracking-Dashboard`
+- App checks ~4s after launch; silent download + restart (`plugins.updater` + `createUpdaterArtifacts`)
+- Local signed build: `npm run build:desktop` (uses `%USERPROFILE%\.tauri\employee-tracking.key`)
+- CI: tag `v*` or run **Release Desktop** workflow (needs secrets `TAURI_SIGNING_PRIVATE_KEY` + `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`)
+
 ## Manual setup
 
 1. Build/copy `employee-agent.exe` into `release/employee-agent-windows/` (bundled as Tauri resource when present)

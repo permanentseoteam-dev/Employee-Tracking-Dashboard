@@ -41,6 +41,7 @@ import { ProjectWorkspace } from './components/projects/ProjectWorkspace';
 import { ProjectExplorer } from './components/projects/ProjectExplorer';
 
 import { api, isTauriEnvironment } from './services/tauriBridge';
+import { checkAndApplyUpdate } from './services/autoUpdate';
 import { useAuth } from './context/AuthContext';
 import { requestAppRefresh } from './utils/appRefresh';
 import type { AgentStatusDto, DbStats, NavTab, SystemInfoDto } from './types';
@@ -116,6 +117,15 @@ export const App: React.FC = () => {
     const timer = setInterval(fetchState, 10000);
     return () => clearInterval(timer);
   }, [fetchState]);
+
+  // Auto-update from GitHub Releases (desktop only)
+  useEffect(() => {
+    if (!isTauriEnvironment()) return;
+    const t = setTimeout(() => {
+      void checkAndApplyUpdate();
+    }, 4000);
+    return () => clearTimeout(t);
+  }, []);
 
   // Silent agent bootstrap for employees (no UI panel) — desktop only
   useEffect(() => {

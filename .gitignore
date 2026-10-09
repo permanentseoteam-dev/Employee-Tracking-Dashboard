@@ -24,6 +24,11 @@ pnpm-debug.log*
 .env
 .env.*
 !.env.example
+*.key
+!*.key.pub
+
+# Signing keys (never commit)
+.tauri/
 .vscode/
 .idea/
 *.suo

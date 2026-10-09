@@ -28,22 +28,15 @@ export const ManagerPerformancePage: React.FC = () => {
   const [balanceReason, setBalanceReason] = useState('Team performance target alignment');
 
   const isManagerSelf = (emp: { id?: string; name?: string; email?: string } | null | undefined): boolean => {
-    if (!emp) return false;
-    const empId = emp.id?.toLowerCase() || '';
-    const empName = emp.name?.toLowerCase() || '';
-    const empEmail = emp.email?.toLowerCase() || '';
-    const curUserId = user?.id?.toLowerCase() || '';
-    const curUserName = user?.name?.toLowerCase() || '';
-    const curUserEmail = user?.email?.toLowerCase() || '';
-
+    if (!emp || !user) return false;
+    const empId = (emp.id || '').toLowerCase();
+    const empEmail = (emp.email || '').toLowerCase();
+    const curUserId = (user.id || '').toLowerCase();
+    const curUserEmail = (user.email || '').toLowerCase();
+    // Only lock the signed-in manager — never hardcode seed emails/names
     return (
       (curUserId !== '' && empId === curUserId) ||
-      empId === 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb' ||
-      (curUserEmail !== '' && empEmail === curUserEmail) ||
-      empEmail === 'arsal.manager@company.com' ||
-      empEmail === 'alex.v@company.com' ||
-      empName.includes('(manager)') ||
-      (curUserName !== '' && empName === curUserName && curUserName.includes('manager'))
+      (curUserEmail !== '' && empEmail === curUserEmail)
     );
   };
 
@@ -55,22 +48,22 @@ export const ManagerPerformancePage: React.FC = () => {
       // Ensure manager's self-record is represented in the performance roster so they can view their own metrics & standing,
       // while enforcing strict read-only lock against self-editing
       const managerSelfRecord: EmployeeRecord = {
-        id: user.id || 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
-        name: user.name || 'Arsal (Manager)',
-        email: user.email || 'arsal.manager@company.com',
+        id: user.id,
+        name: user.name,
+        email: user.email,
         department: user.department || 'Management',
-        team_id: user.team_id || 'team-backend',
-        team_name: user.team_name || 'Core Backend Team',
+        team_id: user.team_id || '',
+        team_name: user.team_name || '',
         manager_id: '00000000-0000-0000-0000-000000000001',
         manager_name: 'Super Admin',
         status: 'active',
         attendance_status: 'on_time',
-        first_activity: '09:00 AM',
-        active_seconds: 27000,
-        idle_seconds: 1440,
+        first_activity: '—',
+        active_seconds: 0,
+        idle_seconds: 0,
         last_screenshot: '',
         current_task: 'Engineering Management & Sprint Reviews',
-        stars: dataService.getEmployeeStars(user.id || 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb'),
+        stars: dataService.getEmployeeStars(user.id),
         device_id: 'WIN-MGR-STATION',
         device_name: 'Manager Desktop Station',
         os_version: 'Windows 11 Pro x86_64',

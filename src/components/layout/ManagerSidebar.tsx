@@ -84,7 +84,12 @@ export const ManagerSidebar: React.FC<ManagerSidebarProps> = ({ currentRoute, on
 
         <nav style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
           {navItems.map((item) => {
-            const isActive = currentRoute === item.route;
+            const isActive =
+              currentRoute === item.route ||
+              (item.route === '/manager/monitoring/live' &&
+                (currentRoute === '/manager/monitoring' ||
+                  currentRoute === '/manager/live' ||
+                  currentRoute.startsWith('/manager/monitoring/live')));
             return (
               <React.Fragment key={item.route}>
                 <button
@@ -130,7 +135,7 @@ export const ManagerSidebar: React.FC<ManagerSidebarProps> = ({ currentRoute, on
               {user.name}
             </div>
             <div style={{ fontSize: 10, color: 'var(--color-secondary)' }}>
-              Engineering & Operations
+              {user.team_name || user.department || 'Team lead'}
             </div>
           </>
         ) : (

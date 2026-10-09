@@ -187,6 +187,16 @@ export const ManagerDashboardPage: React.FC<ManagerDashboardPageProps> = ({ onNa
       );
     });
 
+  const totalStaff = kpis?.totalEmployees ?? teamEmployees.length;
+  const onlineNow =
+    kpis?.online ??
+    teamEmployees.filter((e) => e.status === 'active' || e.status === 'idle').length;
+  const attendanceRate =
+    kpis?.teamAttendanceRate ??
+    (totalStaff > 0 ? Math.round((onlineNow / totalStaff) * 100) : 0);
+  const tasksInProgress = kpis?.tasksInProgress ?? 0;
+  const workstationPct = totalStaff > 0 ? Math.round((onlineNow / totalStaff) * 100) : 0;
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 8 }}
@@ -221,7 +231,7 @@ export const ManagerDashboardPage: React.FC<ManagerDashboardPageProps> = ({ onNa
             <button
               type="button"
               className="btn-pill btn-pill-primary"
-              onClick={() => onNavigate('/manager/monitoring')}
+              onClick={() => onNavigate('/manager/monitoring/live')}
             >
               <Camera size={15} />
               <span>Live Telemetry Stream</span>
@@ -233,7 +243,7 @@ export const ManagerDashboardPage: React.FC<ManagerDashboardPageProps> = ({ onNa
         <div className="frosted-card" style={{ display: 'flex', alignItems: 'center', gap: '2rem', padding: '1rem 1.75rem' }}>
           <div>
             <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
-              <span className="stat-numeric-lg">{kpis?.totalEmployees || teamEmployees.length || 4}</span>
+              <span className="stat-numeric-lg">{totalStaff}</span>
               <span className="stat-diff-badge">Team</span>
             </div>
             <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--text-muted)' }}>Assigned Staff</span>
@@ -243,7 +253,7 @@ export const ManagerDashboardPage: React.FC<ManagerDashboardPageProps> = ({ onNa
 
           <div>
             <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
-              <span className="stat-numeric-lg">{kpis?.online || 3}</span>
+              <span className="stat-numeric-lg">{onlineNow}</span>
               <span className="stat-diff-badge">Live</span>
             </div>
             <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--text-muted)' }}>Active Now</span>
@@ -253,7 +263,7 @@ export const ManagerDashboardPage: React.FC<ManagerDashboardPageProps> = ({ onNa
 
           <div>
             <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
-              <span className="stat-numeric-lg">{kpis?.teamAttendanceRate || 100}%</span>
+              <span className="stat-numeric-lg">{attendanceRate}%</span>
               <span className="stat-diff-badge">Punctual</span>
             </div>
             <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--text-muted)' }}>Attendance Rate</span>
@@ -269,8 +279,10 @@ export const ManagerDashboardPage: React.FC<ManagerDashboardPageProps> = ({ onNa
             <div>
               <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-muted)' }}>Team Sprint Velocity</span>
               <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginTop: 4 }}>
-                <span className="stat-numeric-lg">82%</span>
-                <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--color-secondary)' }}>▲ On Track</span>
+                <span className="stat-numeric-lg">{milestonesCompletionPct}%</span>
+                <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--color-secondary)' }}>
+                  {milestonesCompletionPct >= 70 ? '▲ On Track' : '▼ Needs Focus'}
+                </span>
               </div>
             </div>
             <button
@@ -315,7 +327,7 @@ export const ManagerDashboardPage: React.FC<ManagerDashboardPageProps> = ({ onNa
               <span>Active Workstations</span>
             </div>
             <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginTop: 4 }}>
-              <span className="stat-numeric-md">80%</span>
+              <span className="stat-numeric-md">{workstationPct}%</span>
               <span className="stat-diff-badge">In-Office</span>
             </div>
           </div>
@@ -330,7 +342,7 @@ export const ManagerDashboardPage: React.FC<ManagerDashboardPageProps> = ({ onNa
               <span>Tasks in Progress</span>
             </div>
             <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginTop: 4 }}>
-              <span className="stat-numeric-md">{kpis?.tasksInProgress || 3}</span>
+              <span className="stat-numeric-md">{tasksInProgress}</span>
               <span className="status-pill active" style={{ padding: '1px 8px', fontSize: 10 }}>Live</span>
             </div>
           </div>
@@ -606,11 +618,11 @@ export const ManagerDashboardPage: React.FC<ManagerDashboardPageProps> = ({ onNa
                         </span>
                       </td>
                       <td style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
-                        {(((emp.active_seconds || 14400) / 3600)).toFixed(1)}h
+                        {(((emp.active_seconds ?? 0) / 3600)).toFixed(1)}h
                       </td>
                       <td>
                         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontWeight: 700, color: '#f59e0b' }}>
-                          <Star size={13} fill="#f59e0b" /> {emp.stars || 10}
+                          <Star size={13} fill="#f59e0b" /> {emp.stars ?? 0}
                         </span>
                       </td>
                       <td>
@@ -618,7 +630,7 @@ export const ManagerDashboardPage: React.FC<ManagerDashboardPageProps> = ({ onNa
                           type="button"
                           className="btn-pill btn-pill-secondary"
                           style={{ padding: '3px 10px', fontSize: 11 }}
-                          onClick={() => onNavigate('/manager/monitoring')}
+                          onClick={() => onNavigate('/manager/monitoring/live')}
                         >
                           <Eye size={12} />
                           <span>Inspect</span>

@@ -44,7 +44,7 @@ export const ManagerTeamPage: React.FC = () => {
             My Assigned Team Members
           </h1>
           <p style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 4 }}>
-            Team: <strong style={{ color: 'var(--text-primary)' }}>{user.team_name || 'Engineering Core'}</strong> &bull; Lead: {user.name}
+            Team: <strong style={{ color: 'var(--text-primary)' }}>{user.team_name || user.department || 'Assigned team'}</strong> &bull; Lead: {user.name}
           </p>
         </div>
 
@@ -81,7 +81,7 @@ export const ManagerTeamPage: React.FC = () => {
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                 <span style={{ color: 'var(--text-muted)' }}>First Activity:</span>
-                <span style={{ fontFamily: 'monospace', color: 'var(--text-primary)' }}>{emp?.first_activity || '09:00 AM'}</span>
+                <span style={{ fontFamily: 'monospace', color: 'var(--text-primary)' }}>{emp?.first_activity || '—'}</span>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                 <span style={{ color: 'var(--text-muted)' }}>Active Today:</span>

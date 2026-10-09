@@ -2690,7 +2690,7 @@ export const dataService = {
         onBreak: 0,
         tasksInProgress: 0,
         tasksCompleted: 0,
-        teamAttendanceRate: 100,
+        teamAttendanceRate: 0,
       };
     }
 

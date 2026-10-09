@@ -298,12 +298,15 @@ export const KeyboardActivityView: React.FC<KeyboardActivityViewProps> = ({
 
   // Calculate totals
 
-  const totalKeysOverall = activeMatrixData.flat().reduce((a, b) => a + b, 0);
-  const avgKeysPerHour = Math.round(totalKeysOverall / (activeMatrixData.length * TIME_SLOTS.length));
+  const safeMatrix = (activeMatrixData || []).map((row) => row || []);
+  const totalKeysOverall = safeMatrix.flat().reduce((a, b) => a + b, 0);
+  const avgKeysPerHour = Math.round(
+    totalKeysOverall / Math.max(1, safeMatrix.length * TIME_SLOTS.length)
+  );
 
   // Hourly sums across team
   const hourlyTotals = TIME_SLOTS.map((_, colIdx) =>
-    activeMatrixData.reduce((sum, row) => sum + (row[colIdx] || 0), 0)
+    safeMatrix.reduce((sum, row) => sum + (row[colIdx] || 0), 0)
   );
   const peakHourIdx = hourlyTotals.indexOf(Math.max(...hourlyTotals));
   const peakHourName = TIME_SLOTS[peakHourIdx];
@@ -748,7 +751,11 @@ export const KeyboardActivityView: React.FC<KeyboardActivityViewProps> = ({
             <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
               {activeEmployees.map((empName, rIdx) => {
                 const origIdx = employeesList.indexOf(empName);
-                const rowData = origIdx >= 0 ? BASE_KEYPRESS_DATA[origIdx] : BASE_KEYPRESS_DATA[0];
+                const rowData =
+                  (origIdx >= 0 && BASE_KEYPRESS_DATA[origIdx]) ||
+                  activeMatrixData[rIdx] ||
+                  BASE_KEYPRESS_DATA[0] ||
+                  [];
                 const rowTotal = rowData.reduce((a, b) => a + b, 0);
 
                 return (

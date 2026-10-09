@@ -179,7 +179,7 @@ export const App: React.FC = () => {
         <div style={{ display: 'flex', flex: 1, position: 'relative', zIndex: 10 }}>
           <AdminSidebar currentRoute={currentRoute} onNavigate={navigate} />
           <main className="stitch-main">
-            <ErrorBoundary fallbackTitle="Admin Section Error">
+            <ErrorBoundary key={currentRoute} fallbackTitle="Admin Section Error">
               {renderAdminContent()}
             </ErrorBoundary>
           </main>
@@ -247,7 +247,7 @@ export const App: React.FC = () => {
         <div style={{ display: 'flex', flex: 1, position: 'relative', zIndex: 10 }}>
           <ManagerSidebar currentRoute={currentRoute} onNavigate={navigate} />
           <main className="stitch-main">
-            <ErrorBoundary fallbackTitle="Manager Section Error">
+            <ErrorBoundary key={currentRoute} fallbackTitle="Manager Section Error">
               {renderManagerContent()}
             </ErrorBoundary>
           </main>

@@ -235,11 +235,11 @@ export const TopBar: React.FC<TopBarProps> = ({
       <div style={{ display: 'flex', alignItems: 'center', gap: '1.25rem' }}>
         <div className="stitch-brand" onClick={onRefresh} title="Click to refresh telemetry">
           <div className="stitch-brand-icon">
-            <Activity size={18} />
+            <img src="/app-icon-192.png" alt="Employee Tracking App" width={36} height={36} />
           </div>
           <div style={{ display: 'flex', flexDirection: 'column' }}>
-            <span className="stitch-brand-title">Tracking Agent</span>
-            <span className="stitch-brand-sub">Core Track Desktop</span>
+            <span className="stitch-brand-title">Employee Tracking App</span>
+            <span className="stitch-brand-sub">Workforce Activity Desktop</span>
           </div>
         </div>
 

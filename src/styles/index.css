@@ -232,13 +232,22 @@ html, body, #root {
 .stitch-brand-icon {
   width: 36px;
   height: 36px;
-  border-radius: 50%;
-  background: var(--color-primary);
+  border-radius: 10px;
+  background: transparent;
   color: var(--color-on-primary);
   display: flex;
   align-items: center;
   justify-content: center;
+  overflow: hidden;
   box-shadow: var(--shadow-pill);
+  flex-shrink: 0;
+}
+
+.stitch-brand-icon img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
 }
 
 .stitch-brand-title {

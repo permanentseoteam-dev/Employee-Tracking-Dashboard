@@ -1,5 +1,5 @@
-// Prevents additional console window on Windows in release
-#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+// Hide the console window on Windows (GUI app only).
+#![cfg_attr(windows, windows_subsystem = "windows")]
 
 fn main() {
     tracking_dashboard_lib::run();

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { RefreshCw, Users } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
-import { dataService } from '../../services/dataService';
+import { dataService, isAdminRecord } from '../../services/dataService';
 import type { EmployeeRecord } from '../../types/roles';
 
 export const ManagerTeamPage: React.FC = () => {
@@ -12,7 +12,7 @@ export const ManagerTeamPage: React.FC = () => {
   const loadData = async () => {
     try {
       const list = await dataService.getEmployees('manager', user.id);
-      setEmployees(list);
+      setEmployees(list.filter((e) => !isAdminRecord(e.id, e.name, e.email)));
     } catch (err) {
       console.error(err);
     }

@@ -19,7 +19,7 @@ import {
   Keyboard,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
-import { dataService } from '../../services/dataService';
+import { dataService, isAdminRecord } from '../../services/dataService';
 import { MatrixHeatmap } from '../../components/telemetry/MatrixHeatmap';
 import { KeyboardActivityView } from '../../components/telemetry/KeyboardActivityView';
 import type { ScreenshotItem, EmployeeRecord, ScreenRecordingItem } from '../../types/roles';
@@ -66,13 +66,17 @@ export const ManagerMonitoringPage: React.FC<ManagerMonitoringPageProps> = ({ in
           filterEmployeeId === 'all' ? undefined : filterEmployeeId
         ),
       ]);
-      setTeamEmployees(empList);
-      setScreenshots(scList);
-      setRecordings(recList);
+      const safeEmps = empList.filter((e) => !isAdminRecord(e.id, e.name, e.email));
+      const safeScs = scList.filter((s) => !isAdminRecord(s.employee_id, s.employee_name));
+      const safeRecs = recList.filter((r) => !isAdminRecord(r.employee_id, r.employee_name));
+
+      setTeamEmployees(safeEmps);
+      setScreenshots(safeScs);
+      setRecordings(safeRecs);
 
       // Keep selected live employee updated in real time
       if (selectedLiveEmployee) {
-        const updated = empList.find((e) => e.id === selectedLiveEmployee.id);
+        const updated = safeEmps.find((e) => e.id === selectedLiveEmployee.id);
         if (updated) {
           setSelectedLiveEmployee(updated);
         }
@@ -162,26 +166,40 @@ export const ManagerMonitoringPage: React.FC<ManagerMonitoringPageProps> = ({ in
     ? undefined
     : (selectedEmpRecord ? selectedEmpRecord.name : filterEmployeeId);
 
-  const filteredEmployees = teamEmployees.filter((e) =>
-    filterEmployeeId === 'all'
-      ? true
-      : e.id === filterEmployeeId || e.name.toLowerCase() === filterEmployeeId.toLowerCase()
-  );
+  const filteredEmployees = teamEmployees
+    .filter((e) => !isAdminRecord(e.id, e.name, e.email))
+    .filter((e) =>
+      filterEmployeeId === 'all'
+        ? true
+        : e.id === filterEmployeeId || e.name.toLowerCase() === filterEmployeeId.toLowerCase()
+    );
 
-  const filteredRecordings = recordings.filter((r) => {
-    const matchesEmp = filterEmployeeId === 'all'
-      ? true
-      : r.employee_id === filterEmployeeId || r.employee_name.toLowerCase().includes(filterEmployeeId.toLowerCase());
-    const matchesSearch = recordingSearch === ''
-      ? true
-      : r.employee_name.toLowerCase().includes(recordingSearch.toLowerCase()) ||
-        r.active_window.toLowerCase().includes(recordingSearch.toLowerCase());
-    return matchesEmp && matchesSearch;
-  });
+  const filteredScreenshots = screenshots
+    .filter((s) => !isAdminRecord(s.employee_id, s.employee_name))
+    .filter((s) => {
+      if (filterEmployeeId === 'all') return true;
+      return (
+        s.employee_id === filterEmployeeId ||
+        (s.employee_name && s.employee_name.toLowerCase().includes(filterEmployeeId.toLowerCase()))
+      );
+    });
 
-  const totalActiveCount = teamEmployees.filter((e) => e.status === 'active').length;
-  const totalKeysAgg = teamEmployees.reduce((acc, e) => acc + (e.key_press_count || 0), 0);
-  const totalMovesAgg = teamEmployees.reduce((acc, e) => acc + (e.mouse_move_count || 0), 0);
+  const filteredRecordings = recordings
+    .filter((r) => !isAdminRecord(r.employee_id, r.employee_name))
+    .filter((r) => {
+      const matchesEmp = filterEmployeeId === 'all'
+        ? true
+        : r.employee_id === filterEmployeeId || r.employee_name.toLowerCase().includes(filterEmployeeId.toLowerCase());
+      const matchesSearch = recordingSearch === ''
+        ? true
+        : r.employee_name.toLowerCase().includes(recordingSearch.toLowerCase()) ||
+          r.active_window.toLowerCase().includes(recordingSearch.toLowerCase());
+      return matchesEmp && matchesSearch;
+    });
+
+  const totalActiveCount = filteredEmployees.filter((e) => e.status === 'active').length;
+  const totalKeysAgg = filteredEmployees.reduce((acc, e) => acc + (e.key_press_count || 0), 0);
+  const totalMovesAgg = filteredEmployees.reduce((acc, e) => acc + (e.mouse_move_count || 0), 0);
 
   return (
     <motion.div
@@ -228,7 +246,7 @@ export const ManagerMonitoringPage: React.FC<ManagerMonitoringPageProps> = ({ in
               }}
             >
               <Camera size={14} />
-              <span>Screenshots ({screenshots.length})</span>
+              <span>Screenshots ({filteredScreenshots.length})</span>
             </button>
             <button
               type="button"
@@ -261,7 +279,7 @@ export const ManagerMonitoringPage: React.FC<ManagerMonitoringPageProps> = ({ in
               }}
             >
               <Video size={14} />
-              <span>Live Recordings ({recordings.length})</span>
+              <span>Live Recordings ({filteredRecordings.length})</span>
             </button>
           </div>
 
@@ -287,7 +305,7 @@ export const ManagerMonitoringPage: React.FC<ManagerMonitoringPageProps> = ({ in
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             <span className="pulse-beacon" />
             <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-primary)' }}>
-              Team Stream: {totalActiveCount} / {teamEmployees.length} Online
+              Team Stream: {totalActiveCount} / {filteredEmployees.length} Online
             </span>
           </div>
           <span style={{ color: 'var(--text-muted)' }}>&bull;</span>
@@ -310,17 +328,11 @@ export const ManagerMonitoringPage: React.FC<ManagerMonitoringPageProps> = ({ in
             onChange={(e) => setFilterEmployeeId(e.target.value)}
           >
             <option value="all">All Team Members</option>
-            {teamEmployees.map((e) => (
-              <option key={e.id} value={e.id}>
-                {e.name}
-              </option>
-            ))}
-            {/* Additional Organization Team Members */}
-            {['Alex Vance', 'Elena Vance', 'Marcus Bell', 'Sarah Chen', 'David Kim', 'Jessica Lee', 'Michael Torres']
-              .filter((name) => !teamEmployees.some((e) => e.name.toLowerCase().includes(name.toLowerCase())))
-              .map((name) => (
-                <option key={name} value={name}>
-                  {name}
+            {teamEmployees
+              .filter((e) => !isAdminRecord(e.id, e.name, e.email))
+              .map((e) => (
+                <option key={e.id} value={e.id}>
+                  {e.name}
                 </option>
               ))}
           </select>
@@ -589,11 +601,13 @@ export const ManagerMonitoringPage: React.FC<ManagerMonitoringPageProps> = ({ in
                   style={{ fontSize: 12, padding: '4px 10px' }}
                 >
                   <option value="all">All Team Members</option>
-                  {teamEmployees.map((e) => (
-                    <option key={e.id} value={e.id}>
-                      {e.name}
-                    </option>
-                  ))}
+                  {teamEmployees
+                    .filter((e) => !isAdminRecord(e.id, e.name, e.email))
+                    .map((e) => (
+                      <option key={e.id} value={e.id}>
+                        {e.name}
+                      </option>
+                    ))}
                 </select>
               </div>
             </div>
@@ -867,13 +881,13 @@ export const ManagerMonitoringPage: React.FC<ManagerMonitoringPageProps> = ({ in
       {/* 3. Screenshots Gallery Tab */}
       {activeSubTab === 'screenshots' && (
         <div>
-          {screenshots.length === 0 ? (
+          {filteredScreenshots.length === 0 ? (
             <div className="frosted-card" style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>
               No screenshot records available for your team.
             </div>
           ) : (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '1.25rem' }}>
-              {screenshots.map((sc) => (
+              {filteredScreenshots.map((sc) => (
                 <div
                   key={sc.id}
                   className="frosted-card"

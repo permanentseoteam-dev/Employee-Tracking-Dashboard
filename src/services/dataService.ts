@@ -214,15 +214,17 @@ export const dataService = {
         aggRes,
         eventRes,
         scRes,
+        legacyScRes,
         taskRes,
         mgrRes,
       ] = await Promise.all([
         query,
-        supabase.from('employee_presence').select('*'),
+        supabase.from('employee_presence').select('*').order('updated_at', { ascending: false }),
         supabase.from('devices').select('*').order('last_seen_at', { ascending: false }),
         supabase.from('activity_aggregates').select('*').order('window_end', { ascending: false }),
         supabase.from('activity_events').select('*').order('occurred_at', { ascending: false }).limit(100),
         supabase.from('screenshot_records').select('*').order('captured_at', { ascending: false }).limit(50),
+        supabase.from('screenshots').select('*').order('captured_at', { ascending: false }).limit(50),
         supabase.from('tasks').select('*').eq('status', 'in_progress'),
         supabase.from('users').select('id, full_name, email').eq('role', 'manager'),
       ]);
@@ -250,7 +252,9 @@ export const dataService = {
       const deviceRows = devRes.data || [];
       const aggregateRows = aggRes.data || [];
       const eventRows = eventRes.data || [];
-      const screenshotRows = scRes.data || [];
+      const screenshotRows = [...(scRes.data || []), ...(legacyScRes.data || [])].sort(
+        (a: any, b: any) => new Date(b.captured_at || b.created_at || 0).getTime() - new Date(a.captured_at || a.created_at || 0).getTime()
+      );
       const taskRows = taskRes.data || [];
       const mgrRows = mgrRes.data || [];
 
@@ -261,8 +265,10 @@ export const dataService = {
           (e.full_name?.toLowerCase().includes('arsal') &&
             (candId === 'cccccccc-cccc-cccc-cccc-cccccccccccc' || candId === 'd9b4bfb3-9953-522d-84af-3de709e7caa8'));
 
-        // 1. Presence & Activity
-        const presence = presenceRows.find((p: any) => isMatchingEmp(p.employee_id));
+        // 1. Presence & Activity (prioritize active presence if one is active)
+        const empPresences = presenceRows.filter((p: any) => isMatchingEmp(p.employee_id));
+        const activePres = empPresences.find((p: any) => p.status === 'active');
+        const presence = activePres || empPresences[0];
         const activeTask = taskRows.find((t: any) => t.assigned_to === e.id);
         const mgr = mgrRows.find((m: any) => m.id === e.manager_id);
 
@@ -676,12 +682,23 @@ export const dataService = {
         if (!s.storage_path || seenPaths.has(s.storage_path)) continue;
         seenPaths.add(s.storage_path);
 
-        if (filterEmployeeId && filterEmployeeId !== 'all' && s.employee_id !== filterEmployeeId) {
-          continue;
-        }
-
         const emp = empList.find((e: any) => e.id === s.employee_id);
         const empName = emp?.full_name || (s.employee_id?.includes('cccc') || s.employee_id?.includes('d9b4') ? 'Arsal' : 'Michael Chen');
+
+        if (filterEmployeeId && filterEmployeeId !== 'all') {
+          const isArsalFilter =
+            filterEmployeeId.includes('cccc') ||
+            filterEmployeeId.includes('d9b4') ||
+            filterEmployeeId.toLowerCase().includes('arsal');
+          const isArsalRow =
+            s.employee_id?.includes('cccc') ||
+            s.employee_id?.includes('d9b4') ||
+            empName.toLowerCase().includes('arsal');
+
+          if (isArsalFilter ? !isArsalRow : s.employee_id !== filterEmployeeId) {
+            continue;
+          }
+        }
 
         // Manager permission enforcement: strictly block any admin activity or screenshots
         if (role === 'manager') {
@@ -994,7 +1011,10 @@ export const dataService = {
   },
 
   // 5e. Real-time Keystrokes Telemetry Stream from Supabase activity_aggregates
-  getLiveKeystrokeTelemetry: async (): Promise<{
+  getLiveKeystrokeTelemetry: async (
+    role?: UserRole,
+    employeeId?: string
+  ): Promise<{
     byHour: Record<string, number>;
     totalKeys: number;
     hourlyKeysArray: number[];
@@ -1017,6 +1037,24 @@ export const dataService = {
       }
 
       for (const a of aggs || []) {
+        if (role === 'manager') {
+          if (a.employee_id === ADMIN_USER_ID || isAdminRecord(a.employee_id)) {
+            continue;
+          }
+        }
+        if (employeeId && employeeId !== 'all') {
+          const isArsalFilter =
+            employeeId.includes('cccc') ||
+            employeeId.includes('d9b4') ||
+            employeeId.toLowerCase().includes('arsal');
+          const isArsalRow =
+            a.employee_id?.includes('cccc') ||
+            a.employee_id?.includes('d9b4');
+          if (isArsalFilter ? !isArsalRow : a.employee_id !== employeeId) {
+            continue;
+          }
+        }
+
         const keys = Number(a.key_press_count) || 0;
         totalKeys += keys;
 
@@ -1042,7 +1080,10 @@ export const dataService = {
   },
 
   // 5f. Real-time Mouse Telemetry Stream from Supabase activity_aggregates
-  getLiveMouseTelemetry: async (): Promise<{
+  getLiveMouseTelemetry: async (
+    role?: UserRole,
+    employeeId?: string
+  ): Promise<{
     byHour: Record<string, { moves: number; clicks: number; intensityPct: number }>;
     totalMoves: number;
     totalClicks: number;
@@ -1054,7 +1095,7 @@ export const dataService = {
     try {
       const { data: aggs } = await supabase
         .from('activity_aggregates')
-        .select('window_start, mouse_move_count, mouse_click_count, active_seconds')
+        .select('window_start, mouse_move_count, mouse_click_count, active_seconds, employee_id')
         .order('window_start', { ascending: true });
 
       const timeSlots = ['09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00'];
@@ -1067,6 +1108,24 @@ export const dataService = {
       }
 
       for (const a of aggs || []) {
+        if (role === 'manager') {
+          if (a.employee_id === ADMIN_USER_ID || isAdminRecord(a.employee_id)) {
+            continue;
+          }
+        }
+        if (employeeId && employeeId !== 'all') {
+          const isArsalFilter =
+            employeeId.includes('cccc') ||
+            employeeId.includes('d9b4') ||
+            employeeId.toLowerCase().includes('arsal');
+          const isArsalRow =
+            a.employee_id?.includes('cccc') ||
+            a.employee_id?.includes('d9b4');
+          if (isArsalFilter ? !isArsalRow : a.employee_id !== employeeId) {
+            continue;
+          }
+        }
+
         const moves = Number(a.mouse_move_count) || 0;
         const clicks = Number(a.mouse_click_count) || 0;
         totalMoves += moves;
@@ -1101,7 +1160,7 @@ export const dataService = {
 
     try {
       const { data: emps } = await supabase.from('employees').select('*');
-      const { data: presence } = await supabase.from('employee_presence').select('*');
+      const { data: presence } = await supabase.from('employee_presence').select('*').order('updated_at', { ascending: false });
 
       if (!emps || emps.length === 0) return [];
 
@@ -1109,12 +1168,29 @@ export const dataService = {
 
       return emps
         .filter((e: any) => {
-          if (role === 'manager' && managerId) return e.manager_id === managerId;
+          if (role === 'manager') {
+            if (
+              e.id === ADMIN_USER_ID ||
+              e.user_id === ADMIN_USER_ID ||
+              isAdminRecord(e.id, e.full_name, e.email)
+            ) {
+              return false;
+            }
+            if (managerId) return e.manager_id === managerId;
+            return true;
+          }
           if (role === 'employee' && employeeId) return e.id === employeeId || e.user_id === employeeId;
           return true;
         })
         .map((e: any) => {
-          const pres = presence?.find((p: any) => p.employee_id === e.id || p.employee_id === e.user_id);
+          const isMatchingEmp = (candId?: string) =>
+            candId === e.id ||
+            candId === e.user_id ||
+            (e.full_name?.toLowerCase().includes('arsal') &&
+              (candId === 'cccccccc-cccc-cccc-cccc-cccccccccccc' || candId === 'd9b4bfb3-9953-522d-84af-3de709e7caa8'));
+          const presList = presence?.filter((p: any) => isMatchingEmp(p.employee_id)) || [];
+          const activePres = presList.find((p: any) => p.status === 'active');
+          const pres = activePres || presList[0];
           const firstAct = pres?.last_activity_at
             ? new Date(pres.last_activity_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
             : '09:00 AM';
@@ -1392,7 +1468,15 @@ export const dataService = {
       if (error) throw error;
       if (!taskRows) return [];
 
-      return taskRows.map((t: any) => {
+      let cleanTaskRows = taskRows;
+      if (role === 'manager') {
+        cleanTaskRows = taskRows.filter((t: any) =>
+          t.assigned_to !== ADMIN_USER_ID &&
+          !isAdminRecord(t.assigned_to, t.employees?.full_name, t.employees?.email)
+        );
+      }
+
+      return cleanTaskRows.map((t: any) => {
         let status: TaskItem['status'] = 'todo';
         if (t.status === 'in_progress') status = 'in_progress';
         else if (t.status === 'completed') status = 'completed';
@@ -1625,13 +1709,18 @@ export const dataService = {
     }
 
     try {
-      let empQuery = supabase.from('employees').select('id, user_id');
+      let empQuery = supabase.from('employees').select('id, user_id, full_name, email');
       if (managerId) {
         empQuery = empQuery.eq('manager_id', managerId);
       }
-      const { data: teamEmps } = await empQuery;
-      const empIds = teamEmps?.map((e: any) => e.id) || [];
-      const totalEmployees = empIds.length || 2;
+      const { data: rawTeamEmps } = await empQuery;
+      const teamEmps = (rawTeamEmps || []).filter((e: any) =>
+        e.id !== ADMIN_USER_ID &&
+        e.user_id !== ADMIN_USER_ID &&
+        !isAdminRecord(e.id, e.full_name, e.email)
+      );
+      const empIds = teamEmps.map((e: any) => e.id);
+      const totalEmployees = empIds.length > 0 ? empIds.length : 1;
 
       const { data: presence } = await supabase.from('employee_presence').select('*');
       const teamPresence = presence?.filter((p: any) => empIds.includes(p.employee_id)) || [];

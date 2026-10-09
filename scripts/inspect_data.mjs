@@ -16,11 +16,27 @@ async function check() {
 
   console.log('--- PRESENCE ---', JSON.stringify(pres, null, 2));
 
+  const path = 'cccccccc-cccc-cccc-cccc-cccccccccccc/1791522392647_WIN-DESKTOP-QUVQI4B-ok.jpg';
+  const { data: pubUrl } = supabase.storage.from('screenshots').getPublicUrl(path);
+  console.log('Public URL:', pubUrl.publicUrl);
+  try {
+    const res = await fetch(pubUrl.publicUrl);
+    console.log('Public URL HTTP status:', res.status, res.headers.get('content-type'), res.headers.get('content-length'));
+  } catch (err) {
+    console.log('Fetch error:', err.message);
+  }
+
   const { data: screens } = await supabase.from('screenshot_records').select('*').order('captured_at', { ascending: false }).limit(5);
+
   console.log('--- SCREENSHOTS ---', JSON.stringify(screens, null, 2));
 
-  const { data: agg } = await supabase.from('activity_aggregates').select('*').order('window_start', { ascending: false }).limit(5);
-  console.log('--- AGGREGATES (Keys / Mouse) ---', JSON.stringify(agg, null, 2));
+  const { data: aggs } = await supabase.from('activity_aggregates').select('*').order('window_start', { ascending: true });
+  console.log('--- AGGREGATES BREAKDOWN ---');
+  for (const a of aggs || []) {
+    const d = new Date(a.window_start);
+    console.log(`Agg: emp=${a.employee_id?.slice(0,8)} window=${a.window_start} LocalHr=${d.getHours()} UTCHr=${d.getUTCHours()} Keys=${a.key_press_count} Moves=${a.mouse_move_count}`);
+  }
+
 
   const { data: storageFiles, error: storageErr } = await supabase.storage.from('screenshots').list('', { limit: 20 });
   console.log('--- STORAGE ROOT ---', storageFiles, storageErr);

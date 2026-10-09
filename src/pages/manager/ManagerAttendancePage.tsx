@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { RefreshCw, CheckCircle, AlertTriangle, CalendarCheck } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
-import { dataService } from '../../services/dataService';
+import { dataService, isAdminRecord } from '../../services/dataService';
 import type { AttendanceRecordItem } from '../../types/roles';
 
 export const ManagerAttendancePage: React.FC = () => {
@@ -12,7 +12,7 @@ export const ManagerAttendancePage: React.FC = () => {
   const loadData = async () => {
     try {
       const list = await dataService.getAttendance('manager', user.id);
-      setAttendance(list);
+      setAttendance(list.filter((a) => !isAdminRecord(a.employee_id, a.employee_name)));
     } catch (err) {
       console.error(err);
     }

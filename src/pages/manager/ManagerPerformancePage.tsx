@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { RefreshCw, Award, Star, Plus, Minus, X, Flame, Sliders, Keyboard } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
-import { dataService } from '../../services/dataService';
+import { dataService, isAdminRecord } from '../../services/dataService';
 import { MatrixHeatmap } from '../../components/telemetry/MatrixHeatmap';
 import { KeyboardActivityView } from '../../components/telemetry/KeyboardActivityView';
 import type { EmployeeRecord } from '../../types/roles';
@@ -28,9 +28,10 @@ export const ManagerPerformancePage: React.FC = () => {
   const loadData = async () => {
     try {
       const list = await dataService.getEmployees('manager', user.id);
-      setEmployees(list);
-      if (list.length > 0 && !awardEmpId) {
-        setAwardEmpId(list[0].id);
+      const cleanList = list.filter((e) => !isAdminRecord(e.id, e.name, e.email));
+      setEmployees(cleanList);
+      if (cleanList.length > 0 && !awardEmpId) {
+        setAwardEmpId(cleanList[0].id);
       }
     } catch (err) {
       console.error(err);

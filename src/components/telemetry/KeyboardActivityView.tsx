@@ -101,7 +101,9 @@ export const KeyboardActivityView: React.FC<KeyboardActivityViewProps> = ({
   role = 'admin',
 }) => {
   const showBreaks = showBreakSchedule !== undefined ? showBreakSchedule : role !== 'admin';
-  const [employeesList, setEmployeesList] = useState<string[]>(DEFAULT_EMPLOYEES);
+  const [employeesList, setEmployeesList] = useState<string[]>(
+    role === 'manager' ? ['Arsal (Engineering Team)'] : DEFAULT_EMPLOYEES
+  );
   const [hoveredCell, setHoveredCell] = useState<{
     row: number;
     col: number;
@@ -123,13 +125,26 @@ export const KeyboardActivityView: React.FC<KeyboardActivityViewProps> = ({
   const [liveKeysArray, setLiveKeysArray] = useState<number[] | null>(null);
 
   useEffect(() => {
-    dataService.getEmployees('admin').then((emps) => {
+    dataService.getEmployees(role).then((emps) => {
       if (emps && emps.length > 0) {
-        const dbNames = emps.map((e) => (e.team_name ? `${e.name} (${e.team_name})` : e.name));
-        const remaining = DEFAULT_EMPLOYEES.filter(
-          (def) => !dbNames.some((db) => db.toLowerCase().split(' ')[0] === def.toLowerCase().split(' ')[0])
+        const validEmps = emps.filter((e) =>
+          role === 'manager'
+            ? e.id !== 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa' &&
+              !e.name?.toLowerCase().includes('admin') &&
+              !e.email?.toLowerCase().includes('admin')
+            : true
         );
-        setEmployeesList([...dbNames, ...remaining]);
+        const dbNames = validEmps.map((e) => (e.team_name ? `${e.name} (${e.team_name})` : e.name));
+        if (role === 'manager') {
+          setEmployeesList(dbNames.length > 0 ? dbNames : ['Arsal (Engineering Team)']);
+        } else {
+          const remaining = DEFAULT_EMPLOYEES.filter(
+            (def) => !dbNames.some((db) => db.toLowerCase().split(' ')[0] === def.toLowerCase().split(' ')[0])
+          );
+          setEmployeesList([...dbNames, ...remaining]);
+        }
+      } else if (role === 'manager') {
+        setEmployeesList(['Arsal (Engineering Team)']);
       }
     });
 
@@ -138,7 +153,7 @@ export const KeyboardActivityView: React.FC<KeyboardActivityViewProps> = ({
     });
 
     const loadLiveKeys = () => {
-      dataService.getLiveKeystrokeTelemetry().then((res) => {
+      dataService.getLiveKeystrokeTelemetry(role, selectedEmployeeName).then((res) => {
         if (res && res.totalKeys > 0) {
           setLiveKeysArray(res.hourlyKeysArray);
         }
@@ -166,7 +181,7 @@ export const KeyboardActivityView: React.FC<KeyboardActivityViewProps> = ({
       unsubscribe();
       clearInterval(liveKeysTimer);
     };
-  }, []);
+  }, [selectedEmployeeName]);
 
 
   const handleTriggerBreak = async (type: BreakType) => {
@@ -227,6 +242,21 @@ export const KeyboardActivityView: React.FC<KeyboardActivityViewProps> = ({
     activeMatrixData = employeesList.map((_emp, idx) =>
       BASE_KEYPRESS_DATA[idx] ? [...BASE_KEYPRESS_DATA[idx]] : [...BASE_KEYPRESS_DATA[0]]
     );
+  }
+
+  // Strict Manager Role isolation: Manager must ONLY see team employees, NEVER the Admin
+  if (role === 'manager') {
+    const safeIndices: number[] = [];
+    activeEmployees = activeEmployees.filter((empName, i) => {
+      const isAdm = empName.toLowerCase().includes('admin');
+      if (!isAdm) safeIndices.push(i);
+      return !isAdm;
+    });
+    activeMatrixData = safeIndices.map((i) => activeMatrixData[i] || [...BASE_KEYPRESS_DATA[0]]);
+    if (activeEmployees.length === 0) {
+      activeEmployees = ['Arsal (Engineering Team)'];
+      activeMatrixData = [[...BASE_KEYPRESS_DATA[0]]];
+    }
   }
 
   // Adjust row for break continuation if active or resumed

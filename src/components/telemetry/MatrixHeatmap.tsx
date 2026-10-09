@@ -187,7 +187,9 @@ export const MatrixHeatmap: React.FC<MatrixHeatmapProps> = ({
 }) => {
   const showBreaks = showBreakSchedule !== undefined ? showBreakSchedule : role !== 'admin';
   const [activeMode, setActiveMode] = useState<'hourly' | 'weekly'>(initialPreset);
-  const [employeesList, setEmployeesList] = useState<string[]>(DEFAULT_EMPLOYEES);
+  const [employeesList, setEmployeesList] = useState<string[]>(
+    role === 'manager' ? ['Arsal (Engineering Team)'] : DEFAULT_EMPLOYEES
+  );
   const [showValues, setShowValues] = useState(true);
 
   const [hoveredCell, setHoveredCell] = useState<{
@@ -213,13 +215,26 @@ export const MatrixHeatmap: React.FC<MatrixHeatmapProps> = ({
   const [liveMouseArray, setLiveMouseArray] = useState<number[] | null>(null);
 
   useEffect(() => {
-    dataService.getEmployees('admin').then((emps) => {
+    dataService.getEmployees(role).then((emps) => {
       if (emps && emps.length > 0) {
-        const dbNames = emps.map((e) => (e.team_name ? `${e.name} (${e.team_name})` : e.name));
-        const remaining = DEFAULT_EMPLOYEES.filter(
-          (def) => !dbNames.some((db) => db.toLowerCase().split(' ')[0] === def.toLowerCase().split(' ')[0])
+        const validEmps = emps.filter((e) =>
+          role === 'manager'
+            ? e.id !== 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa' &&
+              !e.name?.toLowerCase().includes('admin') &&
+              !e.email?.toLowerCase().includes('admin')
+            : true
         );
-        setEmployeesList([...dbNames, ...remaining]);
+        const dbNames = validEmps.map((e) => (e.team_name ? `${e.name} (${e.team_name})` : e.name));
+        if (role === 'manager') {
+          setEmployeesList(dbNames.length > 0 ? dbNames : ['Arsal (Engineering Team)']);
+        } else {
+          const remaining = DEFAULT_EMPLOYEES.filter(
+            (def) => !dbNames.some((db) => db.toLowerCase().split(' ')[0] === def.toLowerCase().split(' ')[0])
+          );
+          setEmployeesList([...dbNames, ...remaining]);
+        }
+      } else if (role === 'manager') {
+        setEmployeesList(['Arsal (Engineering Team)']);
       }
     });
 
@@ -228,7 +243,7 @@ export const MatrixHeatmap: React.FC<MatrixHeatmapProps> = ({
     });
 
     const loadLiveMouse = () => {
-      dataService.getLiveMouseTelemetry().then((res) => {
+      dataService.getLiveMouseTelemetry(role, selectedEmployeeName).then((res) => {
         if (res && (res.totalMoves > 0 || res.totalClicks > 0)) {
           setLiveMouseArray(res.hourlyIntensityArray);
         }
@@ -256,7 +271,7 @@ export const MatrixHeatmap: React.FC<MatrixHeatmapProps> = ({
       unsubscribe();
       clearInterval(liveMouseTimer);
     };
-  }, []);
+  }, [selectedEmployeeName]);
 
 
   const handleTriggerBreak = async (type: BreakType) => {
@@ -322,6 +337,21 @@ export const MatrixHeatmap: React.FC<MatrixHeatmapProps> = ({
     filteredData = employeesList.map((_emp, idx) =>
       baseDataset.data[idx] ? [...baseDataset.data[idx]] : [...baseDataset.data[0]]
     );
+  }
+
+  // Strict Manager Role isolation: Manager must ONLY see team employees, NEVER the Admin
+  if (role === 'manager') {
+    const safeIndices: number[] = [];
+    filteredEmployees = filteredEmployees.filter((empName, i) => {
+      const isAdm = empName.toLowerCase().includes('admin');
+      if (!isAdm) safeIndices.push(i);
+      return !isAdm;
+    });
+    filteredData = safeIndices.map((i) => filteredData[i] || [...baseDataset.data[0]]);
+    if (filteredEmployees.length === 0) {
+      filteredEmployees = ['Arsal (Engineering Team)'];
+      filteredData = [[...baseDataset.data[0]]];
+    }
   }
 
   // Adjust row for break continuation if break is active or resumed

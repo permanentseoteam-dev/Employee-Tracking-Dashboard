@@ -22,7 +22,7 @@ import {
   Trash2,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
-import { dataService } from '../../services/dataService';
+import { dataService, isAdminRecord } from '../../services/dataService';
 import { FocusSessionWidget } from '../../components/timer/FocusSessionWidget';
 import type { EmployeeRecord } from '../../types/roles';
 
@@ -132,7 +132,7 @@ export const ManagerDashboardPage: React.FC<ManagerDashboardPageProps> = ({ onNa
         dataService.getEmployees('manager', user.id),
       ]);
       setKpis(kpiData);
-      setTeamEmployees(empData);
+      setTeamEmployees(empData.filter((e) => !isAdminRecord(e.id, e.name, e.email)));
     } catch (err) {
       console.error('Failed to load manager dashboard:', err);
     }
@@ -171,13 +171,15 @@ export const ManagerDashboardPage: React.FC<ManagerDashboardPageProps> = ({ onNa
   const progressRatio = timerSeconds === 0 ? 0 : Math.min(1, Math.max(0, timerSeconds / targetSeconds));
   const strokeDashoffset = timerSeconds === 0 ? 264 : Math.round(264 * (1 - progressRatio));
 
-  const filteredTeam = teamEmployees.filter((emp) => {
-    const q = searchQuery.toLowerCase();
-    return (
-      (emp.name || '').toLowerCase().includes(q) ||
-      (emp.department || '').toLowerCase().includes(q)
-    );
-  });
+  const filteredTeam = teamEmployees
+    .filter((emp) => !isAdminRecord(emp.id, emp.name, emp.email))
+    .filter((emp) => {
+      const q = searchQuery.toLowerCase();
+      return (
+        (emp.name || '').toLowerCase().includes(q) ||
+        (emp.department || '').toLowerCase().includes(q)
+      );
+    });
 
   return (
     <motion.div

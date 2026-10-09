@@ -3,6 +3,7 @@ import type { User, Session } from '@supabase/supabase-js';
 import { supabase } from '../services/supabaseClient';
 import { supabaseAuth } from '../services/supabaseService';
 import type { UserProfile, UserRole } from '../types/roles';
+import { roleFromPath, rolePathPrefix } from '../types/roles';
 
 /** Demo-only profiles used when Supabase auth is not signed in. */
 const DEFAULT_PROFILES: Record<UserRole, UserProfile> = {
@@ -23,6 +24,14 @@ const DEFAULT_PROFILES: Record<UserRole, UserProfile> = {
     department: 'Engineering',
     team_id: 'team-backend',
     team_name: 'Core Backend Team',
+  },
+  project_manager: {
+    id: 'dddddddd-dddd-dddd-dddd-dddddddddddd',
+    name: 'Arsal (Project Manager)',
+    email: 'arsal.pm@company.com',
+    role: 'project_manager',
+    avatar: 'PM',
+    department: 'Delivery',
   },
   employee: {
     id: 'cccccccc-cccc-cccc-cccc-cccccccccccc',
@@ -60,17 +69,19 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const getRouteFromHash = (): string => {
     const raw = window.location.hash.replace(/^#\/?/, '/');
-    if (raw.startsWith('/admin') || raw.startsWith('/manager') || raw.startsWith('/employee')) {
+    if (
+      raw.startsWith('/admin') ||
+      raw.startsWith('/manager') ||
+      raw.startsWith('/project-manager') ||
+      raw.startsWith('/project_manager') ||
+      raw.startsWith('/employee')
+    ) {
       return raw.startsWith('/') ? raw : `/${raw}`;
     }
     return '/employee/dashboard';
   };
 
-  const getRoleFromPath = (path: string): UserRole => {
-    if (path.startsWith('/admin')) return 'admin';
-    if (path.startsWith('/manager')) return 'manager';
-    return 'employee';
-  };
+  const getRoleFromPath = (path: string): UserRole => roleFromPath(path);
 
   const initialRoute = getRouteFromHash();
   const initialRole = getRoleFromPath(initialRoute);
@@ -94,8 +105,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const clampRouteToRole = (path: string, allowedRole: UserRole): string => {
     const targetRole = getRoleFromPath(path);
     if (targetRole === allowedRole) return path.startsWith('/') ? path : `/${path}`;
-    const rest = path.replace(/^\/(admin|manager|employee)/, '') || '/dashboard';
-    return `/${allowedRole}${rest.startsWith('/') ? rest : `/${rest}`}`;
+    const rest =
+      path.replace(/^\/(admin|project-manager|project_manager|manager|employee)/, '') || '/dashboard';
+    const prefix = rolePathPrefix(allowedRole);
+    return `/${prefix}${rest.startsWith('/') ? rest : `/${rest}`}`;
   };
 
   const syncSupabaseProfile = async (sUser: User | null) => {
@@ -211,7 +224,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         console.warn(`Role switch blocked: authenticated as ${locked}`);
         return;
       }
-      const defaultRoute = `/${locked}/dashboard`;
+      const defaultRoute = `/${rolePathPrefix(locked)}/dashboard`;
       setCurrentRoute(defaultRoute);
       if (window.location.hash !== `#${defaultRoute}`) {
         window.location.hash = defaultRoute;
@@ -221,7 +234,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     setRole(newRole);
     setUser(DEFAULT_PROFILES[newRole]);
-    const defaultRoute = `/${newRole}/dashboard`;
+    const defaultRoute = `/${rolePathPrefix(newRole)}/dashboard`;
     setCurrentRoute(defaultRoute);
     if (window.location.hash !== `#${defaultRoute}`) {
       window.location.hash = defaultRoute;

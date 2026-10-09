@@ -26,7 +26,7 @@ import { useAuth } from '../../context/AuthContext';
 import type { ProjectItem, ProjectFolder, ProjectFolderFile } from '../../types/roles';
 
 interface ProjectWorkspaceProps {
-  role: 'admin' | 'manager' | 'employee';
+  role: 'admin' | 'manager' | 'project_manager' | 'employee';
   managerId?: string;
 }
 
@@ -108,8 +108,10 @@ export const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({ role, manage
     if (!newProjName.trim()) return;
 
     try {
+      const createRole =
+        role === 'admin' ? 'admin' : role === 'project_manager' ? 'project_manager' : 'manager';
       const created = await dataService.createProject(
-        role === 'admin' ? 'admin' : 'manager',
+        createRole,
         {
           name: newProjName.trim(),
           code: newProjCode.trim().toUpperCase() || newProjName.substring(0, 4).toUpperCase(),
@@ -359,8 +361,8 @@ export const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({ role, manage
         </div>
       </div>
 
-      {/* Manager Isolation Scope Ribbon */}
-      {role === 'manager' && (
+      {/* Manager / Project Manager scope ribbon */}
+      {(role === 'manager' || role === 'project_manager') && (
         <div
           className="frosted-card frosted-card-sm"
           style={{
@@ -378,9 +380,13 @@ export const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({ role, manage
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <FolderKanban size={16} color="var(--color-primary)" />
-            <span style={{ fontWeight: 700, color: 'var(--text-primary)' }}>Manager Workstream Scope:</span>
+            <span style={{ fontWeight: 700, color: 'var(--text-primary)' }}>
+              {role === 'project_manager' ? 'Project Manager Scope:' : 'Manager Workstream Scope:'}
+            </span>
             <span style={{ color: 'var(--text-secondary)' }}>
-              Viewing your own managed projects and employee activity deliverables (Arsal). Admin projects and folders isolated.
+              {role === 'project_manager'
+                ? 'Full control of projects you own — folders, file embeds, and member allocation.'
+                : 'Viewing your own managed projects and employee activity deliverables. Admin projects and folders isolated.'}
             </span>
           </div>
           <span

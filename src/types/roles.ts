@@ -1,4 +1,30 @@
-export type UserRole = 'admin' | 'manager' | 'employee';
+export type UserRole = 'admin' | 'manager' | 'project_manager' | 'employee';
+
+/** URL path segment for a role (kebab-case for multi-word roles). */
+export function rolePathPrefix(role: UserRole): string {
+  return role === 'project_manager' ? 'project-manager' : role;
+}
+
+export function roleFromPath(path: string): UserRole {
+  if (path.startsWith('/admin')) return 'admin';
+  if (path.startsWith('/project-manager') || path.startsWith('/project_manager')) return 'project_manager';
+  if (path.startsWith('/manager')) return 'manager';
+  return 'employee';
+}
+
+export type ProjectAccessLevel = 'view' | 'edit' | 'admin';
+
+export interface ProjectMemberAssignment {
+  id: string;
+  project_id: string;
+  project_name?: string;
+  employee_id: string;
+  employee_name: string;
+  employee_email?: string;
+  access: ProjectAccessLevel;
+  assigned_by?: string;
+  assigned_at: string;
+}
 
 export interface UserProfile {
   id: string;
@@ -148,8 +174,9 @@ export interface ProjectItem {
   due_date: string;
   documents?: { title: string; type: 'doc' | 'sheet'; url: string }[];
   folders?: ProjectFolder[];
-  scope_type?: 'manager_owned' | 'employee_activity' | 'organization';
+  scope_type?: 'manager_owned' | 'employee_activity' | 'organization' | 'project_managed';
   assigned_employees?: string[];
+  member_assignments?: ProjectMemberAssignment[];
 }
 
 export interface TaskItem {

@@ -10,6 +10,7 @@ import {
   Shield,
   Users,
   User,
+  Briefcase,
   Activity,
   CheckCheck,
   LogOut,
@@ -263,6 +264,8 @@ export const TopBar: React.FC<TopBarProps> = ({
               ? 'Search employees, managers, teams, audits...'
               : role === 'manager'
               ? 'Search team members, assigned tasks...'
+              : role === 'project_manager'
+              ? 'Search projects, members, allocations...'
               : 'Search my tasks, attendance, projects...'
           }
           value={searchQuery}
@@ -290,9 +293,11 @@ export const TopBar: React.FC<TopBarProps> = ({
               : 'Demo: switch console view (not available when signed in)'
           }
         >
-          {(['admin', 'manager', 'employee'] as UserRole[]).map((r) => {
+          {(['admin', 'manager', 'project_manager', 'employee'] as UserRole[]).map((r) => {
             const isSelected = role === r;
             const lockedOut = isAuthenticated && r !== role;
+            const label =
+              r === 'project_manager' ? 'PM' : r === 'admin' ? 'Admin' : r === 'manager' ? 'Manager' : 'Employee';
             return (
               <button
                 key={r}
@@ -303,7 +308,7 @@ export const TopBar: React.FC<TopBarProps> = ({
                   display: 'inline-flex',
                   alignItems: 'center',
                   gap: 4,
-                  padding: '4px 12px',
+                  padding: '4px 10px',
                   fontSize: 12,
                   fontWeight: isSelected ? 700 : 500,
                   borderRadius: 'var(--radius-pill)',
@@ -316,11 +321,13 @@ export const TopBar: React.FC<TopBarProps> = ({
                   transition: 'all 0.2s ease',
                   opacity: lockedOut ? 0.4 : 1,
                 }}
+                title={r === 'project_manager' ? 'Project Manager' : label}
               >
                 {r === 'admin' && <Shield size={12} />}
                 {r === 'manager' && <Users size={12} />}
+                {r === 'project_manager' && <Briefcase size={12} />}
                 {r === 'employee' && <User size={12} />}
-                {r}
+                {label}
               </button>
             );
           })}
@@ -806,6 +813,8 @@ export const TopBar: React.FC<TopBarProps> = ({
                     ? 'linear-gradient(135deg, #1e293b, #0f172a)'
                     : role === 'manager'
                     ? 'linear-gradient(135deg, #4c6bff, #1e293b)'
+                    : role === 'project_manager'
+                    ? 'linear-gradient(135deg, #7c3aed, #1e293b)'
                     : 'linear-gradient(135deg, #10b981, #0f172a)',
                 color: '#ffffff',
                 fontWeight: 800,

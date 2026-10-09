@@ -20,6 +20,8 @@ import type {
   BreakType,
   BreakTelemetryHourlyState,
   BreakScheduleConfig,
+  ProjectMemberAssignment,
+  ProjectAccessLevel,
 } from '../types/roles';
 import { DEFAULT_BREAK_SCHEDULE } from '../types/roles';
 import type { AgentRuntimeConfig } from '../types';
@@ -142,6 +144,27 @@ function persistBreakScheduleLocal(cfg: BreakScheduleConfig) {
     localStorage.setItem(BREAK_SCHEDULE_LS_KEY, JSON.stringify(cfg));
   } catch {
     /* ignore quota */
+  }
+}
+
+const PROJECT_ASSIGNMENTS_KEY = 'stitch_project_member_assignments';
+
+function loadAllProjectAssignments(): ProjectMemberAssignment[] {
+  try {
+    const raw = localStorage.getItem(PROJECT_ASSIGNMENTS_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveAllProjectAssignments(rows: ProjectMemberAssignment[]) {
+  try {
+    localStorage.setItem(PROJECT_ASSIGNMENTS_KEY, JSON.stringify(rows));
+  } catch {
+    /* ignore */
   }
 }
 
@@ -281,6 +304,7 @@ export const dataService = {
       } else if (role === 'employee' && employeeId) {
         query = query.or(`id.eq.${employeeId},user_id.eq.${employeeId}`);
       }
+      // project_manager: organization roster (non-admin) for allocation — no manager_id filter
 
       const [
         empRes,
@@ -308,13 +332,13 @@ export const dataService = {
 
       let filteredEmpRows = empRes.data || [];
 
-      // When role === 'manager', strictly filter out any admin user or manager self-records
-      if (role === 'manager') {
+      // When role === 'manager' or project_manager, strictly filter out admin records
+      if (role === 'manager' || role === 'project_manager') {
         filteredEmpRows = filteredEmpRows.filter((e: any) =>
           !isAdminRecord(e.id, e.full_name, e.email) &&
           !isAdminRecord(e.user_id, e.full_name, e.email) &&
           e.role !== 'admin' &&
-          (managerId ? e.id !== managerId && e.user_id !== managerId : true)
+          (role === 'manager' && managerId ? e.id !== managerId && e.user_id !== managerId : true)
         );
       }
       const empRows = filteredEmpRows;
@@ -1513,10 +1537,23 @@ export const dataService = {
 
           return isManagerOwn || isEmployeeActivity;
         });
+      } else if (role === 'project_manager') {
+        const assigns = loadAllProjectAssignments();
+        const pmOwnedAssignIds = new Set(
+          assigns
+            .filter((a) => (a as any).project_manager_id === managerId)
+            .map((a) => a.project_id)
+        );
+        projRows = allProjects.filter((p: any) => {
+          if (managerId && p.manager_id === managerId) return true;
+          return pmOwnedAssignIds.has(p.id);
+        });
       } else if (role === 'employee' && _employeeId) {
+        const assigns = loadAllProjectAssignments().filter((a) => a.employee_id === _employeeId);
+        const assignedIds = new Set(assigns.map((a) => a.project_id));
         projRows = allProjects.filter((p: any) => {
           const tasks = p.tasks || [];
-          return tasks.some((t: any) => t.assigned_to === _employeeId);
+          return assignedIds.has(p.id) || tasks.some((t: any) => t.assigned_to === _employeeId);
         });
       }
 
@@ -1537,8 +1574,11 @@ export const dataService = {
         const hasEmployeeActivity = assignedEmpIds.some((id: string) => teamEmpIds.has(id));
         const isManagerOwn = !!(managerId && p.manager_id === managerId);
 
-        let scopeType: 'manager_owned' | 'employee_activity' | 'organization' = 'organization';
-        if (role === 'manager') {
+        let scopeType: 'manager_owned' | 'employee_activity' | 'organization' | 'project_managed' =
+          'organization';
+        if (role === 'project_manager') {
+          scopeType = 'project_managed';
+        } else if (role === 'manager') {
           if (hasEmployeeActivity && !isManagerOwn) {
             scopeType = 'employee_activity';
           } else if (isManagerOwn && hasEmployeeActivity) {
@@ -1578,7 +1618,7 @@ export const dataService = {
     project: Omit<ProjectItem, 'id' | 'completed_tasks'>,
     managerId?: string
   ): Promise<ProjectItem> => {
-    if (role !== 'admin' && role !== 'manager') {
+    if (role !== 'admin' && role !== 'manager' && role !== 'project_manager') {
       throw new Error('403 Forbidden: Cannot create project');
     }
 
@@ -1586,7 +1626,10 @@ export const dataService = {
       name: project.name,
       description: project.code || '',
       status: project.status || 'active',
-      manager_id: role === 'manager' ? (managerId || project.manager_id) : project.manager_id,
+      manager_id:
+        role === 'manager' || role === 'project_manager'
+          ? managerId || project.manager_id
+          : project.manager_id,
       organization_id: '00000000-0000-0000-0000-000000000001',
     };
 
@@ -1739,7 +1782,7 @@ export const dataService = {
     try {
       let query = supabase.from('tasks').select('*, projects(*), employees(*)');
       
-      if (role === 'manager' && managerId) {
+      if ((role === 'manager' || role === 'project_manager') && managerId) {
         query = query.eq('projects.manager_id', managerId);
       } else if (role === 'employee' && employeeId) {
         query = query.or(`assigned_to.eq.${employeeId},assigned_to.eq.cccccccc-cccc-cccc-cccc-cccccccccccc`);
@@ -1750,7 +1793,7 @@ export const dataService = {
       if (!taskRows) return [];
 
       let cleanTaskRows = taskRows;
-      if (role === 'manager') {
+      if (role === 'manager' || role === 'project_manager') {
         cleanTaskRows = taskRows.filter((t: any) =>
           t.assigned_to !== ADMIN_USER_ID &&
           !isAdminRecord(t.assigned_to, t.employees?.full_name, t.employees?.email)
@@ -1770,11 +1813,11 @@ export const dataService = {
           project_name: t.projects?.name || 'Desktop Agent v2',
           employee_id: t.assigned_to || 'cccccccc-cccc-cccc-cccc-cccccccccccc',
           employee_name: t.employees?.full_name || 'Arsal',
-          manager_id: 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
+          manager_id: t.projects?.manager_id || managerId || 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
           priority: (t.priority as any) || 'medium',
           status,
           tracked_seconds: (t.estimated_hours || 8) * 3600,
-          due_date: '2026-10-15',
+          due_date: t.due_date || '',
         };
       });
     } catch (err) {
@@ -1788,6 +1831,10 @@ export const dataService = {
     task: Omit<TaskItem, 'id' | 'tracked_seconds'>,
     managerId?: string
   ): Promise<TaskItem> => {
+    if (role === 'employee') {
+      throw new Error('403 Forbidden: Employees cannot create organization tasks');
+    }
+
     const newTask = {
       project_id: task.project_id || '44444444-4444-4444-4444-444444444444',
       title: task.title,
@@ -1805,8 +1852,70 @@ export const dataService = {
       ...task,
       id: data.id,
       tracked_seconds: 0,
-      manager_id: role === 'manager' ? (managerId || task.manager_id) : task.manager_id,
+      manager_id:
+        role === 'manager' || role === 'project_manager'
+          ? managerId || task.manager_id
+          : task.manager_id,
     };
+  },
+
+  getAllProjectAssignments: async (projectManagerId?: string): Promise<ProjectMemberAssignment[]> => {
+    const all = loadAllProjectAssignments();
+    if (!projectManagerId) return all;
+    return all.filter((a) => (a as any).project_manager_id === projectManagerId);
+  },
+
+  getProjectAssignments: async (projectId: string): Promise<ProjectMemberAssignment[]> => {
+    return loadAllProjectAssignments().filter((a) => a.project_id === projectId);
+  },
+
+  assignUserToProject: async (params: {
+    projectId: string;
+    projectName?: string;
+    employeeId: string;
+    employeeName: string;
+    employeeEmail?: string;
+    access: ProjectAccessLevel;
+    assignedBy?: string;
+    projectManagerId?: string;
+  }): Promise<ProjectMemberAssignment> => {
+    const all = loadAllProjectAssignments();
+    const existingIdx = all.findIndex(
+      (a) => a.project_id === params.projectId && a.employee_id === params.employeeId
+    );
+    const row: ProjectMemberAssignment & { project_manager_id?: string } = {
+      id:
+        existingIdx >= 0
+          ? all[existingIdx].id
+          : `assign-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      project_id: params.projectId,
+      project_name: params.projectName,
+      employee_id: params.employeeId,
+      employee_name: params.employeeName,
+      employee_email: params.employeeEmail,
+      access: params.access,
+      assigned_by: params.assignedBy,
+      assigned_at: new Date().toISOString(),
+      project_manager_id: params.projectManagerId,
+    };
+    if (existingIdx >= 0) all[existingIdx] = row;
+    else all.push(row);
+    saveAllProjectAssignments(all);
+    return row;
+  },
+
+  removeProjectAssignment: async (assignmentId: string, projectManagerId?: string): Promise<void> => {
+    const all = loadAllProjectAssignments();
+    const target = all.find((a) => a.id === assignmentId);
+    if (!target) return;
+    if (
+      projectManagerId &&
+      (target as any).project_manager_id &&
+      (target as any).project_manager_id !== projectManagerId
+    ) {
+      throw new Error("403 Forbidden: Cannot revoke another PM's assignment");
+    }
+    saveAllProjectAssignments(all.filter((a) => a.id !== assignmentId));
   },
 
   updateTaskStatus: async (

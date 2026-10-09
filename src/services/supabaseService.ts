@@ -1,12 +1,12 @@
 import { supabase, isSupabaseConfigured } from './supabaseClient';
 import type { User, Session } from '@supabase/supabase-js';
-import type { BreakTelemetrySnapshot } from '../types/roles';
+import type { BreakTelemetrySnapshot, UserRole } from '../types/roles';
 
 export interface UserProfile {
   id: string;
   email: string;
   full_name: string;
-  role: 'admin' | 'manager' | 'employee';
+  role: UserRole;
   department?: string;
   team_id?: string;
   avatar_url?: string;
@@ -58,7 +58,7 @@ export const supabaseAuth = {
     return data;
   },
 
-  signUp: async (email: string, password: string, fullName: string, role: 'admin' | 'manager' | 'employee' = 'employee') => {
+  signUp: async (email: string, password: string, fullName: string, role: UserRole = 'employee') => {
     if (!isSupabaseConfigured()) {
       throw new Error('Supabase is not configured. Please set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in your .env file.');
     }

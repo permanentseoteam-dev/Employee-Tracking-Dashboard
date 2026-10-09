@@ -31,6 +31,11 @@ import { ManagerMonitoringPage } from './pages/manager/ManagerMonitoringPage';
 import { ManagerAttendancePage } from './pages/manager/ManagerAttendancePage';
 import { ManagerPerformancePage } from './pages/manager/ManagerPerformancePage';
 
+import { ProjectManagerSidebar } from './components/layout/ProjectManagerSidebar';
+import { ProjectManagerDashboardPage } from './pages/project-manager/ProjectManagerDashboardPage';
+import { ProjectAllocationsPage } from './pages/project-manager/ProjectAllocationsPage';
+import { ProjectManagerTasksPage } from './pages/project-manager/ProjectManagerTasksPage';
+
 // Project Workspace (Folders & File Embedding)
 import { ProjectWorkspace } from './components/projects/ProjectWorkspace';
 
@@ -185,6 +190,57 @@ export const App: React.FC = () => {
           <main className="stitch-main">
             <ErrorBoundary key={currentRoute} fallbackTitle="Admin Section Error">
               {renderAdminContent()}
+            </ErrorBoundary>
+          </main>
+        </div>
+      </div>
+    );
+  }
+
+  // =========================================================================
+  // Role: PROJECT MANAGER (Delivery, access & allocation)
+  // =========================================================================
+  if (role === 'project_manager') {
+    const renderProjectManagerContent = () => {
+      switch (currentRoute) {
+        case '/project-manager/dashboard':
+        case '/project_manager/dashboard':
+          return <ProjectManagerDashboardPage onNavigate={navigate} />;
+        case '/project-manager/projects':
+        case '/project_manager/projects':
+        case '/project-manager/documents':
+          return <ProjectWorkspace role="project_manager" managerId={user?.id} />;
+        case '/project-manager/allocations':
+        case '/project_manager/allocations':
+          return <ProjectAllocationsPage />;
+        case '/project-manager/tasks':
+        case '/project_manager/tasks':
+          return <ProjectManagerTasksPage />;
+        default:
+          return <ProjectManagerDashboardPage onNavigate={navigate} />;
+      }
+    };
+
+    return (
+      <div className="app-container">
+        <div className="stitch-ambient-canvas">
+          <div className="ambient-orb ambient-orb-1" />
+          <div className="ambient-orb ambient-orb-2" />
+          <div className="ambient-orb ambient-orb-3" />
+        </div>
+
+        <TopBar
+          status={status}
+          dbStats={dbStats}
+          onRefresh={fetchState}
+          searchQuery={searchQuery}
+          onSearchChange={setSearchQuery}
+        />
+        <div style={{ display: 'flex', flex: 1, position: 'relative', zIndex: 10 }}>
+          <ProjectManagerSidebar currentRoute={currentRoute} onNavigate={navigate} />
+          <main className="stitch-main">
+            <ErrorBoundary key={currentRoute} fallbackTitle="Project Manager Section Error">
+              {renderProjectManagerContent()}
             </ErrorBoundary>
           </main>
         </div>

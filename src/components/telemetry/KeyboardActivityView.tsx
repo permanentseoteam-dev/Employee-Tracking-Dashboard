@@ -9,8 +9,13 @@ import {
   TrendingUp,
   Activity,
   Clock,
+  Database,
+  Coffee,
+  Moon,
+  Play,
 } from 'lucide-react';
 import { dataService } from '../../services/dataService';
+import type { BreakTelemetrySnapshot, BreakType } from '../../types/roles';
 
 interface KeyboardActivityViewProps {
   selectedEmployeeName?: string;
@@ -113,38 +118,110 @@ export const KeyboardActivityView: React.FC<KeyboardActivityViewProps> = ({
     timeSlot: string;
   } | null>(null);
 
+  const [breakSnapshot, setBreakSnapshot] = useState<BreakTelemetrySnapshot | null>(null);
+  const [syncFeedback, setSyncFeedback] = useState<string | null>(null);
+
   useEffect(() => {
     dataService.getEmployees('admin').then((emps) => {
       if (emps && emps.length >= 8) {
         setEmployeesList(emps.slice(0, 8).map((e) => e.name));
       }
     });
+
+    dataService.getLatestBreakTelemetry().then((snap) => {
+      if (snap) setBreakSnapshot(snap);
+    });
+
+    const unsubscribe = dataService.subscribeToBreakTelemetry((snap, action) => {
+      setBreakSnapshot(snap);
+      if (action === 'saved') {
+        setSyncFeedback(
+          `💾 Keystroke state saved to Supabase (Bucket: screenshots, Table: activity_events). Preserved at ${snap?.current_time_slot}.`
+        );
+        setTimeout(() => setSyncFeedback(null), 6000);
+      } else if (action === 'resumed') {
+        setSyncFeedback(
+          `⚡ Resumed work! Keystrokes continuing at ${snap?.current_time_slot} on top of preserved state.`
+        );
+        setTimeout(() => setSyncFeedback(null), 6000);
+      }
+    });
+
+    return () => unsubscribe();
   }, []);
+
+  const handleTriggerBreak = async (type: BreakType) => {
+    try {
+      const snap = await dataService.saveBreakTelemetrySnapshot({
+        breakType: type,
+        employeeName: selectedEmployeeName || 'Arsal',
+        timeSlot: type === 'coffee' ? '11:00' : '13:00',
+      });
+      setBreakSnapshot(snap);
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleResumeBreak = async () => {
+    try {
+      const resumed = await dataService.resumeBreakTelemetry({
+        employeeName: selectedEmployeeName || 'Arsal',
+        breakSeconds: 1800,
+      });
+      setBreakSnapshot(resumed);
+    } catch (e) {
+      console.error(e);
+    }
+  };
 
   // Filter rows if an employee name is selected
   const activeEmployees = selectedEmployeeName && selectedEmployeeName !== 'all'
     ? employeesList.filter((e) => e.toLowerCase().includes(selectedEmployeeName.toLowerCase()))
     : employeesList;
 
+  // Keystrokes matrix adjusted for break continuation
+  const activeMatrixData = activeEmployees.map((emp) => {
+    const origIdx = employeesList.indexOf(emp);
+    const row = origIdx >= 0 && BASE_KEYPRESS_DATA[origIdx] ? [...BASE_KEYPRESS_DATA[origIdx]] : [...BASE_KEYPRESS_DATA[0]];
+
+    if (
+      showBreaks &&
+      breakSnapshot &&
+      (emp.toLowerCase().includes('arsal') ||
+        (selectedEmployeeName && emp.toLowerCase().includes(selectedEmployeeName.toLowerCase())))
+    ) {
+      const sIdx = breakSnapshot.time_slot_index;
+      if (sIdx >= 0 && sIdx < row.length) {
+        if (breakSnapshot.status === 'active_break') {
+          row[sIdx] = breakSnapshot.hourly_state.pre_break_keys;
+        } else if (breakSnapshot.status === 'resumed') {
+          row[sIdx] = breakSnapshot.hourly_state.adjusted_total_keys || row[sIdx];
+        }
+      }
+    }
+    return row;
+  });
+
   // Calculate totals
-  const totalKeysOverall = BASE_KEYPRESS_DATA.flat().reduce((a, b) => a + b, 0);
-  const avgKeysPerHour = Math.round(totalKeysOverall / (BASE_KEYPRESS_DATA.length * TIME_SLOTS.length));
+  const totalKeysOverall = activeMatrixData.flat().reduce((a, b) => a + b, 0);
+  const avgKeysPerHour = Math.round(totalKeysOverall / (activeMatrixData.length * TIME_SLOTS.length));
 
   // Hourly sums across team
   const hourlyTotals = TIME_SLOTS.map((_, colIdx) =>
-    BASE_KEYPRESS_DATA.reduce((sum, row) => sum + (row[colIdx] || 0), 0)
+    activeMatrixData.reduce((sum, row) => sum + (row[colIdx] || 0), 0)
   );
   const peakHourIdx = hourlyTotals.indexOf(Math.max(...hourlyTotals));
   const peakHourName = TIME_SLOTS[peakHourIdx];
 
   const handleExportCSV = () => {
     let csv = `EMPLOYEE,` + TIME_SLOTS.join(',') + `,TOTAL_KEYS\n`;
-    activeEmployees.forEach((emp) => {
-      const origIdx = employeesList.indexOf(emp);
-      const row = origIdx >= 0 ? BASE_KEYPRESS_DATA[origIdx] : BASE_KEYPRESS_DATA[0];
+    activeEmployees.forEach((emp, rIdx) => {
+      const row = activeMatrixData[rIdx] || activeMatrixData[0];
       const rowTotal = row.reduce((a, b) => a + b, 0);
       csv += `"${emp}",` + row.join(',') + `,${rowTotal}\n`;
     });
+
 
     const blob = new Blob([csv], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
@@ -380,6 +457,113 @@ export const KeyboardActivityView: React.FC<KeyboardActivityViewProps> = ({
             <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
               Excused from typing minimums
             </span>
+          </div>
+        )}
+
+        {/* Break State & Supabase Continuation Controls (Employee & Manager Roles Only) */}
+        {showBreaks && (
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              flexWrap: 'wrap',
+              gap: 12,
+              padding: '12px 18px',
+              borderRadius: 'var(--radius-card-sm)',
+              background:
+                breakSnapshot?.status === 'active_break'
+                  ? 'rgba(245, 158, 11, 0.12)'
+                  : 'rgba(16, 185, 129, 0.08)',
+              border:
+                breakSnapshot?.status === 'active_break'
+                  ? '1px solid rgba(245, 158, 11, 0.35)'
+                  : '1px solid rgba(16, 185, 129, 0.25)',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 800 }}>
+                <Database size={15} color="var(--color-primary)" />
+                <span style={{ color: 'var(--text-primary)' }}>Supabase Telemetry Persistence:</span>
+              </div>
+
+              {breakSnapshot?.status === 'active_break' ? (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span
+                    className="pulse-beacon"
+                    style={{ background: '#f59e0b', width: 8, height: 8 }}
+                  />
+                  <span style={{ fontWeight: 700, color: '#d97706', fontSize: 12 }}>
+                    {breakSnapshot.break_title} Active — Keystrokes Locked in Bucket &bull; Resumes from {breakSnapshot.current_time_slot} ({breakSnapshot.hourly_state.pre_break_keys.toLocaleString()} keys)
+                  </span>
+                </div>
+              ) : (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <CheckCircle2 size={15} color="#10b981" />
+                  <span style={{ fontWeight: 700, color: '#059669', fontSize: 12 }}>
+                    {breakSnapshot?.status === 'resumed'
+                      ? `Keystrokes Continuing from Last State (${breakSnapshot.current_time_slot}: Pre-break ${breakSnapshot.hourly_state.pre_break_keys} + Resumed ${breakSnapshot.hourly_state.post_break_keys} = ${breakSnapshot.hourly_state.adjusted_total_keys?.toLocaleString()} keys total)`
+                      : 'Cloud Snapshot Ready &bull; Preserves keystrokes in Supabase bucket & table across Namaz and Coffee breaks'}
+                  </span>
+                </div>
+              )}
+            </div>
+
+            {/* Quick Simulation / Operational Action Buttons */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              {breakSnapshot?.status === 'active_break' ? (
+                <button
+                  type="button"
+                  className="btn-pill btn-pill-primary"
+                  style={{ padding: '6px 14px', fontSize: 11, background: '#10b981', color: '#fff' }}
+                  onClick={handleResumeBreak}
+                  title="End break and resume typing tracking from last state"
+                >
+                  <Play size={13} />
+                  <span>Resume Work & Continue Keystrokes</span>
+                </button>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    className="btn-pill btn-pill-secondary"
+                    style={{ padding: '5px 12px', fontSize: 11 }}
+                    onClick={() => handleTriggerBreak('coffee')}
+                    title="Save keyboard state to Supabase for 11:00 AM Coffee Break"
+                  >
+                    <Coffee size={13} />
+                    <span>Coffee Break (11:00 AM)</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-pill btn-pill-secondary"
+                    style={{ padding: '5px 12px', fontSize: 11 }}
+                    onClick={() => handleTriggerBreak('namaz')}
+                    title="Save keyboard state to Supabase for 01:00 PM Zuhr Namaz"
+                  >
+                    <Moon size={13} />
+                    <span>Namaz Break (01:00 PM)</span>
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Sync feedback notification */}
+        {syncFeedback && (
+          <div
+            style={{
+              padding: '8px 14px',
+              borderRadius: 'var(--radius-card-sm)',
+              background: 'rgba(99, 102, 241, 0.12)',
+              border: '1px solid rgba(99, 102, 241, 0.28)',
+              color: 'var(--color-primary)',
+              fontSize: 12,
+              fontWeight: 600,
+            }}
+          >
+            {syncFeedback}
           </div>
         )}
 
@@ -756,21 +940,60 @@ export const KeyboardActivityView: React.FC<KeyboardActivityViewProps> = ({
                 <div
                   style={{
                     display: 'flex',
-                    alignItems: 'center',
+                    flexDirection: 'column',
                     gap: 8,
-                    background: 'rgba(245, 158, 11, 0.14)',
+                    background: 'rgba(245, 158, 11, 0.12)',
                     border: '1px solid rgba(245, 158, 11, 0.32)',
-                    padding: '10px 14px',
+                    padding: '12px 14px',
                     borderRadius: 8,
-                    color: '#d97706',
                     fontSize: 12,
-                    fontWeight: 600,
                   }}
                 >
-                  <span style={{ fontSize: 18 }}>☕</span>
-                  <span>
-                    <strong>Official Coffee Break (11:00 AM – 11:30 AM):</strong> Authorized rest period. Keystroke volume during this recess is excused from minimum activity expectations.
-                  </span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#d97706', fontWeight: 700 }}>
+                    <span style={{ fontSize: 18 }}>☕</span>
+                    <span>Official Coffee Break (11:00 AM – 11:30 AM) &bull; Supabase Keystrokes Sync</span>
+                  </div>
+                  <div style={{ fontSize: 11, color: 'var(--text-muted)', lineHeight: 1.4 }}>
+                    Keystroke volume during this recess is excused from minimum activity expectations. Snapshot preserves typing count in Supabase and resumes without reset.
+                  </div>
+                  {/* Hourly Progression & Supabase Continuation Details */}
+                  <div
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: 'repeat(2, 1fr)',
+                      gap: 8,
+                      marginTop: 4,
+                      padding: 8,
+                      borderRadius: 6,
+                      background: 'rgba(255,255,255,0.04)',
+                      border: '1px solid rgba(245, 158, 11, 0.2)',
+                    }}
+                  >
+                    <div>
+                      <span style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Pre-Break Keys:</span>
+                      <div style={{ fontWeight: 800, color: 'var(--text-primary)' }}>
+                        {(breakSnapshot?.hourly_state?.pre_break_keys || 1520).toLocaleString()} keys (Preserved)
+                      </div>
+                    </div>
+                    <div>
+                      <span style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Resumed Keys:</span>
+                      <div style={{ fontWeight: 800, color: '#10b981' }}>
+                        +{(breakSnapshot?.hourly_state?.post_break_keys || 1516).toLocaleString()} keys Added
+                      </div>
+                    </div>
+                    <div>
+                      <span style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Adjusted Hourly Total:</span>
+                      <div style={{ fontWeight: 800, color: 'var(--color-primary)' }}>
+                        {selectedCell.val.toLocaleString()} Combined Total
+                      </div>
+                    </div>
+                    <div>
+                      <span style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Cloud Storage:</span>
+                      <div style={{ fontWeight: 700, color: 'var(--text-secondary)', fontSize: 10 }}>
+                        Bucket: screenshots &bull; activity_events
+                      </div>
+                    </div>
+                  </div>
                 </div>
               )}
 
@@ -778,23 +1001,63 @@ export const KeyboardActivityView: React.FC<KeyboardActivityViewProps> = ({
                 <div
                   style={{
                     display: 'flex',
-                    alignItems: 'center',
+                    flexDirection: 'column',
                     gap: 8,
-                    background: 'rgba(16, 185, 129, 0.14)',
+                    background: 'rgba(16, 185, 129, 0.12)',
                     border: '1px solid rgba(16, 185, 129, 0.32)',
-                    padding: '10px 14px',
+                    padding: '12px 14px',
                     borderRadius: 8,
-                    color: '#059669',
                     fontSize: 12,
-                    fontWeight: 600,
                   }}
                 >
-                  <span style={{ fontSize: 18 }}>🕌</span>
-                  <span>
-                    <strong>Official Zuhr Namaz & Lunch Break (01:00 PM – 02:00 PM):</strong> Designated prayer and meal recess. Keystroke pause is fully authorized.
-                  </span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#059669', fontWeight: 700 }}>
+                    <span style={{ fontSize: 18 }}>🕌</span>
+                    <span>Official Zuhr Namaz & Lunch Break (01:00 PM – 02:00 PM)</span>
+                  </div>
+                  <div style={{ fontSize: 11, color: 'var(--text-muted)', lineHeight: 1.4 }}>
+                    Designated prayer and meal recess. Keystroke pause is fully authorized with state persisted in Supabase bucket & table.
+                  </div>
+                  {/* Hourly Progression & Supabase Continuation Details */}
+                  <div
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: 'repeat(2, 1fr)',
+                      gap: 8,
+                      marginTop: 4,
+                      padding: 8,
+                      borderRadius: 6,
+                      background: 'rgba(255,255,255,0.04)',
+                      border: '1px solid rgba(16, 185, 129, 0.2)',
+                    }}
+                  >
+                    <div>
+                      <span style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Pre-Break Baseline:</span>
+                      <div style={{ fontWeight: 800, color: 'var(--text-primary)' }}>
+                        2,451 keys Preserved
+                      </div>
+                    </div>
+                    <div>
+                      <span style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Recess Status:</span>
+                      <div style={{ fontWeight: 800, color: '#10b981' }}>
+                        Zero Penalty &bull; Compliant
+                      </div>
+                    </div>
+                    <div>
+                      <span style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Adjusted Hourly Progression:</span>
+                      <div style={{ fontWeight: 800, color: 'var(--color-primary)' }}>
+                        {selectedCell.val.toLocaleString()} Active Keys
+                      </div>
+                    </div>
+                    <div>
+                      <span style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Supabase Storage:</span>
+                      <div style={{ fontWeight: 700, color: 'var(--text-secondary)', fontSize: 10 }}>
+                        Bucket: screenshots/telemetry_snapshots
+                      </div>
+                    </div>
+                  </div>
                 </div>
               )}
+
 
               <div
                 style={{

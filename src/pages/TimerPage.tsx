@@ -55,29 +55,67 @@ export const TimerPage: React.FC<TimerPageProps> = ({
     setIsRunning(false);
   };
 
-  const handleBreak = (type: 'general' | 'namaz') => {
+  const [breakSyncMessage, setBreakSyncMessage] = useState<string | null>(null);
+
+  const handleBreak = async (type: 'general' | 'namaz') => {
     setActiveBreak(type);
     setIsRunning(false);
+    const breakType = type === 'general' ? 'coffee' : 'namaz';
+    const breakSlot = breakType === 'coffee' ? '11:00' : '13:00';
+
+    try {
+      const snap = await dataService.saveBreakTelemetrySnapshot({
+        breakType,
+        employeeId: user.id,
+        employeeName: user.name,
+        timeSlot: breakSlot,
+      });
+
+      setBreakSyncMessage(
+        `💾 Heatmap & Keyboard State Saved to Supabase (Bucket: screenshots & Table: activity_events). State locked at ${snap.current_time_slot}.`
+      );
+    } catch (e) {
+      console.warn('Error saving break snapshot:', e);
+    }
+
     dataService.logAction(
       user.name,
       'employee',
       'BREAK_START',
       type.toUpperCase(),
-      `Started ${type} break`
+      `Started ${type} break (Preserved telemetry snapshot in Supabase)`
     );
   };
 
-  const handleEndBreak = () => {
+  const handleEndBreak = async () => {
+    const curBreakSecs = breakSeconds;
     setActiveBreak(null);
     setIsRunning(true);
+
+    try {
+      const resumed = await dataService.resumeBreakTelemetry({
+        employeeId: user.id,
+        employeeName: user.name,
+        breakSeconds: curBreakSecs,
+      });
+
+      setBreakSyncMessage(
+        `⚡ Resumed Work! Telemetry continuing from last state (${resumed?.current_time_slot}: Pre-break + New Activity combined).`
+      );
+      setTimeout(() => setBreakSyncMessage(null), 8000);
+    } catch (e) {
+      console.warn('Error resuming break telemetry:', e);
+    }
+
     dataService.logAction(
       user.name,
       'employee',
       'BREAK_END',
       'WORK_RESUMED',
-      'Ended break and resumed task timer'
+      'Ended break: Resumed task timer and telemetry state continuation'
     );
   };
+
 
   const handleFinish = async () => {
     const taskTitle = activeTaskTitle || 'Active Engineering Session';
@@ -187,6 +225,25 @@ export const TimerPage: React.FC<TimerPageProps> = ({
             <span>
               {activeBreak === 'general' ? 'Coffee Break (11:00 – 11:30 AM)' : 'Namaz / Prayer (01:00 – 02:00 PM)'}: {formatTime(breakSeconds)}
             </span>
+          </div>
+        )}
+
+        {/* Supabase Telemetry Sync Feedback Banner */}
+        {breakSyncMessage && (
+          <div
+            style={{
+              padding: '8px 16px',
+              borderRadius: 'var(--radius-card-sm)',
+              background: 'rgba(16, 185, 129, 0.12)',
+              border: '1px solid rgba(16, 185, 129, 0.3)',
+              color: 'var(--color-primary)',
+              fontSize: 12,
+              fontWeight: 600,
+              maxWidth: 580,
+              textAlign: 'center',
+            }}
+          >
+            {breakSyncMessage}
           </div>
         )}
 

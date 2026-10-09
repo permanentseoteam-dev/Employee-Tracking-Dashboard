@@ -14,8 +14,13 @@ import {
   MousePointer,
   Clock,
   CheckCircle2,
+  Database,
+  Coffee,
+  Moon,
+  Play,
 } from 'lucide-react';
 import { dataService } from '../../services/dataService';
+import type { BreakTelemetrySnapshot, BreakType } from '../../types/roles';
 
 export interface HeatmapMatrixDataset {
   id: string;
@@ -202,13 +207,62 @@ export const MatrixHeatmap: React.FC<MatrixHeatmapProps> = ({
     unit: string;
   } | null>(null);
 
+  const [breakSnapshot, setBreakSnapshot] = useState<BreakTelemetrySnapshot | null>(null);
+  const [syncFeedback, setSyncFeedback] = useState<string | null>(null);
+
   useEffect(() => {
     dataService.getEmployees('admin').then((emps) => {
       if (emps && emps.length >= 8) {
         setEmployeesList(emps.slice(0, 8).map((e) => e.name));
       }
     });
+
+    dataService.getLatestBreakTelemetry().then((snap) => {
+      if (snap) setBreakSnapshot(snap);
+    });
+
+    const unsubscribe = dataService.subscribeToBreakTelemetry((snap, action) => {
+      setBreakSnapshot(snap);
+      if (action === 'saved') {
+        setSyncFeedback(
+          `💾 Snapshot saved to Supabase (Bucket: screenshots, Table: activity_events). State locked at ${snap?.current_time_slot}.`
+        );
+        setTimeout(() => setSyncFeedback(null), 6000);
+      } else if (action === 'resumed') {
+        setSyncFeedback(
+          `⚡ Resumed from last state! Telemetry continues at ${snap?.current_time_slot} without losing progress.`
+        );
+        setTimeout(() => setSyncFeedback(null), 6000);
+      }
+    });
+
+    return () => unsubscribe();
   }, []);
+
+  const handleTriggerBreak = async (type: BreakType) => {
+    try {
+      const snap = await dataService.saveBreakTelemetrySnapshot({
+        breakType: type,
+        employeeName: selectedEmployeeName || 'Arsal',
+        timeSlot: type === 'coffee' ? '11:00' : '13:00',
+      });
+      setBreakSnapshot(snap);
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleResumeBreak = async () => {
+    try {
+      const resumed = await dataService.resumeBreakTelemetry({
+        employeeName: selectedEmployeeName || 'Arsal',
+        breakSeconds: 1800,
+      });
+      setBreakSnapshot(resumed);
+    } catch (e) {
+      console.error(e);
+    }
+  };
 
   const baseDataset = activeMode === 'weekly' 
     ? WEEKLY_EMPLOYEE_CADENCE_PRESET 
@@ -220,7 +274,27 @@ export const MatrixHeatmap: React.FC<MatrixHeatmapProps> = ({
 
   const filteredData = filteredEmployees.map((emp) => {
     const origIdx = employeesList.indexOf(emp);
-    return origIdx >= 0 && baseDataset.data[origIdx] ? baseDataset.data[origIdx] : baseDataset.data[0];
+    const row = origIdx >= 0 && baseDataset.data[origIdx] ? [...baseDataset.data[origIdx]] : [...baseDataset.data[0]];
+
+    // Adjust row for break continuation if this employee is the active target
+    if (
+      showBreaks &&
+      activeMode === 'hourly' &&
+      breakSnapshot &&
+      (emp.toLowerCase().includes('arsal') ||
+        (selectedEmployeeName && emp.toLowerCase().includes(selectedEmployeeName.toLowerCase())))
+    ) {
+      const sIdx = breakSnapshot.time_slot_index;
+      if (sIdx >= 0 && sIdx < row.length) {
+        if (breakSnapshot.status === 'active_break') {
+          row[sIdx] = breakSnapshot.hourly_state.pre_break_heatmap_pct;
+        } else if (breakSnapshot.status === 'resumed') {
+          row[sIdx] = breakSnapshot.hourly_state.adjusted_heatmap_pct || row[sIdx];
+        }
+      }
+    }
+
+    return row;
   });
 
   const currentDataset: HeatmapMatrixDataset = {
@@ -228,6 +302,7 @@ export const MatrixHeatmap: React.FC<MatrixHeatmapProps> = ({
     yLabels: filteredEmployees,
     data: filteredData,
   };
+
 
   const handleExportCSV = () => {
     let csv = `${currentDataset.yAxisLabel}/${currentDataset.xAxisLabel},` + currentDataset.xLabels.join(',') + '\n';
@@ -387,6 +462,113 @@ export const MatrixHeatmap: React.FC<MatrixHeatmapProps> = ({
           <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
             Authorized recess &bull; Zero penalty on activity scoring
           </span>
+        </div>
+      )}
+
+      {/* Break State & Supabase Continuation Controls (Employee & Manager Roles Only) */}
+      {showBreaks && activeMode === 'hourly' && (
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            flexWrap: 'wrap',
+            gap: 12,
+            padding: '12px 18px',
+            borderRadius: 'var(--radius-card-sm)',
+            background:
+              breakSnapshot?.status === 'active_break'
+                ? 'rgba(245, 158, 11, 0.12)'
+                : 'rgba(16, 185, 129, 0.08)',
+            border:
+              breakSnapshot?.status === 'active_break'
+                ? '1px solid rgba(245, 158, 11, 0.35)'
+                : '1px solid rgba(16, 185, 129, 0.25)',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 800 }}>
+              <Database size={15} color="var(--color-primary)" />
+              <span style={{ color: 'var(--text-primary)' }}>Supabase Telemetry Persistence:</span>
+            </div>
+
+            {breakSnapshot?.status === 'active_break' ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span
+                  className="pulse-beacon"
+                  style={{ background: '#f59e0b', width: 8, height: 8 }}
+                />
+                <span style={{ fontWeight: 700, color: '#d97706', fontSize: 12 }}>
+                  {breakSnapshot.break_title} Active — State Saved in Bucket &bull; Resumes from {breakSnapshot.current_time_slot} ({breakSnapshot.hourly_state.pre_break_heatmap_pct}%)
+                </span>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <CheckCircle2 size={15} color="#10b981" />
+                <span style={{ fontWeight: 700, color: '#059669', fontSize: 12 }}>
+                  {breakSnapshot?.status === 'resumed'
+                    ? `Telemetry Continuing from Last State (${breakSnapshot.current_time_slot}: Pre-break ${breakSnapshot.hourly_state.pre_break_heatmap_pct}% + Resumed ${breakSnapshot.hourly_state.post_break_heatmap_pct}% = ${breakSnapshot.hourly_state.adjusted_heatmap_pct}% adjusted total)`
+                    : 'Cloud Snapshot Ready &bull; Preserves heatmap state during Namaz and Coffee breaks'}
+                </span>
+              </div>
+            )}
+          </div>
+
+          {/* Quick Simulation / Operational Action Buttons */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            {breakSnapshot?.status === 'active_break' ? (
+              <button
+                type="button"
+                className="btn-pill btn-pill-primary"
+                style={{ padding: '6px 14px', fontSize: 11, background: '#10b981', color: '#fff' }}
+                onClick={handleResumeBreak}
+                title="End break and resume telemetry tracking from last state"
+              >
+                <Play size={13} />
+                <span>Resume Work & Continue State</span>
+              </button>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  className="btn-pill btn-pill-secondary"
+                  style={{ padding: '5px 12px', fontSize: 11 }}
+                  onClick={() => handleTriggerBreak('coffee')}
+                  title="Save mouse heatmap state to Supabase for 11:00 AM Coffee Break"
+                >
+                  <Coffee size={13} />
+                  <span>Coffee Break (11:00 AM)</span>
+                </button>
+                <button
+                  type="button"
+                  className="btn-pill btn-pill-secondary"
+                  style={{ padding: '5px 12px', fontSize: 11 }}
+                  onClick={() => handleTriggerBreak('namaz')}
+                  title="Save mouse heatmap state to Supabase for 01:00 PM Zuhr Namaz"
+                >
+                  <Moon size={13} />
+                  <span>Namaz Break (01:00 PM)</span>
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Sync feedback notification */}
+      {syncFeedback && (
+        <div
+          style={{
+            padding: '8px 14px',
+            borderRadius: 'var(--radius-card-sm)',
+            background: 'rgba(99, 102, 241, 0.12)',
+            border: '1px solid rgba(99, 102, 241, 0.28)',
+            color: 'var(--color-primary)',
+            fontSize: 12,
+            fontWeight: 600,
+          }}
+        >
+          {syncFeedback}
         </div>
       )}
 
@@ -765,21 +947,60 @@ export const MatrixHeatmap: React.FC<MatrixHeatmapProps> = ({
                   <div
                     style={{
                       display: 'flex',
-                      alignItems: 'center',
+                      flexDirection: 'column',
                       gap: 8,
-                      background: 'rgba(245, 158, 11, 0.15)',
+                      background: 'rgba(245, 158, 11, 0.12)',
                       border: '1px solid rgba(245, 158, 11, 0.32)',
-                      padding: '10px 14px',
+                      padding: '12px 14px',
                       borderRadius: 8,
-                      color: '#d97706',
                       fontSize: 12,
-                      fontWeight: 600,
                     }}
                   >
-                    <span style={{ fontSize: 18 }}>☕</span>
-                    <span>
-                      <strong>Official Coffee Break (11:00 AM – 11:30 AM):</strong> Authorized rest period. Workstation inactivity during this interval is fully excused from performance scoring.
-                    </span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#d97706', fontWeight: 700 }}>
+                      <span style={{ fontSize: 18 }}>☕</span>
+                      <span>Official Coffee Break (11:00 AM – 11:30 AM) &bull; Supabase Telemetry Sync</span>
+                    </div>
+                    <div style={{ fontSize: 11, color: 'var(--text-muted)', lineHeight: 1.4 }}>
+                      Workstation inactivity during this interval is an authorized recess and strictly excused from performance scoring.
+                    </div>
+                    {/* Hourly Progression & Supabase Continuation Details */}
+                    <div
+                      style={{
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(2, 1fr)',
+                        gap: 8,
+                        marginTop: 4,
+                        padding: 8,
+                        borderRadius: 6,
+                        background: 'rgba(255,255,255,0.04)',
+                        border: '1px solid rgba(245, 158, 11, 0.2)',
+                      }}
+                    >
+                      <div>
+                        <span style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Pre-Break State:</span>
+                        <div style={{ fontWeight: 800, color: 'var(--text-primary)' }}>
+                          {breakSnapshot?.hourly_state?.pre_break_heatmap_pct || 46.5}% Intensity (Saved)
+                        </div>
+                      </div>
+                      <div>
+                        <span style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Resumed Activity:</span>
+                        <div style={{ fontWeight: 800, color: '#10b981' }}>
+                          +{breakSnapshot?.hourly_state?.post_break_heatmap_pct || 42.8}% Added on Resume
+                        </div>
+                      </div>
+                      <div>
+                        <span style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Adjusted Hourly Output:</span>
+                        <div style={{ fontWeight: 800, color: 'var(--color-primary)' }}>
+                          {selectedCell.val.toFixed(1)}% Combined Intensity
+                        </div>
+                      </div>
+                      <div>
+                        <span style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Cloud Storage:</span>
+                        <div style={{ fontWeight: 700, color: 'var(--text-secondary)', fontSize: 10, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          Bucket: screenshots &bull; activity_events
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 )}
 
@@ -787,23 +1008,63 @@ export const MatrixHeatmap: React.FC<MatrixHeatmapProps> = ({
                   <div
                     style={{
                       display: 'flex',
-                      alignItems: 'center',
+                      flexDirection: 'column',
                       gap: 8,
-                      background: 'rgba(16, 185, 129, 0.15)',
+                      background: 'rgba(16, 185, 129, 0.12)',
                       border: '1px solid rgba(16, 185, 129, 0.32)',
-                      padding: '10px 14px',
+                      padding: '12px 14px',
                       borderRadius: 8,
-                      color: '#059669',
                       fontSize: 12,
-                      fontWeight: 600,
                     }}
                   >
-                    <span style={{ fontSize: 18 }}>🕌</span>
-                    <span>
-                      <strong>Official Zuhr Namaz & Lunch Break (01:00 PM – 02:00 PM):</strong> Designated prayer and meal recess. Inactivity is certified compliant.
-                    </span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#059669', fontWeight: 700 }}>
+                      <span style={{ fontSize: 18 }}>🕌</span>
+                      <span>Official Zuhr Namaz & Lunch Break (01:00 PM – 02:00 PM)</span>
+                    </div>
+                    <div style={{ fontSize: 11, color: 'var(--text-muted)', lineHeight: 1.4 }}>
+                      Designated prayer and lunch recess. Telemetry is saved in Supabase storage and continues on top of pre-break state when resumed.
+                    </div>
+                    {/* Hourly Progression & Supabase Continuation Details */}
+                    <div
+                      style={{
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(2, 1fr)',
+                        gap: 8,
+                        marginTop: 4,
+                        padding: 8,
+                        borderRadius: 6,
+                        background: 'rgba(255,255,255,0.04)',
+                        border: '1px solid rgba(16, 185, 129, 0.2)',
+                      }}
+                    >
+                      <div>
+                        <span style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Pre-Break State:</span>
+                        <div style={{ fontWeight: 800, color: 'var(--text-primary)' }}>
+                          72.1% Intensity (Preserved)
+                        </div>
+                      </div>
+                      <div>
+                        <span style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Recess Status:</span>
+                        <div style={{ fontWeight: 800, color: '#10b981' }}>
+                          Zero Penalty &bull; Compliant
+                        </div>
+                      </div>
+                      <div>
+                        <span style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Adjusted Hourly Progression:</span>
+                        <div style={{ fontWeight: 800, color: 'var(--color-primary)' }}>
+                          {selectedCell.val.toFixed(1)}% Normalized Total
+                        </div>
+                      </div>
+                      <div>
+                        <span style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Supabase Storage:</span>
+                        <div style={{ fontWeight: 700, color: 'var(--text-secondary)', fontSize: 10 }}>
+                          Bucket: screenshots/telemetry_snapshots
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 )}
+
 
                 <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 12px', background: 'var(--surface-frosted-subdued)', borderRadius: 'var(--radius-card-sm)', fontSize: 12 }}>
                   <span style={{ color: 'var(--text-muted)' }}>Privacy Guarantee:</span>

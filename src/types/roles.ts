@@ -237,3 +237,38 @@ export interface ConfidentialMessageItem {
   is_read: boolean;
   priority: 'normal' | 'urgent' | 'confidential';
 }
+
+export type BreakType = 'coffee' | 'namaz' | 'general';
+
+export interface BreakTelemetryHourlyState {
+  time_slot: string; // e.g. '11:00' or '13:00'
+  slot_index: number;
+  pre_break_keys: number;
+  pre_break_heatmap_pct: number;
+  post_break_keys?: number;
+  post_break_heatmap_pct?: number;
+  adjusted_total_keys?: number;
+  adjusted_heatmap_pct?: number;
+  hourly_delta_pct?: number;
+}
+
+export interface BreakTelemetrySnapshot {
+  id: string;
+  employee_id: string;
+  employee_name: string;
+  break_type: BreakType;
+  break_title: string;
+  started_at: string;
+  resumed_at?: string;
+  break_duration_seconds?: number;
+  current_time_slot: string;
+  time_slot_index: number;
+  heatmap_data: number[][]; // [row][col] activity intensity %
+  keyboard_data: number[][]; // [row][col] keystrokes count
+  hourly_state: BreakTelemetryHourlyState;
+  storage_path?: string;
+  bucket?: string;
+  device_id?: string;
+  status: 'active_break' | 'resumed';
+}
+

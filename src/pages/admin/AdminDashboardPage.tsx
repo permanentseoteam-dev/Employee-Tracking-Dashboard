@@ -836,7 +836,7 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({ onNaviga
               />
               <input
                 type="text"
-                placeholder="Assignee or Subtitle (e.g., Arsal - Win Desktop)..."
+                placeholder="Assignee or Subtitle (e.g., Name - Win Desktop)..."
                 value={newTaskSubtitle}
                 onChange={(e) => setNewTaskSubtitle(e.target.value)}
                 style={{

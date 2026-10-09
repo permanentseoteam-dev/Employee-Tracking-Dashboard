@@ -793,7 +793,11 @@ export const dataService = {
 
         return {
           id: m.id,
-          name: m.full_name || 'Manager',
+          name: formatDisplayName(
+            m.full_name,
+            normalizeDisplayNamePref(m.display_name_pref),
+            'Manager'
+          ),
           email: m.email,
           department: 'Engineering',
           teams: ['Core Backend Team'],

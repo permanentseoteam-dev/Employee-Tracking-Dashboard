@@ -69,7 +69,7 @@ export const AdminTeamsPage: React.FC = () => {
         name: teamName.trim(),
         department: teamDept,
         manager_id: mgr?.id || 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
-        manager_name: mgr?.name || 'Arsal (Manager)',
+        manager_name: mgr?.name || 'Manager',
       });
 
       setIsAddTeamModalOpen(false);
@@ -115,7 +115,7 @@ export const AdminTeamsPage: React.FC = () => {
   // 4. Open Manage Members Modal
   const handleOpenManageMembers = (team: TeamRecord) => {
     setManagingMembersTeam(team);
-    // Find all employees that belong to this team or default to Arsal
+    // Find all employees that belong to this team
     const assigned = employees
       .filter((e) => e.team_name === team.name || e.team_id === team.id || e.department === team.department)
       .map((e) => e.id);
@@ -292,7 +292,7 @@ export const AdminTeamsPage: React.FC = () => {
                 <UserCheck size={15} color="var(--color-secondary)" />
                 <div style={{ fontSize: 12 }}>
                   <span style={{ color: 'var(--text-muted)' }}>Lead Manager: </span>
-                  <strong style={{ color: 'var(--text-primary)' }}>{team.manager_name || 'Arsal (Manager)'}</strong>
+                  <strong style={{ color: 'var(--text-primary)' }}>{team.manager_name || 'Manager'}</strong>
                 </div>
               </div>
               <button
@@ -436,7 +436,7 @@ export const AdminTeamsPage: React.FC = () => {
                     </option>
                   ))}
                   {managers.length === 0 && (
-                    <option value="bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb">Arsal (Manager)</option>
+                    <option value="bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb">Manager</option>
                   )}
                 </select>
               </div>
@@ -519,7 +519,7 @@ export const AdminTeamsPage: React.FC = () => {
                     </option>
                   ))}
                   {managers.length === 0 && (
-                    <option value="bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb">Arsal (Manager)</option>
+                    <option value="bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb">Manager</option>
                   )}
                 </select>
               </div>

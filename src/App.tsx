@@ -175,7 +175,7 @@ export const App: React.FC = () => {
     );
   }
 
-  // Require Supabase sign-in — no more demo "Arsal" bypass when backend is configured
+  // Require Supabase sign-in — no more demo bypass when backend is configured
   if (isConfigured && !isAuthenticated) {
     return <LoginPage />;
   }

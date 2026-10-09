@@ -486,7 +486,7 @@ export const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({ role, manage
                               fontWeight: 700,
                             }}
                           >
-                            Employee Activity &bull; {proj.assigned_employees?.join(', ') || 'Arsal'}
+                            Employee Activity &bull; {proj.assigned_employees?.join(', ') || 'Employee'}
                           </span>
                         )}
                         {proj.scope_type === 'manager_owned' && (

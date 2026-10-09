@@ -76,7 +76,7 @@ export const PerformancePage: React.FC<PerformancePageProps> = ({ dbStats }) => 
           initialPreset="hourly"
           role="employee"
           showBreakSchedule={true}
-          selectedEmployeeName={user?.name || 'Arsal'}
+          selectedEmployeeName={user?.name || 'Employee'}
         />
       )}
 
@@ -84,7 +84,7 @@ export const PerformancePage: React.FC<PerformancePageProps> = ({ dbStats }) => 
         <KeyboardActivityView
           role="employee"
           showBreakSchedule={true}
-          selectedEmployeeName={user?.name || 'Arsal'}
+          selectedEmployeeName={user?.name || 'Employee'}
         />
       )}
 

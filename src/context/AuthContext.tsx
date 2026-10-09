@@ -396,7 +396,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const current = userRef.current;
     // Edit form "Full name" maps to full_name; UI `name` is derived from preference.
     const nextFullName = (patch.name ?? current.full_name ?? current.name).trim();
-    const nextName = nextFullName;
     const nextEmail = (patch.email ?? current.email).trim();
     const nextDept = (patch.department ?? current.department).trim();
     const nextTeam =

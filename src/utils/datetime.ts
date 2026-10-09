@@ -30,7 +30,7 @@ export function getTimeOfDayGreeting(date: Date = new Date()): string {
   return 'Good night';
 }
 
-/** e.g. "Good morning Arsal" */
+/** e.g. "Good morning Alex" */
 export function greetUser(name: string, date: Date = new Date()): string {
   const display = (name || 'there').trim() || 'there';
   return `${getTimeOfDayGreeting(date)} ${display}`;

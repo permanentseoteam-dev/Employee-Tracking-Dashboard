@@ -18,6 +18,24 @@ export function parseCaptureDate(value?: string | null): Date | null {
   return d;
 }
 
+/**
+ * Time-of-day greeting for dashboard headers.
+ * Morning 5–11, Afternoon 12–16, Evening 17–20, Night otherwise.
+ */
+export function getTimeOfDayGreeting(date: Date = new Date()): string {
+  const hour = date.getHours();
+  if (hour >= 5 && hour < 12) return 'Good morning';
+  if (hour >= 12 && hour < 17) return 'Good afternoon';
+  if (hour >= 17 && hour < 21) return 'Good evening';
+  return 'Good night';
+}
+
+/** e.g. "Good morning Arsal" */
+export function greetUser(name: string, date: Date = new Date()): string {
+  const display = (name || 'there').trim() || 'there';
+  return `${getTimeOfDayGreeting(date)} ${display}`;
+}
+
 /** Local wall-clock time for screenshot cards. */
 export function formatCaptureTime(value?: string | null): string {
   const d = parseCaptureDate(value);

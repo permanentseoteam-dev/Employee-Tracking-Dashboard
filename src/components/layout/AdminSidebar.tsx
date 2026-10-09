@@ -9,7 +9,6 @@ import {
   Flame,
   CalendarCheck,
   Coffee,
-  FolderKanban,
   DollarSign,
   Award,
   Settings,
@@ -21,6 +20,7 @@ import {
   Video,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { SidebarProjectsNav } from '../projects/SidebarProjectsNav';
 
 interface AdminSidebarProps {
   currentRoute: string;
@@ -61,7 +61,6 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({ currentRoute, onNavi
       items: [
         { label: 'Attendance & Rules', route: '/admin/attendance', icon: <CalendarCheck size={16} /> },
         { label: 'Break Schedule', route: '/admin/breaks', icon: <Coffee size={16} /> },
-        { label: 'Projects & Folders', route: '/admin/projects', icon: <FolderKanban size={16} /> },
         { label: 'Payroll & Salaries', route: '/admin/finance', icon: <DollarSign size={16} /> },
         { label: 'Performance & Stars', route: '/admin/performance', icon: <Award size={16} /> },
       ],
@@ -145,21 +144,31 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({ currentRoute, onNavi
                     currentRoute === '/admin/monitoring/live' ||
                     currentRoute === '/admin/monitoring/recordings'));
               return (
-                <button
-                  key={item.route}
-                  type="button"
-                  className={`nav-pill-item ${isActive ? 'active' : ''}`}
-                  onClick={() => onNavigate(item.route)}
-                  title={collapsed ? item.label : undefined}
-                  style={{
-                    justifyContent: collapsed ? 'center' : 'flex-start',
-                    padding: collapsed ? '8px 0' : '7px 12px',
-                    fontSize: 12,
-                  }}
-                >
-                  {item.icon}
-                  {!collapsed && <span>{item.label}</span>}
-                </button>
+                <React.Fragment key={item.route}>
+                  <button
+                    type="button"
+                    className={`nav-pill-item ${isActive ? 'active' : ''}`}
+                    onClick={() => onNavigate(item.route)}
+                    title={collapsed ? item.label : undefined}
+                    style={{
+                      justifyContent: collapsed ? 'center' : 'flex-start',
+                      padding: collapsed ? '8px 0' : '7px 12px',
+                      fontSize: 12,
+                    }}
+                  >
+                    {item.icon}
+                    {!collapsed && <span>{item.label}</span>}
+                  </button>
+                  {section.title === 'Workforce' && item.route === '/admin/breaks' && (
+                    <SidebarProjectsNav
+                      role="admin"
+                      projectsRoute="/admin/projects"
+                      isActive={currentRoute.includes('/admin/projects')}
+                      collapsed={collapsed}
+                      onNavigate={onNavigate}
+                    />
+                  )}
+                </React.Fragment>
               );
             })}
           </div>

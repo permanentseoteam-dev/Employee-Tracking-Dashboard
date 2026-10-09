@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Save, RefreshCw, Terminal, Database, Sun, Moon, Settings as SettingsIcon, ShieldCheck } from 'lucide-react';
+import { Save, Terminal, Database, Sun, Moon, Settings as SettingsIcon, ShieldCheck } from 'lucide-react';
 import { api } from '../services/tauriBridge';
 import { useTheme } from '../context/ThemeContext';
 import type { AppConfig, DbStats, LogEntry } from '../types';
 
+import { useAppRefresh } from '../hooks/useAppRefresh';
+import { RefreshButton } from '../components/common/RefreshButton';
 interface SettingsPageProps {
   dbStats: DbStats;
 }
@@ -30,6 +32,8 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ dbStats }) => {
       console.error('Failed to load settings:', e);
     }
   };
+
+  useAppRefresh(loadData);
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -71,10 +75,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ dbStats }) => {
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <button className="btn-pill btn-pill-secondary" onClick={loadData}>
-            <RefreshCw size={14} />
-            <span>Refresh</span>
-          </button>
+          <RefreshButton onRefresh={loadData}   />
         </div>
       </div>
 
@@ -307,9 +308,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ dbStats }) => {
             <Terminal size={18} color="var(--color-secondary)" />
             <span style={{ fontSize: 16, fontWeight: 700 }}>Redacted Agent Diagnostics Logs</span>
           </div>
-          <button className="btn-icon-circle" onClick={loadData} title="Refresh Logs" style={{ width: 32, height: 32 }}>
-            <RefreshCw size={14} />
-          </button>
+          <RefreshButton onRefresh={loadData} iconOnly size={14} title="Refresh Logs" />
         </div>
 
         <div

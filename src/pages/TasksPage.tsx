@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Play, Plus, RefreshCw, X, CheckSquare, FolderKanban } from 'lucide-react';
+import { Play, Plus, X, CheckSquare, FolderKanban } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { dataService } from '../services/dataService';
 import type { TaskItem } from '../types/roles';
 
+import { useAppRefresh } from '../hooks/useAppRefresh';
+import { RefreshButton } from '../components/common/RefreshButton';
 interface TasksPageProps {
   onStartTask: (title: string) => void;
 }
@@ -23,6 +25,8 @@ export const TasksPage: React.FC<TasksPageProps> = ({ onStartTask }) => {
       console.error('Failed to load employee tasks:', err);
     }
   };
+
+  useAppRefresh(loadData);
 
   useEffect(() => {
     loadData();
@@ -115,9 +119,7 @@ export const TasksPage: React.FC<TasksPageProps> = ({ onStartTask }) => {
             <Plus size={15} />
             <span>Add Custom Task</span>
           </button>
-          <button type="button" className="btn-icon-circle" onClick={loadData} title="Refresh tasks">
-            <RefreshCw size={15} />
-          </button>
+          <RefreshButton onRefresh={loadData} iconOnly size={15} title="Refresh tasks" />
         </div>
       </div>
 

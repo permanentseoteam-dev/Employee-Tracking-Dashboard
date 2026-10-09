@@ -1,10 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
-import { ListTodo, Plus, RefreshCw, Save } from 'lucide-react';
+import { ListTodo, Plus, Save } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { dataService } from '../../services/dataService';
 import type { EmployeeRecord, ProjectItem, TaskItem } from '../../types/roles';
 
+import { useAppRefresh } from '../../hooks/useAppRefresh';
+import { RefreshButton } from '../../components/common/RefreshButton';
 export const ProjectManagerTasksPage: React.FC = () => {
   const { user } = useAuth();
   const [tasks, setTasks] = useState<TaskItem[]>([]);
@@ -28,6 +30,8 @@ export const ProjectManagerTasksPage: React.FC = () => {
     setEmployees(empList.filter((e) => e.id !== user.id));
     if (!projectId && projList[0]) setProjectId(projList[0].id);
   };
+
+  useAppRefresh(loadData);
 
   useEffect(() => {
     loadData().catch(console.error);
@@ -113,10 +117,7 @@ export const ProjectManagerTasksPage: React.FC = () => {
             Assign work items on projects you manage and track completion status
           </p>
         </div>
-        <button type="button" className="btn-pill btn-pill-secondary" onClick={() => loadData()}>
-          <RefreshCw size={14} />
-          <span>Refresh</span>
-        </button>
+        <RefreshButton onRefresh={loadData} />
       </div>
 
       <form

@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { FocusSessionWidget } from '../components/timer/FocusSessionWidget';
+import { greetUser } from '../utils/datetime';
 import type { AgentStatusDto, DbStats, SystemInfoDto } from '../types';
 
 interface DashboardPageProps {
@@ -72,7 +73,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
             <span>Workstation Operations</span>
           </div>
           <h1 style={{ fontSize: 32, fontWeight: 800, color: 'var(--text-primary)', letterSpacing: '-0.03em', marginTop: 2 }}>
-            Hello, {user.name}
+            {greetUser(user.name)}
           </h1>
           <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, marginTop: 10 }}>
             <button
@@ -129,8 +130,6 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
           </div>
         </div>
       </div>
-
-
 
       {/* 2. Middle Bento Row */}
       <div className="grid-telemetry-row">

@@ -6,7 +6,6 @@ import {
   Sun,
   Moon,
   Radio,
-  Clock,
   Shield,
   Users,
   User,
@@ -17,10 +16,12 @@ import {
   ChevronDown,
   DollarSign,
   Award,
+  Pencil,
 } from 'lucide-react';
 import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
 import { dataService } from '../../services/dataService';
+import { EditProfileModal } from '../profile/EditProfileModal';
 import type { AgentStatusDto, DbStats } from '../../types';
 import type { UserRole } from '../../types/roles';
 
@@ -50,13 +51,12 @@ export const TopBar: React.FC<TopBarProps> = ({
 }) => {
   const { theme, toggleTheme } = useTheme();
   const { user, role, switchRole, signOut, isAuthenticated } = useAuth();
-  const [realtimeStatus, setRealtimeStatus] = useState<'Live' | 'Reconnecting...' | 'Offline'>('Live');
-  const [sessionSeconds, setSessionSeconds] = useState(16338); // 04:32:18 starting reference
   const [imgError, setImgError] = useState(false);
 
   // Popover States
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
+  const [isEditProfileOpen, setIsEditProfileOpen] = useState(false);
 
   const notifRef = useRef<HTMLDivElement>(null);
   const profileRef = useRef<HTMLDivElement>(null);
@@ -113,29 +113,6 @@ export const TopBar: React.FC<TopBarProps> = ({
   const handleClearAll = () => {
     setNotifications([]);
   };
-
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setSessionSeconds((prev) => prev + 1);
-    }, 1000);
-    return () => clearInterval(timer);
-  }, []);
-
-  useEffect(() => {
-    const unsubscribe = dataService.subscribeToRealtime(
-      () => {},
-      (channelStatus) => {
-        if (channelStatus === 'SUBSCRIBED') {
-          setRealtimeStatus('Live');
-        } else if (channelStatus === 'TIMED_OUT' || channelStatus === 'CHANNEL_ERROR') {
-          setRealtimeStatus('Reconnecting...');
-        } else {
-          setRealtimeStatus('Offline');
-        }
-      }
-    );
-    return () => unsubscribe();
-  }, []);
 
   // Fetch Payment Notification for Employee Only
   const fetchPaymentNotifications = async () => {
@@ -199,15 +176,13 @@ export const TopBar: React.FC<TopBarProps> = ({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const formatElapsedTime = (totalSecs: number) => {
-    const hrs = Math.floor(totalSecs / 3600).toString().padStart(2, '0');
-    const mins = Math.floor((totalSecs % 3600) / 60).toString().padStart(2, '0');
-    const secs = (totalSecs % 60).toString().padStart(2, '0');
-    return `${hrs}:${mins}:${secs}`;
-  };
-
   const handleMarkAllRead = () => {
     setNotifications((prev) => prev.map((n) => ({ ...n, unread: false })));
+  };
+
+  const openEditProfile = () => {
+    setIsProfileOpen(false);
+    setIsEditProfileOpen(true);
   };
 
   const isAvatarUrl = (avatarStr?: string) => {
@@ -232,9 +207,9 @@ export const TopBar: React.FC<TopBarProps> = ({
 
   return (
     <header className="stitch-header" style={{ position: 'relative', zIndex: 100 }}>
-      {/* Brand & Live Activity Badge */}
+      {/* Brand */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '1.25rem' }}>
-        <div className="stitch-brand" onClick={onRefresh} title="Click to refresh telemetry">
+        <div className="stitch-brand" onClick={onRefresh} title="Click to refresh agent status and current page data" role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onRefresh(); } }}>
           <div className="stitch-brand-icon">
             <img src="/app-icon-192.png" alt="Employee Tracking App" width={36} height={36} />
           </div>
@@ -243,15 +218,6 @@ export const TopBar: React.FC<TopBarProps> = ({
             <span className="stitch-brand-sub">Workforce Activity Desktop</span>
           </div>
         </div>
-
-        {/* Live Track — admin & manager only (hidden for employee) */}
-        {role !== 'employee' && (
-          <div className="live-telemetry-badge" title="Live background activity telemetry counter">
-            <span className="pulse-beacon" />
-            <Clock size={13} />
-            <span>Live Track: {formatElapsedTime(sessionSeconds)}</span>
-          </div>
-        )}
       </div>
 
       {/* Global Search Pill Bar */}
@@ -331,29 +297,6 @@ export const TopBar: React.FC<TopBarProps> = ({
               </button>
             );
           })}
-        </div>
-
-        {/* Supabase Realtime Stream Beacon */}
-        <div
-          className="live-telemetry-badge"
-          style={{
-            background:
-              realtimeStatus === 'Live'
-                ? 'var(--status-success-bg)'
-                : realtimeStatus === 'Reconnecting...'
-                ? 'var(--status-warning-bg)'
-                : 'var(--status-neutral-bg)',
-            color:
-              realtimeStatus === 'Live'
-                ? 'var(--status-success)'
-                : realtimeStatus === 'Reconnecting...'
-                ? 'var(--status-warning)'
-                : 'var(--status-neutral-text)',
-          }}
-          title={`Supabase Realtime Telemetry: ${realtimeStatus}`}
-        >
-          <Radio size={12} className={realtimeStatus === 'Live' ? 'pulse-beacon' : ''} />
-          <span>{realtimeStatus}</span>
         </div>
 
         {/* Theme Toggle Button */}
@@ -936,6 +879,14 @@ export const TopBar: React.FC<TopBarProps> = ({
                       {user.department || 'Management'}
                     </span>
                   </div>
+                  {user.team_name ? (
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ color: theme === 'dark' ? '#94a3b8' : '#64748b' }}>Team:</span>
+                      <span style={{ fontWeight: 600, color: theme === 'dark' ? '#f8fafc' : '#0f172a' }}>
+                        {user.team_name}
+                      </span>
+                    </div>
+                  ) : null}
                   <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                     <span style={{ color: theme === 'dark' ? '#94a3b8' : '#64748b' }}>Security Level:</span>
                     <span style={{ color: '#10b981', fontWeight: 700 }}>
@@ -943,6 +894,16 @@ export const TopBar: React.FC<TopBarProps> = ({
                     </span>
                   </div>
                 </div>
+
+                <button
+                  type="button"
+                  onClick={openEditProfile}
+                  className="btn-pill btn-pill-primary"
+                  style={{ width: '100%', justifyContent: 'center', fontSize: 12, padding: '7px 0' }}
+                >
+                  <Pencil size={13} />
+                  <span>Edit Profile</span>
+                </button>
 
                 {/* Sign Out Button */}
                 <button
@@ -963,6 +924,7 @@ export const TopBar: React.FC<TopBarProps> = ({
         </div>
       </div>
 
+      <EditProfileModal open={isEditProfileOpen} onClose={() => setIsEditProfileOpen(false)} />
     </header>
   );
 };

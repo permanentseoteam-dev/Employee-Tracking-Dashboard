@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Clock, Settings, Save, RefreshCw, CheckCircle, AlertTriangle, CalendarCheck } from 'lucide-react';
+import { Clock, Settings, Save, CheckCircle, AlertTriangle, CalendarCheck } from 'lucide-react';
 import { dataService } from '../../services/dataService';
 import type { AttendanceRecordItem, AttendanceRuleConfig } from '../../types/roles';
 
+import { useAppRefresh } from '../../hooks/useAppRefresh';
+import { RefreshButton } from '../../components/common/RefreshButton';
 export const AdminAttendancePage: React.FC = () => {
   const [attendance, setAttendance] = useState<AttendanceRecordItem[]>([]);
   const [rules, setRules] = useState<AttendanceRuleConfig | null>(null);
@@ -22,6 +24,8 @@ export const AdminAttendancePage: React.FC = () => {
       console.error(err);
     }
   };
+
+  useAppRefresh(loadData);
 
   useEffect(() => {
     loadData();
@@ -76,10 +80,7 @@ export const AdminAttendancePage: React.FC = () => {
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <button className="btn-pill btn-pill-secondary" onClick={loadData}>
-            <RefreshCw size={14} />
-            <span>Refresh</span>
-          </button>
+          <RefreshButton onRefresh={loadData}   />
         </div>
       </div>
 

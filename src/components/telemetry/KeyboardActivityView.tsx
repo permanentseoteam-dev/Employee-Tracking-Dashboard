@@ -145,8 +145,9 @@ export const KeyboardActivityView: React.FC<KeyboardActivityViewProps> = ({
       if (snap) setBreakSnapshot(snap);
     });
 
+    const scopeId = role === 'manager' || role === 'employee' ? user.id : undefined;
     const loadLiveKeys = () => {
-      dataService.getLiveKeystrokeTelemetry(role, telemetryFilter).then((res) => {
+      dataService.getLiveKeystrokeTelemetry(role, telemetryFilter, scopeId).then((res) => {
         setLiveKeysArray(res?.hourlyKeysArray?.length ? res.hourlyKeysArray : zeroRow());
         setLiveByEmployee(res?.byEmployeeName || {});
       });
@@ -178,7 +179,11 @@ export const KeyboardActivityView: React.FC<KeyboardActivityViewProps> = ({
 
   const handleTriggerBreak = async (type: BreakType) => {
     try {
-      const keysRes = await dataService.getLiveKeystrokeTelemetry(role, telemetryFilter);
+      const keysRes = await dataService.getLiveKeystrokeTelemetry(
+        role,
+        telemetryFilter,
+        role === 'manager' || role === 'employee' ? user.id : undefined
+      );
       const snap = await dataService.saveBreakTelemetrySnapshot({
         breakType: type,
         employeeId: role === 'employee' ? user.id : undefined,

@@ -25,8 +25,11 @@ import { useAuth } from '../../context/AuthContext';
 import { dataService, isAdminRecord } from '../../services/dataService';
 import { FocusSessionWidget } from '../../components/timer/FocusSessionWidget';
 import { downloadCsv } from '../../utils/csvExport';
+import { greetUser } from '../../utils/datetime';
 import type { EmployeeRecord } from '../../types/roles';
 
+import { useAppRefresh } from '../../hooks/useAppRefresh';
+import { RefreshButton } from '../../components/common/RefreshButton';
 interface ManagerDashboardPageProps {
   onNavigate: (route: string) => void;
 }
@@ -139,6 +142,8 @@ export const ManagerDashboardPage: React.FC<ManagerDashboardPageProps> = ({ onNa
     }
   };
 
+  useAppRefresh(loadData);
+
   useEffect(() => {
     loadData();
     const unsubscribe = dataService.subscribeToRealtime(() => {
@@ -197,9 +202,10 @@ export const ManagerDashboardPage: React.FC<ManagerDashboardPageProps> = ({ onNa
             <span>Team Operations Console</span>
           </div>
           <h1 style={{ fontSize: 32, fontWeight: 800, color: 'var(--text-primary)', letterSpacing: '-0.03em', marginTop: 2 }}>
-            Welcome, {user.name}
+            {greetUser(user.name)}
           </h1>
           <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, marginTop: 10 }}>
+            <RefreshButton onRefresh={loadData} title="Refresh dashboard" />
             <button
               type="button"
               className="btn-pill btn-pill-secondary"

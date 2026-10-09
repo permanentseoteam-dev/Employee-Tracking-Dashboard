@@ -1,19 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
-import {
-  UserPlus,
-  Save,
-  Trash2,
-  RefreshCw,
-  Shield,
-  Eye,
-  Pencil,
-  Users,
-  FolderKanban,
-  Folder,
-  FileText,
-  CheckSquare,
-} from 'lucide-react';
+import { UserPlus, Save, Trash2, Shield, Eye, Pencil, Users, FolderKanban, Folder, FileText, CheckSquare } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { dataService } from '../../services/dataService';
 import { buildResourcePath } from '../../utils/projectAccess';
@@ -26,6 +13,8 @@ import type {
   ProjectTreeItem,
 } from '../../types/roles';
 
+import { useAppRefresh } from '../../hooks/useAppRefresh';
+import { RefreshButton } from '../../components/common/RefreshButton';
 const ALL_EMPLOYEES = '__all__';
 
 export const ProjectAllocationsPage: React.FC = () => {
@@ -65,6 +54,8 @@ export const ProjectAllocationsPage: React.FC = () => {
       console.error(e);
     }
   };
+
+  useAppRefresh(loadData);
 
   useEffect(() => {
     loadData();
@@ -231,10 +222,7 @@ export const ProjectAllocationsPage: React.FC = () => {
             to one employee or everyone.
           </p>
         </div>
-        <button type="button" className="btn-pill btn-pill-secondary" onClick={loadData}>
-          <RefreshCw size={14} />
-          <span>Refresh</span>
-        </button>
+        <RefreshButton onRefresh={loadData} />
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1.2fr)', gap: '1rem' }}>

@@ -1,12 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { RefreshCw, Award, Star, Plus, Minus, X, Flame, Sliders, Keyboard, Lock, ShieldAlert } from 'lucide-react';
+import { Award, Star, Plus, Minus, X, Flame, Sliders, Keyboard, Lock, ShieldAlert } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { dataService, isAdminRecord } from '../../services/dataService';
 import { MatrixHeatmap } from '../../components/telemetry/MatrixHeatmap';
 import { KeyboardActivityView } from '../../components/telemetry/KeyboardActivityView';
 import type { EmployeeRecord } from '../../types/roles';
 
+import { useAppRefresh } from '../../hooks/useAppRefresh';
+import { RefreshButton } from '../../components/common/RefreshButton';
 export const ManagerPerformancePage: React.FC = () => {
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState<'ledger' | 'heatmap' | 'keyboard'>('ledger');
@@ -88,6 +90,8 @@ export const ManagerPerformancePage: React.FC = () => {
       console.error(err);
     }
   };
+
+  useAppRefresh(loadData);
 
   useEffect(() => {
     loadData();
@@ -234,10 +238,7 @@ export const ManagerPerformancePage: React.FC = () => {
             </button>
           </div>
 
-          <button className="btn-pill btn-pill-secondary" onClick={loadData}>
-            <RefreshCw size={14} />
-            <span>Refresh</span>
-          </button>
+          <RefreshButton onRefresh={loadData}   />
           <button
             className="btn-pill btn-pill-primary"
             style={{ background: '#10b981', color: '#ffffff', border: 'none' }}

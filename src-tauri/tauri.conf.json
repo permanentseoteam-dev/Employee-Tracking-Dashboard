@@ -6,7 +6,7 @@
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
-    "beforeBuildCommand": "npm run build",
+    "beforeBuildCommand": "npm run prepare:agent && npm run build",
     "frontendDist": "../dist"
   },
   "app": {
@@ -35,6 +35,18 @@
       "icons/128x128@2x.png",
       "icons/icon.png",
       "icons/icon.ico"
-    ]
+    ],
+    "resources": {
+      "resources/agent/employee-agent.exe": "agent/employee-agent.exe",
+      "resources/agent/agent-manifest.json": "agent/agent-manifest.json",
+      "resources/agent/agent.env.template": "agent/agent.env.template"
+    },
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser",
+        "installerHooks": "./windows/agent-installer-hooks.nsh",
+        "displayLanguageSelector": false
+      }
+    }
   }
 }

@@ -1,3 +1,4 @@
+use crate::agent_supervisor::AgentSupervisor;
 use crate::core::db::{Database, DbStats};
 use crate::platform::PlatformService;
 use serde::Serialize;
@@ -24,15 +25,18 @@ pub struct SystemInfoDto {
 
 #[tauri::command]
 pub fn get_agent_status(
-    _db: State<'_, Database>,
+    supervisor: State<'_, AgentSupervisor>,
 ) -> Result<AgentStatusDto, String> {
+    let report = supervisor.refresh_status();
     Ok(AgentStatusDto {
-        is_running: true,
-        is_online: true,
-        is_active: true,
-        active_task_title: None,
-        agent_version: env!("CARGO_PKG_VERSION").to_string(),
-        last_sync_time: Some(chrono::Utc::now().to_rfc3339()),
+        is_running: report.is_running,
+        is_online: report.is_online,
+        is_active: report.is_active,
+        active_task_title: report.active_task_title,
+        agent_version: report
+            .agent_version
+            .unwrap_or_else(|| env!("CARGO_PKG_VERSION").to_string()),
+        last_sync_time: report.last_sync_time,
     })
 }
 

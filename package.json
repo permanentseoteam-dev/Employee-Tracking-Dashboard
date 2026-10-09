@@ -7,7 +7,10 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "prepare:agent": "node scripts/prepare-agent-bundle.mjs",
+    "build:agent": "cargo build --release --manifest-path employee-agent/Cargo.toml",
+    "build:desktop": "npm run prepare:agent && npm run tauri -- build"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.117.3",

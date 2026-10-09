@@ -9,6 +9,8 @@ export interface UserProfile {
   role: UserRole;
   department?: string;
   team_id?: string;
+  team_name?: string;
+  phone?: string;
   avatar_url?: string;
 }
 
@@ -107,6 +109,148 @@ export const supabaseAuth = {
       return null;
     }
     return data as UserProfile;
+  },
+
+  /**
+   * Upsert profile for any role into public.profiles (+ users / employees mirrors).
+   * Creates the row when missing so demo and signed-in users both persist.
+   */
+  upsertProfile: async (params: {
+    id: string;
+    email: string;
+    full_name: string;
+    role: UserRole;
+    department?: string;
+    team_name?: string | null;
+    phone?: string | null;
+    avatar_url?: string | null;
+    team_id?: string | null;
+  }): Promise<UserProfile> => {
+    if (!isSupabaseConfigured()) {
+      throw new Error('Supabase is not configured');
+    }
+    const now = new Date().toISOString();
+    const row = {
+      id: params.id,
+      email: params.email.trim(),
+      full_name: params.full_name.trim(),
+      role: params.role,
+      department: (params.department || 'General').trim(),
+      team_name: params.team_name?.trim() || null,
+      phone: params.phone?.trim() || null,
+      avatar_url: params.avatar_url || null,
+      team_id: params.team_id || null,
+      updated_at: now,
+    };
+
+    const { data, error } = await supabase
+      .from('profiles')
+      .upsert(row, { onConflict: 'id' })
+      .select('*')
+      .single();
+
+    if (error) throw new Error(error.message);
+
+    // Mirror into users table (ignore if schema differs)
+    try {
+      await supabase.from('users').upsert(
+        {
+          id: params.id,
+          email: row.email,
+          full_name: row.full_name,
+          role: params.role,
+          department: row.department,
+          avatar_url: row.avatar_url,
+          team_name: row.team_name,
+          phone: row.phone,
+        },
+        { onConflict: 'id' }
+      );
+    } catch (e) {
+      console.warn('users mirror skipped:', e);
+    }
+
+    // Employees table — employees + managers often have rows here
+    if (params.role === 'employee' || params.role === 'manager' || params.role === 'project_manager') {
+      try {
+        const { data: existing } = await supabase
+          .from('employees')
+          .select('id')
+          .or(`id.eq.${params.id},user_id.eq.${params.id}`)
+          .maybeSingle();
+        if (existing?.id) {
+          await supabase
+            .from('employees')
+            .update({
+              full_name: row.full_name,
+              email: row.email,
+              department: row.department,
+              avatar_url: row.avatar_url,
+              phone: row.phone,
+              team_name: row.team_name,
+              updated_at: now,
+            })
+            .eq('id', existing.id);
+        }
+      } catch (e) {
+        console.warn('employees mirror skipped:', e);
+      }
+    }
+
+    return data as UserProfile;
+  },
+
+  /** Upload avatar image bytes to the public `avatars` bucket; returns public URL. */
+  uploadAvatar: async (userId: string, fileOrDataUrl: File | string): Promise<string> => {
+    if (!isSupabaseConfigured()) {
+      throw new Error('Supabase is not configured');
+    }
+
+    let blob: Blob;
+    let ext = 'jpg';
+    let contentType = 'image/jpeg';
+
+    if (typeof fileOrDataUrl === 'string') {
+      if (!fileOrDataUrl.startsWith('data:')) {
+        // Already a remote URL — keep as-is
+        return fileOrDataUrl;
+      }
+      const match = fileOrDataUrl.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/);
+      if (!match) throw new Error('Invalid image data');
+      contentType = match[1];
+      ext = contentType.split('/')[1]?.replace('jpeg', 'jpg') || 'jpg';
+      const binary = atob(match[2]);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+      blob = new Blob([bytes], { type: contentType });
+    } else {
+      blob = fileOrDataUrl;
+      contentType = fileOrDataUrl.type || 'image/jpeg';
+      ext = contentType.split('/')[1]?.replace('jpeg', 'jpg') || 'jpg';
+    }
+
+    const path = `${userId}/avatar-${Date.now()}.${ext}`;
+    const { error: upErr } = await supabase.storage.from('avatars').upload(path, blob, {
+      contentType,
+      upsert: true,
+      cacheControl: '3600',
+    });
+    if (upErr) throw new Error(upErr.message);
+
+    const { data } = supabase.storage.from('avatars').getPublicUrl(path);
+    if (!data?.publicUrl) throw new Error('Failed to resolve avatar public URL');
+    return data.publicUrl;
+  },
+
+  updatePassword: async (newPassword: string): Promise<void> => {
+    if (!isSupabaseConfigured()) {
+      throw new Error('Supabase is not configured');
+    }
+    if (!newPassword || newPassword.length < 6) {
+      throw new Error('Password must be at least 6 characters');
+    }
+    const { error } = await supabase.auth.updateUser({ password: newPassword });
+    if (error) throw new Error(error.message);
   },
 };
 

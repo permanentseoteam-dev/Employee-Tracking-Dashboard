@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import {
   LayoutDashboard,
-  FolderKanban,
   UserPlus,
   ListTodo,
   ChevronLeft,
@@ -9,6 +8,7 @@ import {
   Briefcase,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { SidebarProjectsNav } from '../projects/SidebarProjectsNav';
 
 interface ProjectManagerSidebarProps {
   currentRoute: string;
@@ -24,7 +24,6 @@ export const ProjectManagerSidebar: React.FC<ProjectManagerSidebarProps> = ({
 
   const navItems = [
     { label: 'PM Dashboard', route: '/project-manager/dashboard', icon: <LayoutDashboard size={16} /> },
-    { label: 'Projects & Folders', route: '/project-manager/projects', icon: <FolderKanban size={16} /> },
     { label: 'User Allocation', route: '/project-manager/allocations', icon: <UserPlus size={16} /> },
     { label: 'Project Tasks', route: '/project-manager/tasks', icon: <ListTodo size={16} /> },
   ];
@@ -99,21 +98,49 @@ export const ProjectManagerSidebar: React.FC<ProjectManagerSidebarProps> = ({
           {navItems.map((item) => {
             const isActive = currentRoute === item.route;
             return (
-              <button
-                key={item.route}
-                type="button"
-                className={`nav-pill-item ${isActive ? 'active' : ''}`}
-                onClick={() => onNavigate(item.route)}
-                title={collapsed ? item.label : undefined}
-                style={{
-                  justifyContent: collapsed ? 'center' : 'flex-start',
-                  padding: collapsed ? '8px 0' : '7px 12px',
-                  fontSize: 12,
-                }}
-              >
-                {item.icon}
-                {!collapsed && <span>{item.label}</span>}
-              </button>
+              <React.Fragment key={item.route}>
+                {item.route === '/project-manager/dashboard' && (
+                  <>
+                    <button
+                      type="button"
+                      className={`nav-pill-item ${isActive ? 'active' : ''}`}
+                      onClick={() => onNavigate(item.route)}
+                      title={collapsed ? item.label : undefined}
+                      style={{
+                        justifyContent: collapsed ? 'center' : 'flex-start',
+                        padding: collapsed ? '8px 0' : '7px 12px',
+                        fontSize: 12,
+                      }}
+                    >
+                      {item.icon}
+                      {!collapsed && <span>{item.label}</span>}
+                    </button>
+                    <SidebarProjectsNav
+                      role="project_manager"
+                      projectsRoute="/project-manager/projects"
+                      isActive={currentRoute.includes('/project-manager/projects')}
+                      collapsed={collapsed}
+                      onNavigate={onNavigate}
+                    />
+                  </>
+                )}
+                {item.route !== '/project-manager/dashboard' && (
+                  <button
+                    type="button"
+                    className={`nav-pill-item ${isActive ? 'active' : ''}`}
+                    onClick={() => onNavigate(item.route)}
+                    title={collapsed ? item.label : undefined}
+                    style={{
+                      justifyContent: collapsed ? 'center' : 'flex-start',
+                      padding: collapsed ? '8px 0' : '7px 12px',
+                      fontSize: 12,
+                    }}
+                  >
+                    {item.icon}
+                    {!collapsed && <span>{item.label}</span>}
+                  </button>
+                )}
+              </React.Fragment>
             );
           })}
         </div>

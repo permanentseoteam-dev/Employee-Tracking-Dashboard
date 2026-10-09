@@ -4,7 +4,6 @@ import {
   Settings,
   ShieldAlert,
   Save,
-  RefreshCw,
   Terminal,
   Activity,
   Laptop,
@@ -21,6 +20,8 @@ import type { AuditLogItem } from '../../types/roles';
 import type { AgentRuntimeConfig, AppConfig } from '../../types';
 import { DEFAULT_AGENT_RUNTIME_CONFIG } from '../../types';
 
+import { useAppRefresh } from '../../hooks/useAppRefresh';
+import { RefreshButton } from '../../components/common/RefreshButton';
 interface AdminSettingsAuditPageProps {
   initialView?: 'all' | 'settings' | 'audit-logs';
 }
@@ -140,6 +141,8 @@ export const AdminSettingsAuditPage: React.FC<AdminSettingsAuditPageProps> = ({ 
       console.error('Error loading settings and audit data:', err);
     }
   };
+
+  useAppRefresh(loadData);
 
   // Real-time synchronization: subscribe to Postgres changes & interval poll
   useEffect(() => {
@@ -283,10 +286,7 @@ export const AdminSettingsAuditPage: React.FC<AdminSettingsAuditPageProps> = ({ 
             </button>
           </div>
 
-          <button className="btn-pill btn-pill-secondary" onClick={loadData} title="Refresh telemetry sync">
-            <RefreshCw size={14} />
-            <span>Sync Telemetry</span>
-          </button>
+          <RefreshButton onRefresh={loadData} label="Sync Telemetry" title="Refresh telemetry sync" />
         </div>
       </div>
 

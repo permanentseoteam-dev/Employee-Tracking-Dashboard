@@ -12,8 +12,11 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { dataService } from '../../services/dataService';
+import { greetUser } from '../../utils/datetime';
 import type { ProjectItem, ProjectMemberAssignment, TaskItem } from '../../types/roles';
 
+import { useAppRefresh } from '../../hooks/useAppRefresh';
+import { RefreshButton } from '../../components/common/RefreshButton';
 interface ProjectManagerDashboardPageProps {
   onNavigate: (route: string) => void;
 }
@@ -40,6 +43,8 @@ export const ProjectManagerDashboardPage: React.FC<ProjectManagerDashboardPagePr
       console.error(e);
     }
   };
+
+  useAppRefresh(loadData);
 
   useEffect(() => {
     loadData();
@@ -88,12 +93,13 @@ export const ProjectManagerDashboardPage: React.FC<ProjectManagerDashboardPagePr
               marginTop: 2,
             }}
           >
-            Hello, {user.name}
+            {greetUser(user.name)}
           </h1>
           <p style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 4 }}>
             Own projects, control folder access, and allocate contributors across delivery streams
           </p>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 12 }}>
+            <RefreshButton onRefresh={loadData} title="Refresh dashboard" />
             <button
               type="button"
               className="btn-pill btn-pill-primary"

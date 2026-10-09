@@ -1,24 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import {
-  Camera,
-  RefreshCw,
-  Filter,
-  X,
-  Eye,
-  Activity,
-  Monitor,
-  Video,
-  CheckCircle2,
-  Play,
-  Download,
-  Clock,
-  Search,
-  ShieldCheck,
-  Flame,
-  Keyboard,
-  Trash2,
-} from 'lucide-react';
+import { Camera, Filter, X, Eye, Activity, Monitor, Video, CheckCircle2, Play, Download, Clock, Search, ShieldCheck, Flame, Keyboard, Trash2 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { dataService, isAdminRecord } from '../../services/dataService';
 import { MatrixHeatmap } from '../../components/telemetry/MatrixHeatmap';
@@ -26,6 +8,8 @@ import { KeyboardActivityView } from '../../components/telemetry/KeyboardActivit
 import { formatCaptureDateTime, formatCaptureTime } from '../../utils/datetime';
 import type { ScreenshotItem, EmployeeRecord, ScreenRecordingItem } from '../../types/roles';
 
+import { useAppRefresh } from '../../hooks/useAppRefresh';
+import { RefreshButton } from '../../components/common/RefreshButton';
 interface ManagerMonitoringPageProps {
   initialSubTab?: 'heatmaps' | 'keyboard' | 'recordings' | 'live' | 'screenshots';
 }
@@ -48,6 +32,8 @@ export const ManagerMonitoringPage: React.FC<ManagerMonitoringPageProps> = ({ in
   const [recordingSuccessMessage, setRecordingSuccessMessage] = useState<string | null>(null);
   const [screenshotActionMessage, setScreenshotActionMessage] = useState<string | null>(null);
   const [isDeletingScreenshots, setIsDeletingScreenshots] = useState(false);
+  const [liveKeysToday, setLiveKeysToday] = useState(0);
+  const [liveMovesToday, setLiveMovesToday] = useState(0);
 
   useEffect(() => {
     if (initialSubTab) {
@@ -57,18 +43,13 @@ export const ManagerMonitoringPage: React.FC<ManagerMonitoringPageProps> = ({ in
 
   const loadData = async () => {
     try {
-      const [empList, scList, recList] = await Promise.all([
+      const filter = filterEmployeeId === 'all' ? undefined : filterEmployeeId;
+      const [empList, scList, recList, keysLive, mouseLive] = await Promise.all([
         dataService.getEmployees('manager', user.id),
-        dataService.getScreenshots(
-          'manager',
-          user.id,
-          filterEmployeeId === 'all' ? undefined : filterEmployeeId
-        ),
-        dataService.getScreenRecordings(
-          'manager',
-          user.id,
-          filterEmployeeId === 'all' ? undefined : filterEmployeeId
-        ),
+        dataService.getScreenshots('manager', user.id, filter),
+        dataService.getScreenRecordings('manager', user.id, filter),
+        dataService.getLiveKeystrokeTelemetry('manager', filter, user.id),
+        dataService.getLiveMouseTelemetry('manager', filter, user.id),
       ]);
       const safeEmps = empList.filter((e) => !isAdminRecord(e.id, e.name, e.email));
       const safeScs = scList.filter((s) => !isAdminRecord(s.employee_id, s.employee_name));
@@ -77,6 +58,8 @@ export const ManagerMonitoringPage: React.FC<ManagerMonitoringPageProps> = ({ in
       setTeamEmployees(safeEmps);
       setScreenshots(safeScs);
       setRecordings(safeRecs);
+      setLiveKeysToday(keysLive.totalKeys || 0);
+      setLiveMovesToday(mouseLive.totalMoves || 0);
 
       // Keep selected live employee updated in real time
       if (selectedLiveEmployee) {
@@ -89,6 +72,8 @@ export const ManagerMonitoringPage: React.FC<ManagerMonitoringPageProps> = ({ in
       console.error('ManagerMonitoringPage loadData error:', err);
     }
   };
+
+  useAppRefresh(loadData);
 
   // Real-time listener + Automatic Live Polling every 4 seconds
   useEffect(() => {
@@ -232,9 +217,11 @@ export const ManagerMonitoringPage: React.FC<ManagerMonitoringPageProps> = ({ in
       return matchesEmp && matchesSearch;
     });
 
-  const totalActiveCount = filteredEmployees.filter((e) => e.status === 'active').length;
-  const totalKeysAgg = filteredEmployees.reduce((acc, e) => acc + (e.key_press_count || 0), 0);
-  const totalMovesAgg = filteredEmployees.reduce((acc, e) => acc + (e.mouse_move_count || 0), 0);
+  const totalActiveCount = filteredEmployees.filter(
+    (e) => e.status === 'active' || e.status === 'idle' || e.status === 'on_break'
+  ).length;
+  const totalKeysAgg = liveKeysToday;
+  const totalMovesAgg = liveMovesToday;
 
   return (
     <motion.div
@@ -318,9 +305,7 @@ export const ManagerMonitoringPage: React.FC<ManagerMonitoringPageProps> = ({ in
             </button>
           </div>
 
-          <button type="button" className="btn-icon-circle" onClick={loadData} title="Refresh captures">
-            <RefreshCw size={15} />
-          </button>
+          <RefreshButton onRefresh={loadData} iconOnly size={15} title="Refresh captures" />
         </div>
       </div>
 
@@ -344,12 +329,12 @@ export const ManagerMonitoringPage: React.FC<ManagerMonitoringPageProps> = ({ in
             </span>
           </div>
           <span style={{ color: 'var(--text-muted)' }}>&bull;</span>
-          <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
-            Keyboard: <strong style={{ color: 'var(--text-primary)' }}>{totalKeysAgg.toLocaleString()}</strong> events
+          <span style={{ fontSize: 12, color: 'var(--text-secondary)' }} title="Today's real key presses from activity_aggregates">
+            Keyboard: <strong style={{ color: 'var(--text-primary)' }}>{totalKeysAgg.toLocaleString()}</strong> events today
           </span>
           <span style={{ color: 'var(--text-muted)' }}>&bull;</span>
-          <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
-            Mouse Moves: <strong style={{ color: 'var(--text-primary)' }}>{totalMovesAgg.toLocaleString()}</strong>
+          <span style={{ fontSize: 12, color: 'var(--text-secondary)' }} title="Today's real mouse moves from activity_aggregates">
+            Mouse Moves: <strong style={{ color: 'var(--text-primary)' }}>{totalMovesAgg.toLocaleString()}</strong> today
           </span>
         </div>
 

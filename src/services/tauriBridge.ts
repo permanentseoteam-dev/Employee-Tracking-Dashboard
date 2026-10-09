@@ -1,5 +1,12 @@
 import { invoke } from '@tauri-apps/api/core';
-import type { AgentStatusDto, AppConfig, DbStats, LogEntry, SystemInfoDto } from '../types';
+import type {
+  AgentLifecycleStatusDto,
+  AgentStatusDto,
+  AppConfig,
+  DbStats,
+  LogEntry,
+  SystemInfoDto,
+} from '../types';
 
 // Check if running inside Tauri webview
 export const isTauriEnvironment = (): boolean => {
@@ -90,5 +97,85 @@ export const api = {
         message: 'SQLite schema migrations verified [v1: outbox, telemetry, attendance, tasks]',
       },
     ];
+  },
+
+  getAgentLifecycleStatus: async (): Promise<AgentLifecycleStatusDto> => {
+    if (isTauriEnvironment()) {
+      return await invoke<AgentLifecycleStatusDto>('get_agent_lifecycle_status');
+    }
+    return {
+      lifecycle: 'NOT_INSTALLED',
+      process_alive: false,
+      backend_connected: false,
+      collection_ok: false,
+      upload_ok: false,
+      policy_allows_collection: true,
+      deliberately_stopped: false,
+      agent_version: null,
+      install_path: null,
+      last_heartbeat_at: null,
+      last_collection_at: null,
+      last_upload_at: null,
+      last_error: null,
+      diagnostic: 'Desktop app required to manage the monitoring agent.',
+      is_running: false,
+      is_online: false,
+      is_active: false,
+      active_task_title: null,
+      last_sync_time: null,
+    };
+  },
+
+  installMonitoringAgent: async () =>
+    isTauriEnvironment()
+      ? invoke<AgentLifecycleStatusDto>('install_monitoring_agent')
+      : api.getAgentLifecycleStatus(),
+
+  configureMonitoringAgent: async (
+    employeeId: string,
+    supabaseUrl: string,
+    supabaseAnonKey: string
+  ) => {
+    if (!isTauriEnvironment()) return;
+    await invoke('configure_monitoring_agent', {
+      employeeId,
+      supabaseUrl,
+      supabaseAnonKey,
+    });
+  },
+
+  startMonitoringAgent: async () =>
+    isTauriEnvironment()
+      ? invoke<AgentLifecycleStatusDto>('start_monitoring_agent')
+      : api.getAgentLifecycleStatus(),
+
+  stopMonitoringAgent: async () =>
+    isTauriEnvironment()
+      ? invoke<AgentLifecycleStatusDto>('stop_monitoring_agent')
+      : api.getAgentLifecycleStatus(),
+
+  pauseMonitoringAgent: async () =>
+    isTauriEnvironment()
+      ? invoke<AgentLifecycleStatusDto>('pause_monitoring_agent')
+      : api.getAgentLifecycleStatus(),
+
+  resumeMonitoringAgent: async () =>
+    isTauriEnvironment()
+      ? invoke<AgentLifecycleStatusDto>('resume_monitoring_agent')
+      : api.getAgentLifecycleStatus(),
+
+  uninstallMonitoringAgent: async () =>
+    isTauriEnvironment()
+      ? invoke<AgentLifecycleStatusDto>('uninstall_monitoring_agent')
+      : api.getAgentLifecycleStatus(),
+
+  recoverMonitoringAgent: async () =>
+    isTauriEnvironment()
+      ? invoke<AgentLifecycleStatusDto>('recover_monitoring_agent')
+      : api.getAgentLifecycleStatus(),
+
+  setMonitoringAuthorized: async (authorized: boolean) => {
+    if (!isTauriEnvironment()) return;
+    await invoke('set_monitoring_authorized', { authorized });
   },
 };

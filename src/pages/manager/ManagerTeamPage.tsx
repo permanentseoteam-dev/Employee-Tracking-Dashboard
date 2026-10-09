@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { RefreshCw, Users } from 'lucide-react';
+import { Users } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { dataService, isAdminRecord } from '../../services/dataService';
 import type { EmployeeRecord } from '../../types/roles';
 
+import { useAppRefresh } from '../../hooks/useAppRefresh';
+import { RefreshButton } from '../../components/common/RefreshButton';
 export const ManagerTeamPage: React.FC = () => {
   const { user } = useAuth();
   const [employees, setEmployees] = useState<EmployeeRecord[]>([]);
@@ -17,6 +19,8 @@ export const ManagerTeamPage: React.FC = () => {
       console.error(err);
     }
   };
+
+  useAppRefresh(loadData);
 
   useEffect(() => {
     loadData();
@@ -45,10 +49,7 @@ export const ManagerTeamPage: React.FC = () => {
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <button className="btn-pill btn-pill-secondary" onClick={loadData}>
-            <RefreshCw size={14} />
-            <span>Refresh</span>
-          </button>
+          <RefreshButton onRefresh={loadData}   />
         </div>
       </div>
 

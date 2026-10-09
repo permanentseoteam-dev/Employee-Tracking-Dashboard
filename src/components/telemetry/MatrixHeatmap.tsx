@@ -220,8 +220,9 @@ export const MatrixHeatmap: React.FC<MatrixHeatmapProps> = ({
       if (snap) setBreakSnapshot(snap);
     });
 
+    const scopeId = role === 'manager' || role === 'employee' ? user.id : undefined;
     const loadLiveMouse = () => {
-      dataService.getLiveMouseTelemetry(role, telemetryFilter).then((res) => {
+      dataService.getLiveMouseTelemetry(role, telemetryFilter, scopeId).then((res) => {
         setLiveMouseArray(
           res?.hourlyIntensityArray?.length ? res.hourlyIntensityArray : zeroHourlyRow()
         );
@@ -251,9 +252,10 @@ export const MatrixHeatmap: React.FC<MatrixHeatmapProps> = ({
 
   const handleTriggerBreak = async (type: BreakType) => {
     try {
+      const scopeId = role === 'manager' || role === 'employee' ? user.id : undefined;
       const [keysRes, mouseRes] = await Promise.all([
-        dataService.getLiveKeystrokeTelemetry(role, telemetryFilter),
-        dataService.getLiveMouseTelemetry(role, telemetryFilter),
+        dataService.getLiveKeystrokeTelemetry(role, telemetryFilter, scopeId),
+        dataService.getLiveMouseTelemetry(role, telemetryFilter, scopeId),
       ]);
       const snap = await dataService.saveBreakTelemetrySnapshot({
         breakType: type,

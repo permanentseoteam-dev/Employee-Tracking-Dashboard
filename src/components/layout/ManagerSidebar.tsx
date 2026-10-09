@@ -8,13 +8,13 @@ import {
   Keyboard,
   Video,
   CalendarCheck,
-  FolderKanban,
   Award,
   ChevronLeft,
   ChevronRight,
   ShieldCheck,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { SidebarProjectsNav } from '../projects/SidebarProjectsNav';
 
 interface ManagerSidebarProps {
   currentRoute: string;
@@ -34,7 +34,6 @@ export const ManagerSidebar: React.FC<ManagerSidebarProps> = ({ currentRoute, on
     { label: 'Keyboard Activity', route: '/manager/monitoring/keyboard', icon: <Keyboard size={16} /> },
     { label: 'Screen Recordings', route: '/manager/monitoring/recordings', icon: <Video size={16} /> },
     { label: 'Team Attendance', route: '/manager/attendance', icon: <CalendarCheck size={16} /> },
-    { label: 'Projects & Folders', route: '/manager/projects', icon: <FolderKanban size={16} /> },
     { label: 'Performance & Stars', route: '/manager/performance', icon: <Award size={16} /> },
   ];
 
@@ -87,21 +86,31 @@ export const ManagerSidebar: React.FC<ManagerSidebarProps> = ({ currentRoute, on
           {navItems.map((item) => {
             const isActive = currentRoute === item.route;
             return (
-              <button
-                key={item.route}
-                type="button"
-                className={`nav-pill-item ${isActive ? 'active' : ''}`}
-                onClick={() => onNavigate(item.route)}
-                title={collapsed ? item.label : undefined}
-                style={{
-                  justifyContent: collapsed ? 'center' : 'flex-start',
-                  padding: collapsed ? '8px 0' : '8px 12px',
-                  fontSize: 13,
-                }}
-              >
-                {item.icon}
-                {!collapsed && <span>{item.label}</span>}
-              </button>
+              <React.Fragment key={item.route}>
+                <button
+                  type="button"
+                  className={`nav-pill-item ${isActive ? 'active' : ''}`}
+                  onClick={() => onNavigate(item.route)}
+                  title={collapsed ? item.label : undefined}
+                  style={{
+                    justifyContent: collapsed ? 'center' : 'flex-start',
+                    padding: collapsed ? '8px 0' : '8px 12px',
+                    fontSize: 13,
+                  }}
+                >
+                  {item.icon}
+                  {!collapsed && <span>{item.label}</span>}
+                </button>
+                {item.route === '/manager/attendance' && (
+                  <SidebarProjectsNav
+                    role="manager"
+                    projectsRoute="/manager/projects"
+                    isActive={currentRoute.includes('/manager/projects')}
+                    collapsed={collapsed}
+                    onNavigate={onNavigate}
+                  />
+                )}
+              </React.Fragment>
             );
           })}
         </nav>

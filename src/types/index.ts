@@ -1,9 +1,43 @@
+export type AgentLifecycleState =
+  | 'NOT_INSTALLED'
+  | 'INSTALLED'
+  | 'STOPPED'
+  | 'STARTING'
+  | 'RUNNING'
+  | 'PAUSED'
+  | 'RECONNECTING'
+  | 'ERROR'
+  | 'STOPPING';
+
 export interface AgentStatusDto {
   is_running: boolean;
   is_online: boolean;
   is_active: boolean;
   active_task_title: string | null;
   agent_version: string;
+  last_sync_time: string | null;
+}
+
+/** Full supervisor report from Tauri (process + heartbeat + policy). */
+export interface AgentLifecycleStatusDto {
+  lifecycle: AgentLifecycleState;
+  process_alive: boolean;
+  backend_connected: boolean;
+  collection_ok: boolean;
+  upload_ok: boolean;
+  policy_allows_collection: boolean;
+  deliberately_stopped: boolean;
+  agent_version: string | null;
+  install_path: string | null;
+  last_heartbeat_at: string | null;
+  last_collection_at: string | null;
+  last_upload_at: string | null;
+  last_error: string | null;
+  diagnostic: string;
+  is_running: boolean;
+  is_online: boolean;
+  is_active: boolean;
+  active_task_title: string | null;
   last_sync_time: string | null;
 }
 

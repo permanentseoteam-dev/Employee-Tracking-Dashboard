@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { CheckCircle2, Clock, RefreshCw, ArrowUpRight, ArrowDownLeft, ShieldCheck, Calendar } from 'lucide-react';
+import { CheckCircle2, Clock, ArrowUpRight, ArrowDownLeft, ShieldCheck, Calendar } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { dataService } from '../services/dataService';
 import { supabase, isSupabaseConfigured } from '../services/supabaseClient';
@@ -9,6 +9,8 @@ import { formatBreakRange } from '../utils/breakSchedule';
 import type { AgentStatusDto } from '../types';
 import type { AttendanceRecordItem } from '../types/roles';
 
+import { useAppRefresh } from '../hooks/useAppRefresh';
+import { RefreshButton } from '../components/common/RefreshButton';
 interface AttendancePageProps {
   status: AgentStatusDto;
 }
@@ -27,6 +29,8 @@ export const AttendancePage: React.FC<AttendancePageProps> = ({ status }) => {
       console.error('Failed to load employee attendance:', err);
     }
   };
+
+  useAppRefresh(loadData);
 
   useEffect(() => {
     loadData();
@@ -117,9 +121,7 @@ export const AttendancePage: React.FC<AttendancePageProps> = ({ status }) => {
             <Clock size={15} />
             <span>{isPunching ? 'Verifying...' : 'Manual Check-in Punch'}</span>
           </button>
-          <button type="button" className="btn-icon-circle" onClick={loadData} title="Refresh records">
-            <RefreshCw size={15} />
-          </button>
+          <RefreshButton onRefresh={loadData} iconOnly size={15} title="Refresh records" />
         </div>
       </div>
 

@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Search, RefreshCw, UserCheck, ShieldCheck, FolderKanban, Users, Plus, X } from 'lucide-react';
+import { Search, UserCheck, ShieldCheck, FolderKanban, Users, Plus, X } from 'lucide-react';
 import { dataService } from '../../services/dataService';
 import type { ManagerRecord, TeamRecord } from '../../types/roles';
 
+import { useAppRefresh } from '../../hooks/useAppRefresh';
+import { RefreshButton } from '../../components/common/RefreshButton';
 export const AdminManagersPage: React.FC = () => {
   const [managers, setManagers] = useState<ManagerRecord[]>([]);
   const [teams, setTeams] = useState<TeamRecord[]>([]);
@@ -28,6 +30,8 @@ export const AdminManagersPage: React.FC = () => {
       console.error(err);
     }
   };
+
+  useAppRefresh(loadData);
 
   useEffect(() => {
     loadData();
@@ -76,10 +80,7 @@ export const AdminManagersPage: React.FC = () => {
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <button className="btn-pill btn-pill-secondary" onClick={loadData}>
-            <RefreshCw size={14} />
-            <span>Refresh</span>
-          </button>
+          <RefreshButton onRefresh={loadData}   />
           <button className="btn-pill btn-pill-primary" onClick={() => setIsScopeModalOpen(true)}>
             <Plus size={15} />
             <span>Assign Scope</span>

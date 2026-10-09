@@ -17,7 +17,20 @@ pub struct AgentConfig {
 
 impl AgentConfig {
     pub fn load() -> Result<Self, String> {
-        // Attempt to load .env from current directory or parent
+        // Prefer dashboard-installed env, then CWD / parent
+        if let Ok(explicit) = env::var("DOTENV_PATH") {
+            let _ = dotenvy::from_filename(explicit);
+        }
+        let local = env::var("LOCALAPPDATA").unwrap_or_default();
+        if !local.is_empty() {
+            let installed = std::path::PathBuf::from(&local)
+                .join("EmployeeTracking")
+                .join("agent")
+                .join(".env");
+            if installed.is_file() {
+                let _ = dotenvy::from_filename(installed);
+            }
+        }
         let _ = dotenvy::dotenv();
 
         let supabase_url = env::var("SUPABASE_URL")

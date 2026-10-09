@@ -1,33 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import {
-  DollarSign,
-  Send,
-  Plus,
-  Search,
-  RefreshCw,
-  CheckCircle2,
-  Clock,
-  Lock,
-  Mail,
-  Edit2,
-  Eye,
-  X,
-  CreditCard,
-  TrendingUp,
-  Download,
-  ShieldCheck,
-  Calendar,
-} from 'lucide-react';
+import { DollarSign, Send, Plus, Search, CheckCircle2, Clock, Lock, Mail, Edit2, Eye, X, CreditCard, TrendingUp, Download, ShieldCheck, Calendar } from 'lucide-react';
 import { dataService } from '../../services/dataService';
 import { useAuth } from '../../context/AuthContext';
 import type { EmployeeSalaryRecord, ConfidentialMessageItem } from '../../types/roles';
 
+import { useAppRefresh } from '../../hooks/useAppRefresh';
+import { RefreshButton } from '../../components/common/RefreshButton';
 export const AdminFinancePage: React.FC = () => {
   const { user } = useAuth();
   const [salaries, setSalaries] = useState<EmployeeSalaryRecord[]>([]);
   const [sentMessages, setSentMessages] = useState<ConfidentialMessageItem[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [deptFilter, setDeptFilter] = useState('all');
@@ -68,7 +51,6 @@ export const AdminFinancePage: React.FC = () => {
   const [previewMsg, setPreviewMsg] = useState<ConfidentialMessageItem | null>(null);
 
   const loadData = async () => {
-    setIsLoading(true);
     try {
       const [salList, msgList] = await Promise.all([
         dataService.getEmployeeSalaries('admin'),
@@ -78,10 +60,10 @@ export const AdminFinancePage: React.FC = () => {
       setSentMessages(msgList);
     } catch (err) {
       console.error('Failed to load finance data:', err);
-    } finally {
-      setIsLoading(false);
     }
   };
+
+  useAppRefresh(loadData);
 
   useEffect(() => {
     loadData();
@@ -357,15 +339,7 @@ export const AdminFinancePage: React.FC = () => {
             <span>Export CSV</span>
           </button>
 
-          <button
-            type="button"
-            className="btn-pill btn-pill-secondary"
-            onClick={loadData}
-            title="Refresh Ledger"
-          >
-            <RefreshCw size={14} className={isLoading ? 'spin' : ''} />
-            <span>Refresh</span>
-          </button>
+          <RefreshButton onRefresh={loadData} title="Refresh Ledger" />
 
           <button
             type="button"

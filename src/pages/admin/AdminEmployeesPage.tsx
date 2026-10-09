@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Plus, Search, RefreshCw, Smartphone, X, Users, UserCheck } from 'lucide-react';
+import { Plus, Search, Smartphone, X, Users, UserCheck } from 'lucide-react';
 import { dataService } from '../../services/dataService';
 import type { EmployeeRecord, ManagerRecord, TeamRecord } from '../../types/roles';
 
+import { useAppRefresh } from '../../hooks/useAppRefresh';
+import { RefreshButton } from '../../components/common/RefreshButton';
 export const AdminEmployeesPage: React.FC = () => {
   const [employees, setEmployees] = useState<EmployeeRecord[]>([]);
   const [managers, setManagers] = useState<ManagerRecord[]>([]);
@@ -30,6 +32,8 @@ export const AdminEmployeesPage: React.FC = () => {
       console.error(err);
     }
   };
+
+  useAppRefresh(loadData);
 
   useEffect(() => {
     loadData();
@@ -121,10 +125,7 @@ export const AdminEmployeesPage: React.FC = () => {
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <button className="btn-pill btn-pill-secondary" onClick={loadData}>
-            <RefreshCw size={14} />
-            <span>Refresh</span>
-          </button>
+          <RefreshButton onRefresh={loadData}   />
           <button className="btn-pill btn-pill-primary" onClick={() => setIsAddModalOpen(true)}>
             <Plus size={15} />
             <span>Add Employee</span>

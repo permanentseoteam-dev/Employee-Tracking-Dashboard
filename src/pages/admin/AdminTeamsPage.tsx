@@ -1,20 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import {
-  Building2,
-  RefreshCw,
-  UserCheck,
-  Plus,
-  X,
-  Edit2,
-  Trash2,
-  Users,
-  Search,
-  Check,
-} from 'lucide-react';
+import { Building2, UserCheck, Plus, X, Edit2, Trash2, Users, Search, Check } from 'lucide-react';
 import { dataService } from '../../services/dataService';
 import type { TeamRecord, ManagerRecord, EmployeeRecord } from '../../types/roles';
 
+import { useAppRefresh } from '../../hooks/useAppRefresh';
+import { RefreshButton } from '../../components/common/RefreshButton';
 export const AdminTeamsPage: React.FC = () => {
   const [teams, setTeams] = useState<TeamRecord[]>([]);
   const [managers, setManagers] = useState<ManagerRecord[]>([]);
@@ -59,6 +50,8 @@ export const AdminTeamsPage: React.FC = () => {
       console.error('Error loading team data:', err);
     }
   };
+
+  useAppRefresh(loadData);
 
   useEffect(() => {
     loadData();
@@ -198,10 +191,7 @@ export const AdminTeamsPage: React.FC = () => {
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <button className="btn-pill btn-pill-secondary" onClick={loadData} title="Refresh team roster">
-            <RefreshCw size={14} />
-            <span>Refresh</span>
-          </button>
+          <RefreshButton onRefresh={loadData}   title="Refresh team roster" />
           <button className="btn-pill btn-pill-primary" onClick={() => setIsAddTeamModalOpen(true)}>
             <Plus size={15} />
             <span>Create Team</span>

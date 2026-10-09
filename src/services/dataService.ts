@@ -54,12 +54,13 @@ export const ADMIN_USER_ID = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
 
 const TELEMETRY_TIME_SLOTS = ['09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00'];
 
-/** Resolve filter (uuid, email, or display name) to employee id set. null = all allowed. */
+/** Resolve filter (uuid, email, or display name) to employee id set. Empty set = no one. */
 function resolveTelemetryEmployeeIds(
   employees: Array<{ id?: string; user_id?: string; full_name?: string; email?: string; manager_id?: string }>,
   role?: UserRole,
-  employeeFilter?: string
-): Set<string> | null {
+  employeeFilter?: string,
+  managerId?: string
+): Set<string> {
   let pool = employees;
   if (role === 'manager') {
     pool = pool.filter(
@@ -67,6 +68,14 @@ function resolveTelemetryEmployeeIds(
         !isAdminRecord(e.id, e.full_name, e.email) &&
         !isAdminRecord(e.user_id, e.full_name, e.email)
     );
+    if (managerId) {
+      pool = pool.filter(
+        (e) => e.manager_id === managerId || e.id === managerId || e.user_id === managerId
+      );
+    }
+  } else if (role === 'employee' && managerId) {
+    // managerId reused as self id for employee scope when no explicit filter
+    pool = pool.filter((e) => e.id === managerId || e.user_id === managerId);
   }
 
   if (!employeeFilter || employeeFilter === 'all') {
@@ -75,7 +84,7 @@ function resolveTelemetryEmployeeIds(
       if (e.id) ids.add(e.id);
       if (e.user_id) ids.add(e.user_id);
     }
-    return ids.size ? ids : null;
+    return ids;
   }
 
   const raw = employeeFilter.trim();
@@ -287,89 +296,10 @@ function mapDbProjectItem(row: any): ProjectTreeItem {
   };
 }
 
-/** True when PostgREST / Postgres says the relation is missing (not yet migrated). */
-function isMissingRelationError(err: unknown): boolean {
-  if (!err) return false;
-  const e = err as { code?: string; message?: string };
-  const msg = String(e.message || err || '');
-  return (
-    e.code === 'PGRST205' ||
-    e.code === '42P01' ||
-    msg.includes('schema cache') ||
-    msg.includes('does not exist') ||
-    /relation .* does not exist/i.test(msg) ||
-    /Could not find the table/i.test(msg)
-  );
-}
-
-/** null = unknown, true = table usable, false = missing (skip remote table calls). */
-let projectItemsTableOk: boolean | null = null;
-
-const PROJECT_TREE_BUCKET = 'screenshots';
-const projectTreeStoragePath = (projectId: string) => `project-trees/${projectId}.json`;
-
-function mergeProjectItemLists(...lists: ProjectTreeItem[][]): ProjectTreeItem[] {
-  const byId = new Map<string, ProjectTreeItem>();
-  for (const list of lists) {
-    for (const item of list) {
-      const prev = byId.get(item.id);
-      if (!prev) {
-        byId.set(item.id, item);
-        continue;
-      }
-      const prevT = Date.parse(prev.updated_at || prev.created_at || '') || 0;
-      const nextT = Date.parse(item.updated_at || item.created_at || '') || 0;
-      byId.set(item.id, nextT >= prevT ? item : prev);
-    }
-  }
-  return Array.from(byId.values());
-}
-
-async function loadStorageProjectItems(projectId: string): Promise<ProjectTreeItem[]> {
-  if (!projectId || !isSupabaseConfigured()) return [];
-  try {
-    const { data, error } = await supabase.storage
-      .from(PROJECT_TREE_BUCKET)
-      .download(projectTreeStoragePath(projectId));
-    if (error || !data) return [];
-    const text = await data.text();
-    const parsed = JSON.parse(text);
-    return Array.isArray(parsed) ? parsed.map((row) => mapDbProjectItem(row)) : [];
-  } catch {
-    return [];
-  }
-}
-
-async function saveStorageProjectItems(projectId: string, items: ProjectTreeItem[]): Promise<void> {
-  if (!projectId || !isSupabaseConfigured()) return;
-  try {
-    const body = JSON.stringify(items);
-    const blob = new Blob([body], { type: 'application/json' });
-    await supabase.storage
-      .from(PROJECT_TREE_BUCKET)
-      .upload(projectTreeStoragePath(projectId), blob, {
-        upsert: true,
-        contentType: 'application/json',
-      });
-  } catch (e) {
-    console.warn('saveStorageProjectItems:', e);
-  }
-}
-
-/** Persist tree locally + cloud storage; never throws for missing DB table. */
-async function persistProjectItems(projectId: string, items: ProjectTreeItem[]): Promise<void> {
-  saveLocalProjectItems(projectId, items);
-  await saveStorageProjectItems(projectId, items);
-}
-
-/** Raw project tree fetch (no employee ACL filter) — table → storage → local, merged. */
+/** Raw project tree fetch (no employee ACL filter) — avoids circular dataService refs. */
 async function fetchProjectItemsRaw(projectId: string): Promise<ProjectTreeItem[]> {
   if (!projectId) return [];
-  const local = loadLocalProjectItems(projectId);
-  let remote: ProjectTreeItem[] = [];
-  let storage: ProjectTreeItem[] = [];
-
-  if (isSupabaseConfigured() && projectItemsTableOk !== false) {
+  if (isSupabaseConfigured()) {
     try {
       const { data, error } = await supabase
         .from('project_items')
@@ -377,26 +307,16 @@ async function fetchProjectItemsRaw(projectId: string): Promise<ProjectTreeItem[
         .eq('project_id', projectId)
         .order('item_type', { ascending: true })
         .order('name', { ascending: true });
-      if (error) {
-        if (isMissingRelationError(error)) projectItemsTableOk = false;
-      } else if (data) {
-        projectItemsTableOk = true;
-        remote = data.map(mapDbProjectItem);
+      if (!error && data) {
+        const mapped = data.map(mapDbProjectItem);
+        saveLocalProjectItems(projectId, mapped);
+        return mapped;
       }
     } catch (e) {
-      if (isMissingRelationError(e)) projectItemsTableOk = false;
-      else console.warn('fetchProjectItemsRaw supabase fallback:', e);
+      console.warn('fetchProjectItemsRaw supabase fallback:', e);
     }
   }
-
-  storage = await loadStorageProjectItems(projectId);
-  const merged = mergeProjectItemLists(local, storage, remote);
-  saveLocalProjectItems(projectId, merged);
-  // Keep storage in sync when we learned newer local/table rows
-  if (merged.length && (storage.length !== merged.length || local.length !== merged.length)) {
-    void saveStorageProjectItems(projectId, merged);
-  }
-  return merged;
+  return loadLocalProjectItems(projectId);
 }
 
 let localAuditLogs: AuditLogItem[] = [];
@@ -537,6 +457,12 @@ export const dataService = {
       }
       // project_manager: organization roster (non-admin) for allocation — no manager_id filter
 
+      const dayStartIso = (() => {
+        const d = new Date();
+        d.setHours(0, 0, 0, 0);
+        return d.toISOString();
+      })();
+
       const [
         empRes,
         presRes,
@@ -552,7 +478,11 @@ export const dataService = {
         query,
         supabase.from('employee_presence').select('*').order('updated_at', { ascending: false }),
         supabase.from('devices').select('*').order('last_seen_at', { ascending: false }),
-        supabase.from('activity_aggregates').select('*').order('window_end', { ascending: false }),
+        supabase
+          .from('activity_aggregates')
+          .select('*')
+          .gte('window_start', dayStartIso)
+          .order('window_end', { ascending: false }),
         supabase.from('activity_events').select('*').order('occurred_at', { ascending: false }).limit(100),
         supabase.from('screenshot_records').select('*').order('captured_at', { ascending: false }).limit(50),
         supabase.from('screenshots').select('*').order('captured_at', { ascending: false }).limit(50),
@@ -609,8 +539,15 @@ export const dataService = {
         const deviceName = primaryDevice?.device_name || '—';
         const osVersion = primaryDevice?.os_version || '—';
 
-        // 3. Daily Aggregate Telemetry (Keys, Mouse, Active Time, Idle Time)
-        const empAggregates = aggregateRows.filter((a: any) => isMatchingEmp(a.employee_id));
+        // 3. Today's Aggregate Telemetry only (never lifetime totals — those look like fake static readings)
+        const dayStartMs = new Date();
+        dayStartMs.setHours(0, 0, 0, 0);
+        const dayStartTs = dayStartMs.getTime();
+        const empAggregates = aggregateRows.filter((a: any) => {
+          if (!isMatchingEmp(a.employee_id)) return false;
+          const t = new Date(a.window_start || a.window_end || 0).getTime();
+          return Number.isFinite(t) && t >= dayStartTs;
+        });
         const totalActiveSecs = empAggregates.reduce((acc: number, a: any) => acc + (Number(a.active_seconds) || 0), 0);
         const totalIdleSecs = empAggregates.reduce((acc: number, a: any) => acc + (Number(a.idle_seconds) || 0), 0);
         const totalKeys = empAggregates.reduce((acc: number, a: any) => acc + (Number(a.key_press_count) || 0), 0);
@@ -641,19 +578,29 @@ export const dataService = {
           }
         }
 
-        // 6. Presence Status Calculation
+        // 6. Presence Status — expire stale "active" rows (>5 min without activity)
         let status: 'active' | 'idle' | 'offline' | 'on_break' = 'offline';
         let firstActivity = '—';
+        const STALE_MS = 5 * 60 * 1000;
+        const lastActMs = presence?.last_activity_at
+          ? new Date(presence.last_activity_at).getTime()
+          : latestEvent?.occurred_at
+            ? new Date(latestEvent.occurred_at).getTime()
+            : primaryDevice?.last_seen_at
+              ? new Date(primaryDevice.last_seen_at).getTime()
+              : 0;
+        const isFresh = lastActMs > 0 && Date.now() - lastActMs < STALE_MS;
 
         if (presence) {
           status = (presence.status as any) || 'offline';
+          if ((status === 'active' || status === 'idle' || status === 'on_break') && !isFresh) {
+            status = 'offline';
+          }
           if (presence.last_activity_at) {
             const d = new Date(presence.last_activity_at);
             firstActivity = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
           }
-        } else if (e.status) {
-          status = e.status;
-        } else if (latestEvent || totalActiveSecs > 0) {
+        } else if (isFresh && (latestEvent || totalActiveSecs > 0)) {
           status = 'active';
         }
 
@@ -1443,7 +1390,8 @@ export const dataService = {
   // 5e. Real-time Keystrokes Telemetry Stream from Supabase activity_aggregates
   getLiveKeystrokeTelemetry: async (
     role?: UserRole,
-    employeeFilter?: string
+    employeeFilter?: string,
+    scopeUserId?: string
   ): Promise<{
     byHour: Record<string, number>;
     totalKeys: number;
@@ -1461,9 +1409,13 @@ export const dataService = {
     if (!isSupabaseConfigured()) return empty;
 
     try {
-      const { data: empRows } = await supabase
-        .from('employees')
-        .select('id, user_id, full_name, email, manager_id');
+      let empQuery = supabase.from('employees').select('id, user_id, full_name, email, manager_id');
+      if (role === 'manager' && scopeUserId) {
+        empQuery = empQuery.eq('manager_id', scopeUserId);
+      } else if (role === 'employee' && scopeUserId) {
+        empQuery = empQuery.or(`id.eq.${scopeUserId},user_id.eq.${scopeUserId}`);
+      }
+      const { data: empRows } = await empQuery;
 
       const employees = empRows || [];
       const idToName = new Map<string, string>();
@@ -1473,8 +1425,8 @@ export const dataService = {
         if (e.user_id) idToName.set(e.user_id, name);
       }
 
-      const allowedIds = resolveTelemetryEmployeeIds(employees, role, employeeFilter);
-      if (allowedIds && allowedIds.size === 0) return empty;
+      const allowedIds = resolveTelemetryEmployeeIds(employees, role, employeeFilter, scopeUserId);
+      if (allowedIds.size === 0) return empty;
 
       const dayStart = new Date();
       dayStart.setHours(0, 0, 0, 0);
@@ -1498,10 +1450,13 @@ export const dataService = {
         const empId = a.employee_id as string;
         if (!empId) continue;
         if (role === 'manager' && (empId === ADMIN_USER_ID || isAdminRecord(empId))) continue;
-        if (allowedIds && !allowedIds.has(empId)) continue;
+        if (!allowedIds.has(empId)) continue;
 
         const keys = Number(a.key_press_count) || 0;
         if (!keys || !a.window_start) continue;
+
+        // Always count toward today's real total (even outside chart slots)
+        totalKeys += keys;
 
         const date = new Date(a.window_start);
         const hour = date.getHours();
@@ -1511,7 +1466,6 @@ export const dataService = {
         if (!slotStr) continue;
 
         byHour[slotStr] = (byHour[slotStr] || 0) + keys;
-        totalKeys += keys;
 
         const displayName = idToName.get(empId) || empId;
         if (!perEmpHour[displayName]) {
@@ -1542,7 +1496,8 @@ export const dataService = {
   // 5f. Real-time Mouse Telemetry Stream from Supabase activity_aggregates
   getLiveMouseTelemetry: async (
     role?: UserRole,
-    employeeFilter?: string
+    employeeFilter?: string,
+    scopeUserId?: string
   ): Promise<{
     byHour: Record<string, { moves: number; clicks: number; intensityPct: number }>;
     totalMoves: number;
@@ -1561,9 +1516,13 @@ export const dataService = {
     if (!isSupabaseConfigured()) return empty;
 
     try {
-      const { data: empRows } = await supabase
-        .from('employees')
-        .select('id, user_id, full_name, email, manager_id');
+      let empQuery = supabase.from('employees').select('id, user_id, full_name, email, manager_id');
+      if (role === 'manager' && scopeUserId) {
+        empQuery = empQuery.eq('manager_id', scopeUserId);
+      } else if (role === 'employee' && scopeUserId) {
+        empQuery = empQuery.or(`id.eq.${scopeUserId},user_id.eq.${scopeUserId}`);
+      }
+      const { data: empRows } = await empQuery;
       const employees = empRows || [];
       const idToName = new Map<string, string>();
       for (const e of employees) {
@@ -1572,8 +1531,8 @@ export const dataService = {
         if (e.user_id) idToName.set(e.user_id, name);
       }
 
-      const allowedIds = resolveTelemetryEmployeeIds(employees, role, employeeFilter);
-      if (allowedIds && allowedIds.size === 0) return empty;
+      const allowedIds = resolveTelemetryEmployeeIds(employees, role, employeeFilter, scopeUserId);
+      if (allowedIds.size === 0) return empty;
 
       const dayStart = new Date();
       dayStart.setHours(0, 0, 0, 0);
@@ -1598,12 +1557,16 @@ export const dataService = {
         const empId = a.employee_id as string;
         if (!empId) continue;
         if (role === 'manager' && (empId === ADMIN_USER_ID || isAdminRecord(empId))) continue;
-        if (allowedIds && !allowedIds.has(empId)) continue;
+        if (!allowedIds.has(empId)) continue;
 
         const moves = Number(a.mouse_move_count) || 0;
         const clicks = Number(a.mouse_click_count) || 0;
         const active = Number(a.active_seconds) || 0;
         if (!a.window_start) continue;
+
+        // Always count toward today's real totals (even outside chart slots)
+        totalMoves += moves;
+        totalClicks += clicks;
 
         const date = new Date(a.window_start);
         const hour = date.getHours();
@@ -1613,8 +1576,6 @@ export const dataService = {
 
         byHour[targetSlot].moves += moves;
         byHour[targetSlot].clicks += clicks;
-        totalMoves += moves;
-        totalClicks += clicks;
 
         const denom = Math.max(1, active || 60);
         const pct = Math.min(
@@ -2095,9 +2056,7 @@ export const dataService = {
             ? { slides: [{ title: name, body: '' }], format: 'internal_presentation' }
             : null);
 
-    let item: ProjectTreeItem | null = null;
-
-    if (isSupabaseConfigured() && projectItemsTableOk !== false) {
+    if (isSupabaseConfigured()) {
       try {
         const { data, error } = await supabase
           .from('project_items')
@@ -2117,38 +2076,41 @@ export const dataService = {
           .select()
           .single();
         if (!error && data) {
-          projectItemsTableOk = true;
-          item = mapDbProjectItem(data);
-        } else if (error) {
-          if (isMissingRelationError(error)) projectItemsTableOk = false;
-          else console.warn('createProjectItem remote:', error.message);
+          const item = mapDbProjectItem(data);
+          const local = loadLocalProjectItems(params.projectId);
+          saveLocalProjectItems(params.projectId, [item, ...local.filter((x) => x.id !== item.id)]);
+          return item;
+        }
+        if (error && !(error.message.includes('schema cache') || error.code === '42P01')) {
+          throw new Error(error.message);
         }
       } catch (e: any) {
-        if (isMissingRelationError(e)) projectItemsTableOk = false;
-        else console.warn('createProjectItem remote warning, using fallback:', e);
+        if (e?.message && !String(e.message).includes('schema cache') && e?.code !== '42P01') {
+          // fall through to local for missing table; rethrow other errors
+          if (!String(e.message).includes('relation') && !String(e.message).includes('project_items')) {
+            console.warn('createProjectItem remote warning, using local:', e);
+          }
+        }
       }
     }
 
-    if (!item) {
-      item = {
-        id: crypto.randomUUID?.() || `item-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-        project_id: params.projectId,
-        parent_id: params.parentId || null,
-        item_type: params.itemType,
-        name,
-        content: defaultContent,
-        data_url: params.dataUrl || null,
-        mime_type: params.mimeType || null,
-        external_provider: null,
-        external_file_id: null,
-        created_by: params.createdBy || null,
-        created_at: now,
-        updated_at: now,
-      };
-    }
-
-    const next = mergeProjectItemLists(existing, [item]);
-    await persistProjectItems(params.projectId, next);
+    const item: ProjectTreeItem = {
+      id: crypto.randomUUID?.() || `item-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      project_id: params.projectId,
+      parent_id: params.parentId || null,
+      item_type: params.itemType,
+      name,
+      content: defaultContent,
+      data_url: params.dataUrl || null,
+      mime_type: params.mimeType || null,
+      external_provider: null,
+      external_file_id: null,
+      created_by: params.createdBy || null,
+      created_at: now,
+      updated_at: now,
+    };
+    const local = loadLocalProjectItems(params.projectId);
+    saveLocalProjectItems(params.projectId, [item, ...local]);
     return item;
   },
 
@@ -2195,13 +2157,7 @@ export const dataService = {
     }
 
     const now = new Date().toISOString();
-    let updated: ProjectTreeItem = {
-      ...current,
-      ...patch,
-      updated_at: now,
-    };
-
-    if (isSupabaseConfigured() && projectItemsTableOk !== false) {
+    if (isSupabaseConfigured()) {
       try {
         const { data, error } = await supabase
           .from('project_items')
@@ -2211,40 +2167,46 @@ export const dataService = {
           .select()
           .single();
         if (!error && data) {
-          projectItemsTableOk = true;
-          updated = mapDbProjectItem(data);
-        } else if (error && isMissingRelationError(error)) {
-          projectItemsTableOk = false;
+          const item = mapDbProjectItem(data);
+          saveLocalProjectItems(
+            projectId,
+            items.map((i) => (i.id === itemId ? item : i))
+          );
+          return item;
         }
       } catch (e) {
-        if (isMissingRelationError(e)) projectItemsTableOk = false;
-        else console.warn('updateProjectItem remote fallback:', e);
+        console.warn('updateProjectItem remote fallback:', e);
       }
     }
 
-    const next = items.map((i) => (i.id === itemId ? updated : i));
-    await persistProjectItems(projectId, next);
+    const updated: ProjectTreeItem = {
+      ...current,
+      ...patch,
+      updated_at: now,
+    };
+    saveLocalProjectItems(
+      projectId,
+      items.map((i) => (i.id === itemId ? updated : i))
+    );
     return updated;
   },
 
   deleteProjectItem: async (projectId: string, itemId: string): Promise<void> => {
-    if (isSupabaseConfigured() && projectItemsTableOk !== false) {
+    if (isSupabaseConfigured()) {
       try {
         const { error } = await supabase
           .from('project_items')
           .delete()
           .eq('id', itemId)
           .eq('project_id', projectId);
-        if (error) {
-          if (isMissingRelationError(error)) projectItemsTableOk = false;
-          else console.warn('deleteProjectItem remote:', error.message);
+        if (error && !(error.message.includes('schema cache') || error.code === '42P01')) {
+          console.warn('deleteProjectItem remote:', error.message);
         }
       } catch (e) {
-        if (isMissingRelationError(e)) projectItemsTableOk = false;
-        else console.warn('deleteProjectItem remote fallback:', e);
+        console.warn('deleteProjectItem remote fallback:', e);
       }
     }
-    const items = await fetchProjectItemsRaw(projectId);
+    const items = loadLocalProjectItems(projectId);
     const toRemove = new Set<string>([itemId]);
     let changed = true;
     while (changed) {
@@ -2256,7 +2218,7 @@ export const dataService = {
         }
       }
     }
-    await persistProjectItems(
+    saveLocalProjectItems(
       projectId,
       items.filter((i) => !toRemove.has(i.id))
     );
@@ -2278,15 +2240,7 @@ export const dataService = {
       // allow for own projects
     }
     if (!isSupabaseConfigured()) throw new Error('Supabase is not configured');
-    if (projectItemsTableOk !== false) {
-      const { error } = await supabase.from('project_items').delete().eq('project_id', projectId);
-      if (error && isMissingRelationError(error)) projectItemsTableOk = false;
-    }
-    try {
-      await supabase.storage.from(PROJECT_TREE_BUCKET).remove([projectTreeStoragePath(projectId)]);
-    } catch {
-      /* ignore */
-    }
+    await supabase.from('project_items').delete().eq('project_id', projectId);
     const { error } = await supabase.from('projects').delete().eq('id', projectId);
     if (error) throw error;
     try {
@@ -3455,8 +3409,8 @@ export const dataService = {
     if (liveKeys == null || liveHeat == null) {
       try {
         const [keysRes, mouseRes] = await Promise.all([
-          dataService.getLiveKeystrokeTelemetry('employee', employeeId),
-          dataService.getLiveMouseTelemetry('employee', employeeId),
+          dataService.getLiveKeystrokeTelemetry('employee', employeeId, employeeId),
+          dataService.getLiveMouseTelemetry('employee', employeeId, employeeId),
         ]);
         if (liveKeys == null) liveKeys = keysRes.hourlyKeysArray?.[slotIndex] ?? 0;
         if (liveHeat == null) liveHeat = mouseRes.hourlyIntensityArray?.[slotIndex] ?? 0;
@@ -3590,7 +3544,7 @@ export const dataService = {
       typeof params.additionalHeatmapPct === 'number' ? params.additionalHeatmapPct : 0;
     if (typeof params.additionalKeys !== 'number') {
       try {
-        const keysRes = await dataService.getLiveKeystrokeTelemetry('employee', employeeId);
+        const keysRes = await dataService.getLiveKeystrokeTelemetry('employee', employeeId, employeeId);
         const slotIdx = snapshot.time_slot_index ?? 2;
         const liveNow = keysRes.hourlyKeysArray?.[slotIdx] ?? 0;
         postBreakKeys = Math.max(0, liveNow - preBreakKeys);

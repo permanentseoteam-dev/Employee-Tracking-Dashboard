@@ -1,25 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import {
-  Camera,
-  Flame,
-  RefreshCw,
-  Filter,
-  X,
-  Eye,
-  Activity,
-  Monitor,
-  Video,
-  CheckCircle2,
-  Play,
-  Download,
-  Clock,
-  Film,
-  Search,
-  ShieldCheck,
-  Keyboard,
-  Trash2,
-} from 'lucide-react';
+import { Camera, Flame, Filter, X, Eye, Activity, Monitor, Video, CheckCircle2, Play, Download, Clock, Film, Search, ShieldCheck, Keyboard, Trash2 } from 'lucide-react';
 import { dataService } from '../../services/dataService';
 import { useAuth } from '../../context/AuthContext';
 import { MatrixHeatmap } from '../../components/telemetry/MatrixHeatmap';
@@ -27,6 +8,8 @@ import { KeyboardActivityView } from '../../components/telemetry/KeyboardActivit
 import { formatCaptureDateTime, formatCaptureTime } from '../../utils/datetime';
 import type { ScreenshotItem, EmployeeRecord, ScreenRecordingItem } from '../../types/roles';
 
+import { useAppRefresh } from '../../hooks/useAppRefresh';
+import { RefreshButton } from '../../components/common/RefreshButton';
 interface AdminMonitoringPageProps {
   initialSubTab?: 'heatmaps' | 'keyboard' | 'recordings' | 'live' | 'screenshots';
 }
@@ -49,6 +32,8 @@ export const AdminMonitoringPage: React.FC<AdminMonitoringPageProps> = ({ initia
   const [recordingSuccessMessage, setRecordingSuccessMessage] = useState<string | null>(null);
   const [screenshotActionMessage, setScreenshotActionMessage] = useState<string | null>(null);
   const [isDeletingScreenshots, setIsDeletingScreenshots] = useState(false);
+  const [liveKeysToday, setLiveKeysToday] = useState(0);
+  const [liveMovesToday, setLiveMovesToday] = useState(0);
 
   useEffect(() => {
     if (initialSubTab) {
@@ -58,14 +43,19 @@ export const AdminMonitoringPage: React.FC<AdminMonitoringPageProps> = ({ initia
 
   const loadData = async () => {
     try {
-      const [empList, scList, recList] = await Promise.all([
+      const filter = selectedEmployeeId === 'all' ? undefined : selectedEmployeeId;
+      const [empList, scList, recList, keysLive, mouseLive] = await Promise.all([
         dataService.getEmployees('admin'),
-        dataService.getScreenshots('admin', undefined, selectedEmployeeId === 'all' ? undefined : selectedEmployeeId),
-        dataService.getScreenRecordings('admin', undefined, selectedEmployeeId === 'all' ? undefined : selectedEmployeeId),
+        dataService.getScreenshots('admin', undefined, filter),
+        dataService.getScreenRecordings('admin', undefined, filter),
+        dataService.getLiveKeystrokeTelemetry('admin', filter),
+        dataService.getLiveMouseTelemetry('admin', filter),
       ]);
       setEmployees(empList);
       setScreenshots(scList);
       setRecordings(recList);
+      setLiveKeysToday(keysLive.totalKeys || 0);
+      setLiveMovesToday(mouseLive.totalMoves || 0);
 
       // Keep selected live employee updated in real time
       if (selectedLiveEmployee) {
@@ -78,6 +68,8 @@ export const AdminMonitoringPage: React.FC<AdminMonitoringPageProps> = ({ initia
       console.error('AdminMonitoringPage loadData error:', err);
     }
   };
+
+  useAppRefresh(loadData);
 
   // Real-time listener + Automatic Live Polling every 4 seconds
   useEffect(() => {
@@ -211,9 +203,17 @@ export const AdminMonitoringPage: React.FC<AdminMonitoringPageProps> = ({ initia
     return matchesEmp && matchesSearch;
   });
 
-  const totalActiveCount = employees.filter((e) => e.status === 'active').length;
-  const totalKeysAgg = employees.reduce((acc, e) => acc + (e.key_press_count || 0), 0);
-  const totalMovesAgg = employees.reduce((acc, e) => acc + (e.mouse_move_count || 0), 0);
+  const scopedEmployees =
+    selectedEmployeeId === 'all'
+      ? employees
+      : employees.filter(
+          (e) =>
+            e.id === selectedEmployeeId ||
+            e.name.toLowerCase() === selectedEmployeeId.toLowerCase()
+        );
+  const totalActiveCount = scopedEmployees.filter((e) => e.status === 'active' || e.status === 'idle' || e.status === 'on_break').length;
+  const totalKeysAgg = liveKeysToday;
+  const totalMovesAgg = liveMovesToday;
 
   return (
     <motion.div
@@ -297,9 +297,7 @@ export const AdminMonitoringPage: React.FC<AdminMonitoringPageProps> = ({ initia
             </button>
           </div>
 
-          <button type="button" className="btn-icon-circle" onClick={loadData} title="Refresh telemetry">
-            <RefreshCw size={15} />
-          </button>
+          <RefreshButton onRefresh={loadData} iconOnly size={15} title="Refresh telemetry" />
         </div>
       </div>
 
@@ -319,16 +317,16 @@ export const AdminMonitoringPage: React.FC<AdminMonitoringPageProps> = ({ initia
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             <span className="pulse-beacon" />
             <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-primary)' }}>
-              Live Telemetry: {totalActiveCount} / {employees.length} Online
+              Live Telemetry: {totalActiveCount} / {scopedEmployees.length} Online
             </span>
           </div>
           <span style={{ color: 'var(--text-muted)' }}>&bull;</span>
-          <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
-            Keyboard: <strong style={{ color: 'var(--text-primary)' }}>{totalKeysAgg.toLocaleString()}</strong> events
+          <span style={{ fontSize: 12, color: 'var(--text-secondary)' }} title="Today's real key presses from activity_aggregates">
+            Keyboard: <strong style={{ color: 'var(--text-primary)' }}>{totalKeysAgg.toLocaleString()}</strong> events today
           </span>
           <span style={{ color: 'var(--text-muted)' }}>&bull;</span>
-          <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
-            Mouse Moves: <strong style={{ color: 'var(--text-primary)' }}>{totalMovesAgg.toLocaleString()}</strong>
+          <span style={{ fontSize: 12, color: 'var(--text-secondary)' }} title="Today's real mouse moves from activity_aggregates">
+            Mouse Moves: <strong style={{ color: 'var(--text-primary)' }}>{totalMovesAgg.toLocaleString()}</strong> today
           </span>
         </div>
 

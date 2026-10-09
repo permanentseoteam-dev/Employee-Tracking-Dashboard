@@ -25,6 +25,8 @@ import { dataService } from '../../services/dataService';
 import { useAuth } from '../../context/AuthContext';
 import type { ProjectItem, ProjectFolder, ProjectFolderFile } from '../../types/roles';
 
+import { useAppRefresh } from '../../hooks/useAppRefresh';
+import { RefreshButton } from '../../components/common/RefreshButton';
 interface ProjectWorkspaceProps {
   role: 'admin' | 'manager' | 'project_manager' | 'employee';
   managerId?: string;
@@ -275,6 +277,8 @@ export const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({ role, manage
     p.code.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
+  useAppRefresh(loadProjects);
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 8 }}
@@ -301,6 +305,7 @@ export const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({ role, manage
 
         {/* Action Controls */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <RefreshButton onRefresh={loadProjects} title="Refresh projects" />
           {selectedProject ? (
             <>
               <button

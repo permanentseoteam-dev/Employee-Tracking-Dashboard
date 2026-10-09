@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Coffee, Moon, Save, RefreshCw, Clock, CheckCircle2 } from 'lucide-react';
+import { Coffee, Moon, Save, Clock, CheckCircle2 } from 'lucide-react';
 import { dataService } from '../../services/dataService';
 import { useAuth } from '../../context/AuthContext';
 import type { BreakScheduleConfig, BreakWindowConfig } from '../../types/roles';
@@ -11,6 +11,8 @@ import {
   mergeBreakSchedule,
 } from '../../utils/breakSchedule';
 
+import { useAppRefresh } from '../../hooks/useAppRefresh';
+import { RefreshButton } from '../../components/common/RefreshButton';
 type BreakKey = 'coffee' | 'zuhr' | 'asr';
 
 const BREAK_META: Record<
@@ -57,6 +59,8 @@ export const AdminBreakSchedulePage: React.FC = () => {
       setSchedule(mergeBreakSchedule(DEFAULT_BREAK_SCHEDULE));
     }
   };
+
+  useAppRefresh(loadData);
 
   useEffect(() => {
     loadData();
@@ -136,10 +140,7 @@ export const AdminBreakSchedulePage: React.FC = () => {
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <button type="button" className="btn-pill btn-pill-secondary" onClick={loadData}>
-            <RefreshCw size={14} />
-            <span>Refresh</span>
-          </button>
+          <RefreshButton onRefresh={loadData} />
           <button type="button" className="btn-pill btn-pill-secondary" onClick={handleResetDefaults}>
             <span>Reset Defaults</span>
           </button>

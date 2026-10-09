@@ -40,8 +40,9 @@ import { ProjectManagerTasksPage } from './pages/project-manager/ProjectManagerT
 import { ProjectWorkspace } from './components/projects/ProjectWorkspace';
 import { ProjectExplorer } from './components/projects/ProjectExplorer';
 
-import { api } from './services/tauriBridge';
+import { api, isTauriEnvironment } from './services/tauriBridge';
 import { useAuth } from './context/AuthContext';
+import { requestAppRefresh } from './utils/appRefresh';
 import type { AgentStatusDto, DbStats, NavTab, SystemInfoDto } from './types';
 
 import { ErrorBoundary } from './components/ErrorBoundary';
@@ -104,11 +105,57 @@ export const App: React.FC = () => {
     }
   }, []);
 
+  /** Brand / TopBar refresh: agent stats + signal every page to reload its data. */
+  const handleGlobalRefresh = useCallback(async () => {
+    await fetchState();
+    requestAppRefresh();
+  }, [fetchState]);
+
   useEffect(() => {
     fetchState();
     const timer = setInterval(fetchState, 10000);
     return () => clearInterval(timer);
   }, [fetchState]);
+
+  // Silent agent bootstrap for employees (no UI panel) — desktop only
+  useEffect(() => {
+    if (role !== 'employee' || !isTauriEnvironment() || !user?.id) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        await api.setMonitoringAuthorized(true);
+        const url = (import.meta as any).env?.VITE_SUPABASE_URL || '';
+        const key = (import.meta as any).env?.VITE_SUPABASE_ANON_KEY || '';
+        if (url && key) {
+          await api.configureMonitoringAgent(user.id, url, key);
+        }
+        const current = await api.getAgentLifecycleStatus();
+        if (cancelled) return;
+        if (current.lifecycle === 'NOT_INSTALLED') {
+          await api.installMonitoringAgent();
+        }
+        const again = await api.getAgentLifecycleStatus();
+        if (
+          !cancelled &&
+          !again.process_alive &&
+          !again.deliberately_stopped &&
+          again.policy_allows_collection
+        ) {
+          await api.startMonitoringAgent();
+        }
+        await fetchState();
+      } catch (e) {
+        console.warn('Monitoring agent bootstrap:', e);
+      }
+    })();
+    const recover = setInterval(() => {
+      api.recoverMonitoringAgent().catch(() => undefined);
+    }, 30000);
+    return () => {
+      cancelled = true;
+      clearInterval(recover);
+    };
+  }, [role, user?.id, fetchState]);
 
   const handleTabChange = (tab: NavTab) => {
     navigate(`/employee/${tab}`);
@@ -183,7 +230,7 @@ export const App: React.FC = () => {
         <TopBar
           status={status}
           dbStats={dbStats}
-          onRefresh={fetchState}
+          onRefresh={handleGlobalRefresh}
           searchQuery={searchQuery}
           onSearchChange={setSearchQuery}
         />
@@ -234,7 +281,7 @@ export const App: React.FC = () => {
         <TopBar
           status={status}
           dbStats={dbStats}
-          onRefresh={fetchState}
+          onRefresh={handleGlobalRefresh}
           searchQuery={searchQuery}
           onSearchChange={setSearchQuery}
         />
@@ -303,7 +350,7 @@ export const App: React.FC = () => {
         <TopBar
           status={status}
           dbStats={dbStats}
-          onRefresh={fetchState}
+          onRefresh={handleGlobalRefresh}
           searchQuery={searchQuery}
           onSearchChange={setSearchQuery}
         />
@@ -366,7 +413,7 @@ export const App: React.FC = () => {
       onTabChange={handleTabChange}
       status={status}
       dbStats={dbStats}
-      onRefresh={fetchState}
+      onRefresh={handleGlobalRefresh}
     >
       <ErrorBoundary fallbackTitle="Employee Section Error">
         {renderEmployeeContent()}

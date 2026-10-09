@@ -37,6 +37,8 @@ import type {
   UserRole,
 } from '../../types/roles';
 
+import { useAppRefresh } from '../../hooks/useAppRefresh';
+import { RefreshButton } from '../../components/common/RefreshButton';
 interface ProjectExplorerProps {
   role: UserRole;
   managerId?: string;
@@ -148,14 +150,17 @@ export const ProjectExplorer: React.FC<ProjectExplorerProps> = ({ role, managerI
     [isEmployee, user.id]
   );
 
+  const refreshExplorer = useCallback(async () => {
+    await loadProjects();
+    const openIds = Array.from(expandedProjects);
+    await Promise.all(openIds.map((id) => loadItems(id)));
+  }, [loadProjects, loadItems, expandedProjects]);
+
+  useAppRefresh(refreshExplorer);
+
   const ownsProject = (projectId: string) => {
     const p = projects.find((x) => x.id === projectId);
     return !!(p && (p.manager_id === user.id || p.manager_id === managerId));
-  };
-
-  const projectAccessLevel = (projectId: string): ProjectAccessLevel | null => {
-    if (isPrivileged || ownsProject(projectId)) return 'admin';
-    return resolveProjectAccess(grantsByProject[projectId] || []);
   };
 
   const itemAccessLevel = (projectId: string, itemId: string): ProjectAccessLevel | null => {
@@ -883,10 +888,10 @@ export const ProjectExplorer: React.FC<ProjectExplorerProps> = ({ role, managerI
             }}
           >
             <FolderKanban size={14} color="var(--color-secondary)" />
-            <span>Projects Explorer</span>
+            <span>Projects & Folders</span>
           </div>
           <h1 style={{ fontSize: 28, fontWeight: 800, color: 'var(--text-primary)', letterSpacing: '-0.03em', marginTop: 2 }}>
-            Projects
+            Projects & Folders
           </h1>
           <p style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 4 }}>
             Drive-style hierarchy — expand projects, nest folders, and create internal documents
@@ -904,6 +909,7 @@ export const ProjectExplorer: React.FC<ProjectExplorerProps> = ({ role, managerI
               aria-label="Search projects and items"
             />
           </div>
+          <RefreshButton onRefresh={refreshExplorer} title="Refresh projects tree" />
           <button type="button" className="btn-pill btn-pill-primary" onClick={() => setNewProjectOpen(true)}>
             <Plus size={15} />
             <span>New Project</span>

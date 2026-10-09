@@ -1,22 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import {
-  RefreshCw,
-  Star,
-  Award,
-  Zap,
-  Plus,
-  Minus,
-  X,
-  Flame,
-  Edit2,
-  Trash2,
-  Sliders,
-} from 'lucide-react';
+import { Star, Award, Zap, Plus, Minus, X, Flame, Edit2, Trash2, Sliders } from 'lucide-react';
 import { dataService } from '../../services/dataService';
 import { MatrixHeatmap } from '../../components/telemetry/MatrixHeatmap';
 import type { StarRuleItem, EmployeeRecord } from '../../types/roles';
 
+import { useAppRefresh } from '../../hooks/useAppRefresh';
+import { RefreshButton } from '../../components/common/RefreshButton';
 export const AdminPerformancePage: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'rules' | 'heatmap'>('rules');
   const [starRules, setStarRules] = useState<StarRuleItem[]>([]);
@@ -58,6 +48,8 @@ export const AdminPerformancePage: React.FC = () => {
       console.error('Error loading performance data:', err);
     }
   };
+
+  useAppRefresh(loadData);
 
   useEffect(() => {
     loadData();
@@ -248,10 +240,7 @@ export const AdminPerformancePage: React.FC = () => {
             </button>
           </div>
 
-          <button className="btn-pill btn-pill-secondary" onClick={loadData} title="Refresh performance standings">
-            <RefreshCw size={14} />
-            <span>Refresh</span>
-          </button>
+          <RefreshButton onRefresh={loadData}   title="Refresh performance standings" />
           <button
             className="btn-pill btn-pill-primary"
             style={{ background: '#10b981', color: '#ffffff', border: 'none' }}

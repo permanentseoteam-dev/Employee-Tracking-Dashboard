@@ -5,6 +5,30 @@ import { supabaseAuth } from '../services/supabaseService';
 import type { UserProfile, UserRole } from '../types/roles';
 import { roleFromPath, rolePathPrefix } from '../types/roles';
 
+/** Per-role local edits key — keeps admin/manager/PM/employee profiles separate. */
+function demoProfileKey(role: UserRole, id: string) {
+  return `stitch_profile_edit_${role}_${id}`;
+}
+
+function withDemoProfileEdits(base: UserProfile): UserProfile {
+  try {
+    const raw = localStorage.getItem(demoProfileKey(base.role, base.id));
+    if (!raw) return base;
+    const saved = JSON.parse(raw);
+    return {
+      ...base,
+      name: saved.name || base.name,
+      email: saved.email || base.email,
+      department: saved.department || base.department,
+      team_name: saved.team_name || base.team_name,
+      phone: saved.phone || base.phone,
+      avatar: saved.avatar || base.avatar,
+    };
+  } catch {
+    return base;
+  }
+}
+
 /** Demo-only profiles used when Supabase auth is not signed in. */
 const DEFAULT_PROFILES: Record<UserRole, UserProfile> = {
   admin: {
@@ -64,6 +88,17 @@ interface AuthContextType {
   signUp: (email: string, password: string, fullName: string, role?: UserRole) => Promise<void>;
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
+  /** Update editable profile fields for the current user (any role). Persists to profiles + avatars bucket when configured. */
+  updateProfile: (patch: {
+    name?: string;
+    email?: string;
+    department?: string;
+    team_name?: string;
+    phone?: string;
+    avatar?: string;
+    avatarFile?: File | null;
+    newPassword?: string;
+  }) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -89,7 +124,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const initialRole = getRoleFromPath(initialRoute);
 
   const [role, setRole] = useState<UserRole>(initialRole);
-  const [user, setUser] = useState<UserProfile>(DEFAULT_PROFILES[initialRole]);
+  const [user, setUser] = useState<UserProfile>(() =>
+    withDemoProfileEdits(DEFAULT_PROFILES[initialRole])
+  );
   const [supabaseUser, setSupabaseUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
@@ -127,9 +164,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           name: p.full_name || sUser.email?.split('@')[0] || 'User',
           email: p.email || sUser.email || '',
           role: uRole,
-          avatar: (p.full_name || sUser.email || 'U').substring(0, 2).toUpperCase(),
+          avatar:
+            p.avatar_url ||
+            (p.full_name || sUser.email || 'U').substring(0, 2).toUpperCase(),
           department: p.department || 'General',
           team_id: p.team_id,
+          team_name: p.team_name || undefined,
+          phone: p.phone || undefined,
         });
         const safeRoute = clampRouteToRole(getRouteFromHash(), uRole);
         setCurrentRoute(safeRoute);
@@ -158,7 +199,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const targetRole = getRoleFromPath(route);
         setRole((prevRole) => {
           if (prevRole !== targetRole) {
-            setUser(DEFAULT_PROFILES[targetRole]);
+            setUser(withDemoProfileEdits(DEFAULT_PROFILES[targetRole]));
             return targetRole;
           }
           return prevRole;
@@ -235,7 +276,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     setRole(newRole);
-    setUser(DEFAULT_PROFILES[newRole]);
+    setUser(withDemoProfileEdits(DEFAULT_PROFILES[newRole]));
     const defaultRoute = `/${rolePathPrefix(newRole)}/dashboard`;
     setCurrentRoute(defaultRoute);
     if (window.location.hash !== `#${defaultRoute}`) {
@@ -251,7 +292,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     if (!lockedRole && targetRole !== role) {
       setRole(targetRole);
-      setUser(DEFAULT_PROFILES[targetRole]);
+      setUser(withDemoProfileEdits(DEFAULT_PROFILES[targetRole]));
     } else if (lockedRole) {
       setRole(lockedRole);
     }
@@ -312,7 +353,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setSession(null);
       sessionRef.current = null;
       profileRoleRef.current = null;
-      setUser(DEFAULT_PROFILES[role]);
+      setUser(withDemoProfileEdits(DEFAULT_PROFILES[role]));
     } finally {
       setIsLoading(false);
     }
@@ -321,6 +362,109 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const refreshProfile = async () => {
     if (supabaseUser) {
       await syncSupabaseProfile(supabaseUser);
+    }
+  };
+
+  const updateProfile = async (patch: {
+    name?: string;
+    email?: string;
+    department?: string;
+    team_name?: string;
+    phone?: string;
+    avatar?: string;
+    avatarFile?: File | null;
+    newPassword?: string;
+  }) => {
+    const current = userRef.current;
+    const nextName = (patch.name ?? current.name).trim();
+    const nextEmail = (patch.email ?? current.email).trim();
+    const nextDept = (patch.department ?? current.department).trim();
+    const nextTeam =
+      patch.team_name !== undefined ? patch.team_name.trim() : current.team_name || '';
+    const nextPhone = patch.phone !== undefined ? patch.phone.trim() : current.phone || '';
+    let nextAvatar =
+      patch.avatar !== undefined
+        ? patch.avatar.trim() || nextName.substring(0, 2).toUpperCase()
+        : current.avatar;
+
+    if (!nextName) throw new Error('Name is required');
+    if (!nextEmail || !nextEmail.includes('@')) throw new Error('A valid email is required');
+
+    const uid = current.id;
+    const signedIn = Boolean(sessionRef.current?.user);
+
+    if (patch.newPassword && !signedIn) {
+      throw new Error('Sign in to change your password');
+    }
+
+    // Prefer uploading photo to avatars bucket whenever Supabase is configured
+    if (isConfigured && (patch.avatarFile || (nextAvatar && nextAvatar.startsWith('data:')))) {
+      try {
+        nextAvatar = await supabaseAuth.uploadAvatar(
+          uid,
+          patch.avatarFile || nextAvatar
+        );
+      } catch (e: any) {
+        // Keep data-URL locally if bucket missing; still save profile row
+        console.warn('Avatar upload failed, keeping local preview:', e?.message || e);
+      }
+    }
+
+    if (isConfigured) {
+      const avatarUrl =
+        nextAvatar.startsWith('http') || nextAvatar.startsWith('/') ? nextAvatar : null;
+      await supabaseAuth.upsertProfile({
+        id: uid,
+        email: nextEmail,
+        full_name: nextName,
+        role: current.role,
+        department: nextDept || 'General',
+        team_name: nextTeam || null,
+        phone: nextPhone || null,
+        avatar_url: avatarUrl,
+        team_id: current.team_id || null,
+      });
+      if (patch.newPassword) {
+        await supabaseAuth.updatePassword(patch.newPassword);
+      }
+    }
+
+    const updated: UserProfile = {
+      ...current,
+      name: nextName,
+      email: nextEmail,
+      department: nextDept || 'General',
+      team_name: nextTeam || undefined,
+      phone: nextPhone || undefined,
+      avatar: nextAvatar,
+    };
+    setUser(updated);
+    userRef.current = updated;
+
+    try {
+      localStorage.setItem(
+        demoProfileKey(updated.role, updated.id),
+        JSON.stringify({
+          name: updated.name,
+          email: updated.email,
+          department: updated.department,
+          team_name: updated.team_name,
+          phone: updated.phone,
+          avatar: updated.avatar,
+        })
+      );
+    } catch {
+      /* ignore */
+    }
+
+    if (signedIn && supabaseUser) {
+      await syncSupabaseProfile(supabaseUser);
+      setUser((prev) => ({
+        ...prev,
+        avatar: nextAvatar || prev.avatar,
+        team_name: nextTeam || prev.team_name,
+        phone: nextPhone || prev.phone,
+      }));
     }
   };
 
@@ -341,6 +485,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         signUp,
         signOut,
         refreshProfile,
+        updateProfile,
       }}
     >
       {children}

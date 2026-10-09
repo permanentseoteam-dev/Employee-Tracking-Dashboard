@@ -3,11 +3,11 @@ import {
   LayoutDashboard,
   CalendarCheck,
   CheckSquare,
-  FolderKanban,
   Award,
   Timer,
 } from 'lucide-react';
 import type { AgentStatusDto, NavTab } from '../../types';
+import { SidebarProjectsNav } from '../projects/SidebarProjectsNav';
 
 interface SidebarProps {
   currentTab: NavTab;
@@ -24,7 +24,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard size={17} /> },
     { id: 'attendance', label: 'Attendance', icon: <CalendarCheck size={17} /> },
     { id: 'tasks', label: 'My Tasks', icon: <CheckSquare size={17} /> },
-    { id: 'projects', label: 'Projects', icon: <FolderKanban size={17} /> },
     { id: 'performance', label: 'Performance', icon: <Award size={17} /> },
     { id: 'timer', label: 'Timer & Activity', icon: <Timer size={17} /> },
   ];
@@ -59,20 +58,30 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {navItems.map((item) => {
           const isActive = currentTab === item.id;
           return (
-            <button
-              key={item.id}
-              className={`nav-pill-item ${isActive ? 'active' : ''}`}
-              onClick={() => onTabChange(item.id)}
-              style={{
-                width: '100%',
-                justifyContent: 'flex-start',
-                padding: '9px 14px',
-                fontSize: 13,
-              }}
-            >
-              {item.icon}
-              <span>{item.label}</span>
-            </button>
+            <React.Fragment key={item.id}>
+              <button
+                type="button"
+                className={`nav-pill-item ${isActive ? 'active' : ''}`}
+                onClick={() => onTabChange(item.id)}
+                style={{
+                  width: '100%',
+                  justifyContent: 'flex-start',
+                  padding: '9px 14px',
+                  fontSize: 13,
+                }}
+              >
+                {item.icon}
+                <span>{item.label}</span>
+              </button>
+              {item.id === 'tasks' && (
+                <SidebarProjectsNav
+                  role="employee"
+                  projectsRoute="projects"
+                  isActive={currentTab === 'projects'}
+                  onNavigate={() => onTabChange('projects')}
+                />
+              )}
+            </React.Fragment>
           );
         })}
       </nav>
@@ -102,7 +111,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <span>Engine:</span>
           <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>v{status.agent_version}</span>
         </div>
-
       </div>
     </aside>
   );

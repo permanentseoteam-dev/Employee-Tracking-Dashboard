@@ -23,8 +23,11 @@ import { dataService } from '../../services/dataService';
 import { useAuth } from '../../context/AuthContext';
 import { FocusSessionWidget } from '../../components/timer/FocusSessionWidget';
 import { downloadCsv } from '../../utils/csvExport';
+import { greetUser } from '../../utils/datetime';
 import type { EmployeeRecord } from '../../types/roles';
 
+import { useAppRefresh } from '../../hooks/useAppRefresh';
+import { RefreshButton } from '../../components/common/RefreshButton';
 interface AdminDashboardPageProps {
   onNavigate: (route: string) => void;
 }
@@ -86,6 +89,8 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({ onNaviga
       console.error('Failed to load dashboard data:', err);
     }
   };
+
+  useAppRefresh(loadData);
 
   useEffect(() => {
     loadData();
@@ -230,11 +235,12 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({ onNaviga
               <span>Overview Operations Console</span>
             </div>
             <h1 style={{ fontSize: 32, fontWeight: 800, color: 'var(--text-primary)', letterSpacing: '-0.03em', marginTop: 2 }}>
-              Good Morning {user.name}
+              {greetUser(user.name)}
             </h1>
           </div>
 
           <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8 }}>
+            <RefreshButton onRefresh={loadData} title="Refresh dashboard" />
             <button
               type="button"
               className="btn-pill btn-pill-secondary"

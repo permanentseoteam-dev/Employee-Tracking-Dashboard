@@ -48,6 +48,7 @@ export interface UserProfile {
   department: string;
   team_id?: string;
   team_name?: string;
+  phone?: string;
   assigned_manager_id?: string;
 }
 

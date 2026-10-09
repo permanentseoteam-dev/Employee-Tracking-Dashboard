@@ -23,7 +23,9 @@ if (!existsSync(setup) || !existsSync(sigPath)) {
 }
 
 const signature = readFileSync(sigPath, 'utf8').trim();
-const url = `https://github.com/permanentseoteam-dev/Employee-Tracking-Dashboard/releases/download/${tag}/${encodeURIComponent(setupName)}`;
+// GitHub release assets replace spaces with dots in the published filename.
+const publishedName = setupName.replace(/ /g, '.');
+const url = `https://github.com/permanentseoteam-dev/Employee-Tracking-Dashboard/releases/download/${tag}/${publishedName}`;
 const latest = {
   version,
   notes: `Employee Tracking ${tag}`,
@@ -51,5 +53,14 @@ gh([
   `Employee Tracking ${tag}`,
   '--notes',
   'Desktop installer + signed updater channel (latest.json).',
+]);
+
+// Re-upload latest.json after create so URL matches GitHub's dotted asset name.
+gh([
+  'release',
+  'upload',
+  tag,
+  latestPath,
+  '--clobber',
 ]);
 console.log(`Published ${tag}. Channel: .../releases/latest/download/latest.json`);

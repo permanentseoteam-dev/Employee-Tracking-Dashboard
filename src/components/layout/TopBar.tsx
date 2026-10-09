@@ -243,12 +243,14 @@ export const TopBar: React.FC<TopBarProps> = ({
           </div>
         </div>
 
-        {/* Live Stopwatch Badge */}
-        <div className="live-telemetry-badge" title="Live background activity telemetry counter">
-          <span className="pulse-beacon" />
-          <Clock size={13} />
-          <span>Live Track: {formatElapsedTime(sessionSeconds)}</span>
-        </div>
+        {/* Live Track — admin & manager only (hidden for employee) */}
+        {role !== 'employee' && (
+          <div className="live-telemetry-badge" title="Live background activity telemetry counter">
+            <span className="pulse-beacon" />
+            <Clock size={13} />
+            <span>Live Track: {formatElapsedTime(sessionSeconds)}</span>
+          </div>
+        )}
       </div>
 
       {/* Global Search Pill Bar */}

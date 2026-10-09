@@ -47,9 +47,10 @@ import { requestAppRefresh } from './utils/appRefresh';
 import type { AgentStatusDto, DbStats, NavTab, SystemInfoDto } from './types';
 
 import { ErrorBoundary } from './components/ErrorBoundary';
+import { LoginPage } from './pages/LoginPage';
 
 export const App: React.FC = () => {
-  const { user, role, currentRoute, navigate } = useAuth();
+  const { user, role, currentRoute, navigate, isAuthenticated, isLoading, isConfigured } = useAuth();
 
   // Employee State (Synchronized with URL route and browser history)
   const getEmployeeTab = (route: string): NavTab => {
@@ -129,7 +130,7 @@ export const App: React.FC = () => {
 
   // Silent agent bootstrap for employees (no UI panel) — desktop only
   useEffect(() => {
-    if (role !== 'employee' || !isTauriEnvironment() || !user?.id) return;
+    if (!isAuthenticated || role !== 'employee' || !isTauriEnvironment() || !user?.id) return;
     let cancelled = false;
     (async () => {
       try {
@@ -165,7 +166,29 @@ export const App: React.FC = () => {
       cancelled = true;
       clearInterval(recover);
     };
-  }, [role, user?.id, fetchState]);
+  }, [isAuthenticated, role, user?.id, fetchState]);
+
+  if (isLoading) {
+    return (
+      <div
+        style={{
+          minHeight: '100vh',
+          display: 'grid',
+          placeItems: 'center',
+          background: 'var(--bg-app)',
+          color: 'var(--text-secondary)',
+          fontFamily: 'var(--font-sans)',
+        }}
+      >
+        Loading…
+      </div>
+    );
+  }
+
+  // Require Supabase sign-in — no more demo "Arsal" bypass when backend is configured
+  if (isConfigured && !isAuthenticated) {
+    return <LoginPage />;
+  }
 
   const handleTabChange = (tab: NavTab) => {
     navigate(`/employee/${tab}`);

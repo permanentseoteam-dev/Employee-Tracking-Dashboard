@@ -16,6 +16,9 @@ import {
   Activity,
   CheckCircle2,
   FileSpreadsheet,
+  Trash2,
+  Monitor,
+  Server,
 } from 'lucide-react';
 import { dataService } from '../../services/dataService';
 import { useAuth } from '../../context/AuthContext';
@@ -47,13 +50,29 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({ onNaviga
   const [focusTargetMinutes, setFocusTargetMinutes] = useState(25);
   const [selectedEmpIds, setSelectedEmpIds] = useState<string[]>([]);
 
-  // Checklist items
-  const [checklist, setChecklist] = useState([
-    { id: 1, title: 'Profile Setup', subtitle: 'Onsite Team', done: true },
-    { id: 2, title: 'Document Verification', subtitle: 'Legal & Compliance', done: true },
-    { id: 3, title: 'Workstation Agent Sync', subtitle: 'Windows Rust Daemon', done: true },
-    { id: 4, title: 'Sprint Review Milestone', subtitle: 'Engineering & Product', done: false },
-  ]);
+  // Persistent Onboarding Checklist
+  const [checklist, setChecklist] = useState<
+    Array<{ id: number | string; title: string; subtitle: string; done: boolean }>
+  >(() => {
+    try {
+      const saved = localStorage.getItem('stitch_admin_onboarding_checklist');
+      if (saved) return JSON.parse(saved);
+    } catch (e) {
+      console.error(e);
+    }
+    return [
+      { id: 1, title: 'Profile Setup & Access Provisioning', subtitle: 'Arsal (Operations & Engineering Lead)', done: true },
+      { id: 2, title: 'Rust Workstation Daemon Setup', subtitle: 'WIN-DESKTOP-QUVQI4B-ok Agent Linked', done: true },
+      { id: 3, title: 'Cloud Telemetry & Bucket Verification', subtitle: 'Supabase screenshots & recordings synced', done: true },
+      { id: 4, title: 'Break Schedule Calibration', subtitle: 'Coffee (11:00 AM) & Namaz (01:00 PM) configured', done: true },
+      { id: 5, title: 'Sprint Tasks & Performance Merits Setup', subtitle: 'Sprint quotas and star rules active', done: false },
+    ];
+  });
+
+  const [isAddingTask, setIsAddingTask] = useState(false);
+  const [newTaskTitle, setNewTaskTitle] = useState('');
+  const [newTaskSubtitle, setNewTaskSubtitle] = useState('');
+
 
   const loadData = async () => {
     try {
@@ -107,10 +126,52 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({ onNaviga
     );
   };
 
-  const toggleChecklist = (id: number) => {
-    setChecklist((prev) =>
-      prev.map((item) => (item.id === id ? { ...item, done: !item.done } : item))
-    );
+  useEffect(() => {
+    try {
+      localStorage.setItem('stitch_admin_onboarding_checklist', JSON.stringify(checklist));
+    } catch (e) {
+      console.error(e);
+    }
+  }, [checklist]);
+
+  const toggleChecklist = (id: number | string) => {
+    setChecklist((prev) => {
+      const next = prev.map((item) => (item.id === id ? { ...item, done: !item.done } : item));
+      const target = next.find((item) => item.id === id);
+      dataService.logAction(
+        'Super Admin',
+        'admin',
+        'UPDATE_ONBOARDING',
+        target?.title || 'Milestone',
+        `Marked as ${target?.done ? 'Completed' : 'Pending'}`
+      );
+      return next;
+    });
+  };
+
+  const handleAddTask = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newTaskTitle.trim()) return;
+    const newItem = {
+      id: Date.now(),
+      title: newTaskTitle.trim(),
+      subtitle: newTaskSubtitle.trim() || 'Workforce Setup Task',
+      done: false,
+    };
+    setChecklist((prev) => [...prev, newItem]);
+    dataService.logAction('Super Admin', 'admin', 'ADD_ONBOARDING_TASK', newItem.title, 'Created onboarding milestone');
+    setNewTaskTitle('');
+    setNewTaskSubtitle('');
+    setIsAddingTask(false);
+  };
+
+  const handleDeleteTask = (id: number | string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setChecklist((prev) => {
+      const filtered = prev.filter((item) => item.id !== id);
+      dataService.logAction('Super Admin', 'admin', 'DELETE_ONBOARDING_TASK', String(id), 'Removed onboarding milestone');
+      return filtered;
+    });
   };
 
   const filteredEmployees = employees.filter((emp) => {
@@ -122,9 +183,28 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({ onNaviga
     );
   });
 
-  const totalHeadcount = kpis?.totalEmployees || (employees.length > 0 ? employees.length : 12);
-  const onlineCount = kpis?.onlineEmployees || (employees.filter((e) => e.status === 'active' || e.status === 'idle').length || 8);
+  const totalHeadcount = kpis?.totalEmployees || (employees.length > 0 ? employees.length : 1);
+  const onlineCount = kpis?.onlineEmployees || (employees.filter((e) => e.status === 'active' || e.status === 'idle').length || 1);
   const tasksCount = kpis?.activeTasks || 24;
+
+  // Real-time Fleet Telemetry Calculations
+  const totalFleetCount = employees.length > 0 ? employees.length : 1;
+  const activeFleetCount = employees.filter((e) => e.status === 'active').length || (employees.length > 0 ? 1 : 1);
+  const idleFleetCount = employees.filter((e) => e.status === 'idle' || e.status === 'on_break').length;
+  const offlineFleetCount = Math.max(0, employees.length - activeFleetCount - idleFleetCount);
+
+  const activeFleetPct = Math.round((activeFleetCount / totalFleetCount) * 100);
+  const idleFleetPct = Math.round((idleFleetCount / totalFleetCount) * 100);
+  const offlineFleetPct = Math.max(0, 100 - activeFleetPct - idleFleetPct);
+
+  // Onsite vs Remote
+  const onsiteStaffCount = employees.filter((e) => !e.department?.toLowerCase().includes('remote')).length || employees.length || 1;
+  const remoteStaffCount = Math.max(0, employees.length - onsiteStaffCount);
+  const onsiteStaffPct = Math.round((onsiteStaffCount / totalFleetCount) * 100);
+  const remoteStaffPct = Math.max(0, 100 - onsiteStaffPct);
+
+  const completedOnboardingCount = checklist.filter((c) => c.done).length;
+  const onboardingCompletionPct = checklist.length > 0 ? Math.round((completedOnboardingCount / checklist.length) * 100) : 100;
 
   return (
     <motion.div
@@ -251,30 +331,42 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({ onNaviga
         {/* Card 2: Team Distribution Card */}
         <div className="frosted-card" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between', gap: '1rem' }}>
           <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 600, color: 'var(--text-muted)' }}>
-              <div style={{ width: 22, height: 22, borderRadius: '50%', background: 'var(--surface-frosted-subdued)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <Users size={12} />
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 600, color: 'var(--text-muted)' }}>
+                <div style={{ width: 22, height: 22, borderRadius: '50%', background: 'var(--surface-frosted-subdued)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Users size={12} />
+                </div>
+                <span>Onsite Fleet</span>
               </div>
-              <span>Onsite Fleet</span>
+              <span className="stat-diff-badge">{onsiteStaffPct}%</span>
             </div>
             <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginTop: 4 }}>
-              <span className="stat-numeric-md">86%</span>
-              <span className="stat-diff-badge">12 Staff</span>
+              <span className="stat-numeric-md">{onsiteStaffCount}</span>
+              <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                {onsiteStaffCount === 1 ? 'Stationary Workstation' : 'Staff On-Premise'}
+              </span>
             </div>
           </div>
 
           <div style={{ width: '100%', height: 1, background: 'var(--surface-border-subtle)' }} />
 
           <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 600, color: 'var(--text-muted)' }}>
-              <div style={{ width: 22, height: 22, borderRadius: '50%', background: 'var(--surface-frosted-subdued)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <Activity size={12} />
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 600, color: 'var(--text-muted)' }}>
+                <div style={{ width: 22, height: 22, borderRadius: '50%', background: 'var(--surface-frosted-subdued)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Activity size={12} />
+                </div>
+                <span>Remote / Hybrid</span>
               </div>
-              <span>Remote Fleet</span>
+              <span className="status-pill neutral" style={{ padding: '1px 8px', fontSize: 10 }}>
+                {remoteStaffPct}%
+              </span>
             </div>
             <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginTop: 4 }}>
-              <span className="stat-numeric-md">14%</span>
-              <span className="status-pill neutral" style={{ padding: '1px 8px', fontSize: 10 }}>2 Staff</span>
+              <span className="stat-numeric-md">{remoteStaffCount}</span>
+              <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                {remoteStaffCount === 0 ? 'Fully Onsite Ops' : 'Staff Teleworking'}
+              </span>
             </div>
           </div>
         </div>
@@ -361,46 +453,122 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({ onNaviga
           </div>
         </div>
 
-        {/* Card 4: Onboarding & Fleet Multi-segmented Progress */}
+        {/* Card 4: Dynamic Fleet Status & Agent Workstation Telemetry */}
         <div className="frosted-card" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-muted)' }}>Fleet Status</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <Monitor size={15} color="var(--color-secondary)" />
+              <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>Fleet Status</span>
+              <span className="pulse-beacon" />
+            </div>
             <button
               type="button"
               className="btn-icon-circle accent"
-              onClick={() => onNavigate('/admin/employees')}
-              title="View All Employees"
+              onClick={() => onNavigate('/admin/monitoring/live')}
+              title="Open Live Workstation Stream"
             >
               <ArrowUpRight size={16} />
             </button>
           </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, margin: 'auto 0' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'var(--text-muted)' }}>
-              <span>60% Onsite</span>
-              <span>30% Hybrid</span>
-              <span>10% Remote</span>
+          {/* Connected Daemon Hardware Badge */}
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              padding: '6px 10px',
+              borderRadius: 'var(--radius-card-sm)',
+              background: 'var(--surface-frosted-subdued)',
+              border: '1px solid var(--surface-border-subtle)',
+              fontSize: 11,
+              marginTop: 4,
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <Server size={12} color="var(--color-secondary)" />
+              <span style={{ fontWeight: 700, color: 'var(--text-primary)' }}>WIN-DESKTOP-QUVQI4B-ok</span>
             </div>
-            <div style={{ width: '100%', height: 28, borderRadius: 'var(--radius-pill)', background: 'var(--surface-border-subtle)', padding: 3, display: 'flex', gap: 4, overflow: 'hidden' }}>
-              <div style={{ width: '60%', height: '100%', borderRadius: 'var(--radius-pill)', background: 'var(--color-secondary-container)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <span style={{ fontSize: 10, fontWeight: 800, color: 'var(--color-on-secondary-container)' }}>60%</span>
+            <span className="status-pill active" style={{ fontSize: 9, padding: '1px 6px' }}>
+              Daemon v1.4
+            </span>
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, margin: '8px 0' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'var(--text-muted)' }}>
+              <span>{activeFleetPct}% Active</span>
+              <span>{idleFleetPct}% Idle</span>
+              <span>{offlineFleetPct}% Offline</span>
+            </div>
+            {/* Dynamic Multi-segment Progress Bar */}
+            <div style={{ width: '100%', height: 26, borderRadius: 'var(--radius-pill)', background: 'var(--surface-border-subtle)', padding: 3, display: 'flex', gap: 4, overflow: 'hidden' }}>
+              <div
+                style={{
+                  width: `${Math.max(activeFleetCount > 0 ? 15 : 0, activeFleetPct)}%`,
+                  height: '100%',
+                  borderRadius: 'var(--radius-pill)',
+                  background: 'var(--color-secondary-container, #c5e836)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  transition: 'width 0.4s ease',
+                }}
+              >
+                <span style={{ fontSize: 10, fontWeight: 800, color: 'var(--color-on-secondary-container, #1a2e05)' }}>
+                  {activeFleetCount}
+                </span>
               </div>
-              <div style={{ width: '30%', height: '100%', borderRadius: 'var(--radius-pill)', background: 'var(--color-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <span style={{ fontSize: 10, fontWeight: 800, color: 'var(--color-on-primary)' }}>30%</span>
-              </div>
-              <div style={{ width: '10%', height: '100%', borderRadius: 'var(--radius-pill)', background: 'var(--surface-frosted-subdued)' }} />
+              {idleFleetCount > 0 && (
+                <div
+                  style={{
+                    width: `${Math.max(10, idleFleetPct)}%`,
+                    height: '100%',
+                    borderRadius: 'var(--radius-pill)',
+                    background: 'var(--color-primary, #4f46e5)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    transition: 'width 0.4s ease',
+                  }}
+                >
+                  <span style={{ fontSize: 10, fontWeight: 800, color: 'var(--color-on-primary, #ffffff)' }}>
+                    {idleFleetCount}
+                  </span>
+                </div>
+              )}
+              {offlineFleetCount > 0 && (
+                <div
+                  style={{
+                    width: `${Math.max(8, offlineFleetPct)}%`,
+                    height: '100%',
+                    borderRadius: 'var(--radius-pill)',
+                    background: 'var(--surface-frosted-subdued, #334155)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    transition: 'width 0.4s ease',
+                  }}
+                >
+                  <span style={{ fontSize: 10, fontWeight: 800, color: 'var(--text-muted, #94a3b8)' }}>
+                    {offlineFleetCount}
+                  </span>
+                </div>
+              )}
             </div>
           </div>
 
           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, fontWeight: 600, color: 'var(--text-muted)' }}>
             <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-              <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--color-secondary)' }} /> Verified
+              <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--color-secondary)' }} />
+              Active ({activeFleetCount})
             </span>
             <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-              <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--color-primary)' }} /> Active
+              <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--color-primary)' }} />
+              Idle ({idleFleetCount})
             </span>
             <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-              <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--text-muted)' }} /> Queued
+              <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--text-muted)' }} />
+              Offline ({offlineFleetCount})
             </span>
           </div>
         </div>
@@ -551,18 +719,109 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({ onNaviga
         </div>
 
         {/* Right: Onboarding & Governance Milestones Checklist */}
-        <div className="frosted-card" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
+        <div className="frosted-card" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between', gap: '0.75rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <h3 style={{ fontSize: 16, fontWeight: 700, color: 'var(--text-primary)' }}>Onboarding</h3>
-              <span className="status-pill active" style={{ fontSize: 10 }}>
-                {checklist.filter((c) => c.done).length}/{checklist.length}
+              <CheckCircle2 size={16} color="var(--color-secondary)" />
+              <h3 style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>Onboarding</h3>
+              <span className="status-pill active" style={{ fontSize: 10, padding: '1px 7px' }}>
+                {completedOnboardingCount}/{checklist.length} ({onboardingCompletionPct}%)
               </span>
             </div>
-            <CheckCircle2 size={18} color="var(--text-muted)" />
+            <button
+              type="button"
+              className="btn-pill btn-pill-secondary"
+              style={{ padding: '3px 9px', fontSize: 11, display: 'flex', alignItems: 'center', gap: 4 }}
+              onClick={() => setIsAddingTask(!isAddingTask)}
+              title="Add a new onboarding checklist item"
+            >
+              <Plus size={13} />
+              <span>{isAddingTask ? 'Close' : 'Add Task'}</span>
+            </button>
           </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, margin: 'auto 0' }}>
+          {/* Dynamic Progress Bar */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <div style={{ width: '100%', height: 6, borderRadius: 'var(--radius-pill)', background: 'var(--surface-border-subtle)', overflow: 'hidden' }}>
+              <div
+                style={{
+                  width: `${onboardingCompletionPct}%`,
+                  height: '100%',
+                  background: onboardingCompletionPct === 100 ? 'var(--status-success, #10b981)' : 'var(--color-secondary, #c5e836)',
+                  borderRadius: 'var(--radius-pill)',
+                  transition: 'width 0.3s ease',
+                }}
+              />
+            </div>
+          </div>
+
+          {/* Inline Add Task Form */}
+          {isAddingTask && (
+            <form
+              onSubmit={handleAddTask}
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 6,
+                padding: '8px 10px',
+                borderRadius: 'var(--radius-card-sm)',
+                background: 'var(--surface-frosted-subdued)',
+                border: '1px solid var(--surface-border-subtle)',
+              }}
+            >
+              <input
+                type="text"
+                placeholder="Task title (e.g., Calibrate Dual-Monitor DPI)..."
+                value={newTaskTitle}
+                onChange={(e) => setNewTaskTitle(e.target.value)}
+                autoFocus
+                style={{
+                  background: 'transparent',
+                  border: '1px solid var(--surface-border-subtle)',
+                  borderRadius: 6,
+                  padding: '6px 8px',
+                  fontSize: 12,
+                  color: 'var(--text-primary)',
+                  outline: 'none',
+                }}
+              />
+              <input
+                type="text"
+                placeholder="Assignee or Subtitle (e.g., Arsal - Win Desktop)..."
+                value={newTaskSubtitle}
+                onChange={(e) => setNewTaskSubtitle(e.target.value)}
+                style={{
+                  background: 'transparent',
+                  border: '1px solid var(--surface-border-subtle)',
+                  borderRadius: 6,
+                  padding: '6px 8px',
+                  fontSize: 11,
+                  color: 'var(--text-muted)',
+                  outline: 'none',
+                }}
+              />
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6, marginTop: 2 }}>
+                <button
+                  type="button"
+                  className="btn-pill btn-pill-secondary"
+                  style={{ padding: '3px 8px', fontSize: 11 }}
+                  onClick={() => setIsAddingTask(false)}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="btn-pill btn-pill-primary"
+                  style={{ padding: '3px 10px', fontSize: 11 }}
+                >
+                  Save Task
+                </button>
+              </div>
+            </form>
+          )}
+
+          {/* Checklist Items */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 260, overflowY: 'auto', paddingRight: 2 }}>
             {checklist.map((item) => (
               <div
                 key={item.id}
@@ -571,7 +830,7 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({ onNaviga
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'space-between',
-                  padding: '8px 12px',
+                  padding: '7px 10px',
                   borderRadius: 'var(--radius-card-sm)',
                   background: item.done ? 'var(--surface-frosted-subdued)' : 'transparent',
                   border: '1px solid var(--surface-border-subtle)',
@@ -579,35 +838,63 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({ onNaviga
                   transition: 'all 0.15s ease',
                 }}
               >
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, overflow: 'hidden' }}>
                   <div
                     style={{
-                      width: 20,
-                      height: 20,
+                      width: 18,
+                      height: 18,
+                      minWidth: 18,
                       borderRadius: '50%',
                       background: item.done ? 'var(--color-primary)' : 'transparent',
-                      border: item.done ? 'none' : '1px solid var(--text-muted)',
+                      border: item.done ? 'none' : '1.5px solid var(--text-muted)',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
                       color: 'var(--color-on-primary)',
+                      transition: 'all 0.15s ease',
                     }}
                   >
-                    {item.done && <Check size={12} />}
+                    {item.done && <Check size={11} strokeWidth={3} />}
                   </div>
-                  <div style={{ display: 'flex', flexDirection: 'column' }}>
-                    <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)', textDecoration: item.done ? 'line-through' : 'none', opacity: item.done ? 0.7 : 1 }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+                    <span
+                      style={{
+                        fontSize: 12,
+                        fontWeight: 600,
+                        color: 'var(--text-primary)',
+                        textDecoration: item.done ? 'line-through' : 'none',
+                        opacity: item.done ? 0.65 : 1,
+                        whiteSpace: 'nowrap',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                      }}
+                    >
                       {item.title}
                     </span>
-                    <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>{item.subtitle}</span>
+                    <span style={{ fontSize: 10, color: 'var(--text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {item.subtitle}
+                    </span>
                   </div>
                 </div>
+
+                <button
+                  type="button"
+                  className="btn-icon-circle"
+                  style={{ width: 22, height: 22, minWidth: 22, opacity: 0.5, border: 'none', background: 'transparent' }}
+                  onClick={(e) => handleDeleteTask(item.id, e)}
+                  title="Delete task"
+                >
+                  <Trash2 size={12} color="var(--text-muted)" />
+                </button>
               </div>
             ))}
           </div>
 
-          <div style={{ fontSize: 11, color: 'var(--text-muted)', textAlign: 'center', marginTop: '0.75rem' }}>
-            100% compliant with organizational rules
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 10, color: 'var(--text-muted)', marginTop: 4 }}>
+            <span>Auto-synced with workstation profile</span>
+            <span style={{ fontWeight: 700, color: onboardingCompletionPct === 100 ? 'var(--status-success)' : 'var(--color-secondary)' }}>
+              {onboardingCompletionPct === 100 ? '100% Compliant' : `${100 - onboardingCompletionPct}% Remaining`}
+            </span>
           </div>
         </div>
       </div>

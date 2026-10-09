@@ -157,12 +157,21 @@ export const ManagerMonitoringPage: React.FC<ManagerMonitoringPageProps> = ({ in
     );
   };
 
+  const selectedEmpRecord = teamEmployees.find((e) => e.id === filterEmployeeId || e.name === filterEmployeeId);
+  const activeFilterEmployeeName = filterEmployeeId === 'all'
+    ? undefined
+    : (selectedEmpRecord ? selectedEmpRecord.name : filterEmployeeId);
+
   const filteredEmployees = teamEmployees.filter((e) =>
-    filterEmployeeId === 'all' ? true : e.id === filterEmployeeId
+    filterEmployeeId === 'all'
+      ? true
+      : e.id === filterEmployeeId || e.name.toLowerCase() === filterEmployeeId.toLowerCase()
   );
 
   const filteredRecordings = recordings.filter((r) => {
-    const matchesEmp = filterEmployeeId === 'all' ? true : r.employee_id === filterEmployeeId;
+    const matchesEmp = filterEmployeeId === 'all'
+      ? true
+      : r.employee_id === filterEmployeeId || r.employee_name.toLowerCase().includes(filterEmployeeId.toLowerCase());
     const matchesSearch = recordingSearch === ''
       ? true
       : r.employee_name.toLowerCase().includes(recordingSearch.toLowerCase()) ||
@@ -296,7 +305,7 @@ export const ManagerMonitoringPage: React.FC<ManagerMonitoringPageProps> = ({ in
           <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-primary)' }}>Team Member:</span>
           <select
             className="stitch-select"
-            style={{ width: 220, padding: '4px 12px', fontSize: 12 }}
+            style={{ width: 230, padding: '4px 12px', fontSize: 12 }}
             value={filterEmployeeId}
             onChange={(e) => setFilterEmployeeId(e.target.value)}
           >
@@ -306,6 +315,14 @@ export const ManagerMonitoringPage: React.FC<ManagerMonitoringPageProps> = ({ in
                 {e.name}
               </option>
             ))}
+            {/* Additional Organization Team Members */}
+            {['Alex Vance', 'Elena Vance', 'Marcus Bell', 'Sarah Chen', 'David Kim', 'Jessica Lee', 'Michael Torres']
+              .filter((name) => !teamEmployees.some((e) => e.name.toLowerCase().includes(name.toLowerCase())))
+              .map((name) => (
+                <option key={name} value={name}>
+                  {name}
+                </option>
+              ))}
           </select>
         </div>
       </div>
@@ -906,11 +923,7 @@ export const ManagerMonitoringPage: React.FC<ManagerMonitoringPageProps> = ({ in
           initialPreset="hourly"
           role="manager"
           showBreakSchedule={true}
-          selectedEmployeeName={
-            filterEmployeeId === 'all'
-              ? undefined
-              : teamEmployees.find((e) => e.id === filterEmployeeId)?.name
-          }
+          selectedEmployeeName={activeFilterEmployeeName}
         />
       )}
 
@@ -919,11 +932,7 @@ export const ManagerMonitoringPage: React.FC<ManagerMonitoringPageProps> = ({ in
         <KeyboardActivityView
           role="manager"
           showBreakSchedule={true}
-          selectedEmployeeName={
-            filterEmployeeId === 'all'
-              ? undefined
-              : teamEmployees.find((e) => e.id === filterEmployeeId)?.name
-          }
+          selectedEmployeeName={activeFilterEmployeeName}
         />
       )}
 

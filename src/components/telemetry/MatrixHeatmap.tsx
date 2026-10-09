@@ -36,17 +36,18 @@ export interface HeatmapMatrixDataset {
   unit?: string;
 }
 
-// 8 Active telemetry tracks for Arsal
+// Default Organization Employees
 const DEFAULT_EMPLOYEES = [
-  'Arsal (Engineering)',
-  'Arsal (Mon Track)',
-  'Arsal (Tue Track)',
-  'Arsal (Wed Track)',
-  'Arsal (Thu Track)',
-  'Arsal (Fri Track)',
-  'Arsal (Sprint Core)',
-  'Arsal (Live Active)',
+  'Arsal (Engineering Team)',
+  'Alex Vance',
+  'Elena Vance',
+  'Marcus Bell',
+  'Sarah Chen',
+  'David Kim',
+  'Jessica Lee',
+  'Michael Torres',
 ];
+
 
 // 8 Time slots (replaces CoLA, MNLI, MRPC, QNLI, QQP, RTE, SST-2, STS-B)
 const DEFAULT_TIME_SLOTS = [
@@ -212,8 +213,12 @@ export const MatrixHeatmap: React.FC<MatrixHeatmapProps> = ({
 
   useEffect(() => {
     dataService.getEmployees('admin').then((emps) => {
-      if (emps && emps.length >= 8) {
-        setEmployeesList(emps.slice(0, 8).map((e) => e.name));
+      if (emps && emps.length > 0) {
+        const dbNames = emps.map((e) => (e.team_name ? `${e.name} (${e.team_name})` : e.name));
+        const remaining = DEFAULT_EMPLOYEES.filter(
+          (def) => !dbNames.some((db) => db.toLowerCase().split(' ')[0] === def.toLowerCase().split(' ')[0])
+        );
+        setEmployeesList([...dbNames, ...remaining]);
       }
     });
 
@@ -268,40 +273,71 @@ export const MatrixHeatmap: React.FC<MatrixHeatmapProps> = ({
     ? WEEKLY_EMPLOYEE_CADENCE_PRESET 
     : HOURLY_EMPLOYEE_ACTIVITY_PRESET;
 
-  const filteredEmployees = selectedEmployeeName && selectedEmployeeName !== 'all'
-    ? employeesList.filter((e) => e.toLowerCase().includes(selectedEmployeeName.toLowerCase()))
-    : employeesList;
+  // Filter down to ONLY the specific employee when filtered, or show all organization employees
+  let filteredEmployees: string[] = [];
+  let filteredData: number[][] = [];
 
-  const filteredData = filteredEmployees.map((emp) => {
-    const origIdx = employeesList.indexOf(emp);
-    const row = origIdx >= 0 && baseDataset.data[origIdx] ? [...baseDataset.data[origIdx]] : [...baseDataset.data[0]];
+  if (selectedEmployeeName && selectedEmployeeName !== 'all') {
+    const sName = selectedEmployeeName.toLowerCase().trim();
+    // 1. Try exact match, prefix match or team-wrapped match
+    let matchIdx = employeesList.findIndex((e) => {
+      const eName = e.toLowerCase().trim();
+      return (
+        eName === sName ||
+        eName.startsWith(sName) ||
+        sName.startsWith(eName) ||
+        eName.split('(')[0].trim() === sName ||
+        sName.split('(')[0].trim() === eName.split('(')[0].trim()
+      );
+    });
 
-    // Adjust row for break continuation if this employee is the active target
-    if (
-      showBreaks &&
-      activeMode === 'hourly' &&
-      breakSnapshot &&
-      (emp.toLowerCase().includes('arsal') ||
-        (selectedEmployeeName && emp.toLowerCase().includes(selectedEmployeeName.toLowerCase())))
-    ) {
-      const sIdx = breakSnapshot.time_slot_index;
-      if (sIdx >= 0 && sIdx < row.length) {
-        if (breakSnapshot.status === 'active_break') {
-          row[sIdx] = breakSnapshot.hourly_state.pre_break_heatmap_pct;
-        } else if (breakSnapshot.status === 'resumed') {
-          row[sIdx] = breakSnapshot.hourly_state.adjusted_heatmap_pct || row[sIdx];
-        }
-      }
+    if (matchIdx < 0) {
+      matchIdx = employeesList.findIndex((e) => e.toLowerCase().includes(sName) || sName.includes(e.toLowerCase()));
     }
 
-    return row;
-  });
+    if (matchIdx >= 0) {
+      filteredEmployees = [employeesList[matchIdx]];
+      filteredData = [baseDataset.data[matchIdx] ? [...baseDataset.data[matchIdx]] : [...baseDataset.data[0]]];
+    } else {
+      filteredEmployees = [selectedEmployeeName];
+      filteredData = [[...baseDataset.data[0]]];
+    }
+  } else {
+    filteredEmployees = [...employeesList];
+    filteredData = employeesList.map((_emp, idx) =>
+      baseDataset.data[idx] ? [...baseDataset.data[idx]] : [...baseDataset.data[0]]
+    );
+  }
+
+  // Adjust row for break continuation if break is active or resumed
+  if (showBreaks && activeMode === 'hourly' && breakSnapshot) {
+    const sIdx = breakSnapshot.time_slot_index;
+    if (sIdx >= 0) {
+      filteredData = filteredData.map((row, rIdx) => {
+        const empLabel = (filteredEmployees[rIdx] || '').toLowerCase();
+        if (
+          empLabel.includes('arsal') ||
+          (selectedEmployeeName && empLabel.includes(selectedEmployeeName.toLowerCase()))
+        ) {
+          const newRow = [...row];
+          if (breakSnapshot.status === 'active_break') {
+            newRow[sIdx] = breakSnapshot.hourly_state.pre_break_heatmap_pct;
+          } else if (breakSnapshot.status === 'resumed') {
+            newRow[sIdx] = breakSnapshot.hourly_state.adjusted_heatmap_pct || newRow[sIdx];
+          }
+          return newRow;
+        }
+        return row;
+      });
+    }
+  }
 
   const currentDataset: HeatmapMatrixDataset = {
     ...baseDataset,
     yLabels: filteredEmployees,
     data: filteredData,
   };
+
 
 
   const handleExportCSV = () => {

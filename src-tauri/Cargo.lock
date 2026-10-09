@@ -4133,7 +4133,7 @@ dependencies = [
 
 [[package]]
 name = "tracking-dashboard-app"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "chrono",
  "keyring",

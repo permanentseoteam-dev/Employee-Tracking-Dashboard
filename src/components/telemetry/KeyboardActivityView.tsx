@@ -259,8 +259,24 @@ export const KeyboardActivityView: React.FC<KeyboardActivityViewProps> = ({
   const hourlyTotals = TIME_SLOTS.map((_, colIdx) =>
     safeMatrix.reduce((sum, row) => sum + (row[colIdx] || 0), 0)
   );
-  const peakHourIdx = hourlyTotals.indexOf(Math.max(...hourlyTotals));
-  const peakHourName = TIME_SLOTS[peakHourIdx];
+  const peakHourIdx = hourlyTotals.indexOf(Math.max(...hourlyTotals, 0));
+  const peakHourName = TIME_SLOTS[peakHourIdx] || TIME_SLOTS[0];
+
+  const employeeTotals = activeEmployees.map((emp, idx) => ({
+    name: emp,
+    total: (activeMatrixData[idx] || []).reduce((a, b) => a + b, 0),
+  }));
+  const topTypist = employeeTotals.reduce<{ name: string; total: number } | null>((best, row) => {
+    if (!best || row.total > best.total) return row;
+    return best;
+  }, null);
+  const topTypistName = topTypist && topTypist.total > 0 ? topTypist.name.split('(')[0].trim() : '—';
+  const topTypistDetail =
+    topTypist && topTypist.total > 0
+      ? `${topTypist.total.toLocaleString()} keys logged${
+          topTypist.name.includes('(') ? ` (${topTypist.name.split('(')[1]?.replace(')', '') || 'Team'})` : ''
+        }`
+      : 'No keystrokes logged yet today';
 
   const handleExportCSV = () => {
     let csv = `EMPLOYEE,` + TIME_SLOTS.join(',') + `,TOTAL_KEYS\n`;
@@ -343,10 +359,10 @@ export const KeyboardActivityView: React.FC<KeyboardActivityViewProps> = ({
             </div>
           </div>
           <div style={{ fontSize: 24, fontWeight: 800, color: 'var(--text-primary)', letterSpacing: '-0.02em' }}>
-            David Kim
+            {topTypistName}
           </div>
           <span style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2, display: 'block' }}>
-            24,396 keys logged (Engineering Team)
+            {topTypistDetail}
           </span>
         </div>
 
@@ -1007,7 +1023,7 @@ export const KeyboardActivityView: React.FC<KeyboardActivityViewProps> = ({
                     <div>
                       <span style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Resumed Keys:</span>
                       <div style={{ fontWeight: 800, color: '#10b981' }}>
-                        +{(breakSnapshot?.hourly_state?.post_break_keys || 1516).toLocaleString()} keys Added
+                        +{(breakSnapshot?.hourly_state?.post_break_keys ?? 0).toLocaleString()} keys Added
                       </div>
                     </div>
                     <div>
@@ -1062,7 +1078,7 @@ export const KeyboardActivityView: React.FC<KeyboardActivityViewProps> = ({
                     <div>
                       <span style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Pre-Break Baseline:</span>
                       <div style={{ fontWeight: 800, color: 'var(--text-primary)' }}>
-                        2,451 keys Preserved
+                        {(breakSnapshot?.hourly_state?.pre_break_keys ?? 0).toLocaleString()} keys Preserved
                       </div>
                     </div>
                     <div>

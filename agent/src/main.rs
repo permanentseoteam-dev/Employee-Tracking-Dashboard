@@ -124,7 +124,7 @@ async fn run_agent() -> AgentResult<()> {
     println!("  🛑 To cleanly stop the agent, press Ctrl+C in this window.");
     println!("=======================================================================\n");
 
-    let input_tracker = WindowsInputTracker::new(config.idle_threshold_seconds);
+    let mut input_tracker = WindowsInputTracker::new(config.idle_threshold_seconds);
     let mut state_machine = PresenceStateMachine::new();
     let mut batcher = ActivityBatcher::new(
         config.employee_id.clone(),
@@ -165,7 +165,12 @@ async fn run_agent() -> AgentResult<()> {
         tokio::select! {
             _ = poll_interval.tick() => {
                 let snapshot = input_tracker.get_snapshot();
-                batcher.record_sample(snapshot.is_user_idle);
+                batcher.record_sample(
+                    snapshot.is_user_idle,
+                    snapshot.key_presses,
+                    snapshot.mouse_moves,
+                    snapshot.mouse_clicks,
+                );
 
                 // Check for status transition
                 let transition = state_machine.update(snapshot.is_user_idle, snapshot.idle_duration_seconds);

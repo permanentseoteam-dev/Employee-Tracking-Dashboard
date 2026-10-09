@@ -9,10 +9,12 @@ import {
   RotateCcw,
   Plus,
   Minus,
+  ArrowUpRight,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { supabaseSync } from '../services/supabaseService';
 import { dataService } from '../services/dataService';
+import { FocusSessionWidget } from '../components/timer/FocusSessionWidget';
 
 interface TimerPageProps {
   activeTaskTitle: string | null;
@@ -26,13 +28,17 @@ export const TimerPage: React.FC<TimerPageProps> = ({
   const { user } = useAuth();
   const [durationMinutes, setDurationMinutes] = useState(25);
   const [remainingSeconds, setRemainingSeconds] = useState(25 * 60);
-  const [secondsElapsed, setSecondsElapsed] = useState(20700); // 05:45:00 cumulative workday time
+  const [secondsElapsed, setSecondsElapsed] = useState(0);
   const [isRunning, setIsRunning] = useState(Boolean(activeTaskTitle));
   const [isDragging, setIsDragging] = useState(false);
   const [activeBreak, setActiveBreak] = useState<'general' | 'namaz' | null>(null);
   const [breakSeconds, setBreakSeconds] = useState(0);
   const [sessionStartTime, setSessionStartTime] = useState<string>(() => new Date().toISOString());
   const [breakSyncMessage, setBreakSyncMessage] = useState<string | null>(null);
+  const [isFocusSessionOpen, setIsFocusSessionOpen] = useState(false);
+
+  /** Elapsed focus seconds for the popup clock (mirrors dashboard FocusSessionWidget). */
+  const focusElapsedSeconds = Math.max(0, durationMinutes * 60 - remainingSeconds);
 
   const dialRef = useRef<HTMLDivElement>(null);
 
@@ -298,13 +304,43 @@ export const TimerPage: React.FC<TimerPageProps> = ({
           padding: '2.5rem 2rem',
           textAlign: 'center',
           gap: '1.25rem',
+          position: 'relative',
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, color: 'var(--text-muted)' }}>
-          <span>Active Task Focus:</span>
-          <strong style={{ color: 'var(--text-primary)', fontSize: 15 }}>
-            {activeTaskTitle || 'General Engineering Work'}
-          </strong>
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            width: '100%',
+            maxWidth: 520,
+            gap: 12,
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, color: 'var(--text-muted)', flexWrap: 'wrap' }}>
+            <span>Active Task Focus:</span>
+            <strong style={{ color: 'var(--text-primary)', fontSize: 15 }}>
+              {activeTaskTitle || 'General Engineering Work'}
+            </strong>
+          </div>
+          <button
+            type="button"
+            className="btn-icon-circle"
+            style={{
+              background: '#c5e836',
+              color: '#1a2e05',
+              border: 'none',
+              boxShadow: '0 2px 8px rgba(197, 232, 54, 0.4)',
+              cursor: 'pointer',
+              width: 36,
+              height: 36,
+              flexShrink: 0,
+            }}
+            onClick={() => setIsFocusSessionOpen(true)}
+            title="Open Windows Focus Session"
+          >
+            <ArrowUpRight size={18} strokeWidth={2.4} />
+          </button>
         </div>
 
         {/* Big Interactive Circular SVG Dial with Drag Handle */}
@@ -626,6 +662,27 @@ export const TimerPage: React.FC<TimerPageProps> = ({
           </button>
         </div>
       </div>
+
+      {/* Windows 11 Focus Session Floating Widget (same as employee dashboard) */}
+      <FocusSessionWidget
+        isOpen={isFocusSessionOpen}
+        onClose={() => setIsFocusSessionOpen(false)}
+        timerSeconds={focusElapsedSeconds}
+        isTimerRunning={isRunning && !activeBreak}
+        onToggleTimer={() => {
+          if (isRunning) {
+            handlePause();
+          } else {
+            handleStart();
+          }
+        }}
+        onResetTimer={handleReset}
+        targetMinutes={durationMinutes}
+        onTargetMinutesChange={(mins) => {
+          setDurationMinutes(mins);
+          setRemainingSeconds(mins * 60);
+        }}
+      />
     </motion.div>
   );
 };

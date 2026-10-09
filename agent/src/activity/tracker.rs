@@ -46,15 +46,22 @@ impl ActivityBatcher {
         }
     }
 
-    /// Record a second of activity for telemetry window
-    pub fn record_sample(&mut self, is_idle: bool) {
+    /// Record one poll of activity using real input deltas (no invented key/mouse counts).
+    pub fn record_sample(
+        &mut self,
+        is_idle: bool,
+        key_presses: u32,
+        mouse_moves: u32,
+        mouse_clicks: u32,
+    ) {
         if is_idle {
-            self.idle_seconds += 1;
+            self.idle_seconds = self.idle_seconds.saturating_add(1);
         } else {
-            self.active_seconds += 1;
-            self.key_count += 2;
-            self.mouse_moves += 5;
+            self.active_seconds = self.active_seconds.saturating_add(1);
         }
+        self.key_count = self.key_count.saturating_add(key_presses);
+        self.mouse_moves = self.mouse_moves.saturating_add(mouse_moves);
+        self.mouse_clicks = self.mouse_clicks.saturating_add(mouse_clicks);
     }
 
     /// Check if 60-second aggregate window is complete

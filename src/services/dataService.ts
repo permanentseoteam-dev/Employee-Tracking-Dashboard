@@ -30,6 +30,66 @@ import { formatCaptureTime, isDummyMediaUrl, parseCaptureDate } from '../utils/d
 
 export const ADMIN_USER_ID = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
 
+const TELEMETRY_TIME_SLOTS = ['09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00'];
+
+/** Resolve filter (uuid, email, or display name) to employee id set. null = all allowed. */
+function resolveTelemetryEmployeeIds(
+  employees: Array<{ id?: string; user_id?: string; full_name?: string; email?: string; manager_id?: string }>,
+  role?: UserRole,
+  employeeFilter?: string
+): Set<string> | null {
+  let pool = employees;
+  if (role === 'manager') {
+    pool = pool.filter(
+      (e) =>
+        !isAdminRecord(e.id, e.full_name, e.email) &&
+        !isAdminRecord(e.user_id, e.full_name, e.email)
+    );
+  }
+
+  if (!employeeFilter || employeeFilter === 'all') {
+    const ids = new Set<string>();
+    for (const e of pool) {
+      if (e.id) ids.add(e.id);
+      if (e.user_id) ids.add(e.user_id);
+    }
+    return ids.size ? ids : null;
+  }
+
+  const raw = employeeFilter.trim();
+  const needle = raw.toLowerCase();
+  const bare = needle.split('(')[0].trim();
+  const matched = pool.filter((e) => {
+    const id = (e.id || '').toLowerCase();
+    const uid = (e.user_id || '').toLowerCase();
+    const name = (e.full_name || '').toLowerCase();
+    const email = (e.email || '').toLowerCase();
+    return (
+      id === needle ||
+      uid === needle ||
+      email === needle ||
+      name === bare ||
+      name === needle ||
+      name.startsWith(bare) ||
+      bare.startsWith(name)
+    );
+  });
+
+  const ids = new Set<string>();
+  for (const e of matched) {
+    if (e.id) ids.add(e.id);
+    if (e.user_id) ids.add(e.user_id);
+  }
+  return ids;
+}
+
+function isSeedBreakKeyboardMatrix(data?: number[][]): boolean {
+  if (!data?.length) return false;
+  const first = data[0] || [];
+  // Known legacy seed row from saveBreakTelemetrySnapshot defaults
+  return first.length >= 3 && first[0] === 2057 && first[2] === 3036;
+}
+
 export const isAdminRecord = (id?: string, name?: string, email?: string): boolean => {
   if (!id && !name && !email) return false;
   if (id === ADMIN_USER_ID) return true;
@@ -1099,123 +1159,218 @@ export const dataService = {
   // 5e. Real-time Keystrokes Telemetry Stream from Supabase activity_aggregates
   getLiveKeystrokeTelemetry: async (
     role?: UserRole,
-    employeeId?: string
+    employeeFilter?: string
   ): Promise<{
     byHour: Record<string, number>;
     totalKeys: number;
     hourlyKeysArray: number[];
+    /** Hourly key arrays keyed by employee full_name (and bare name). */
+    byEmployeeName: Record<string, number[]>;
   }> => {
-    if (!isSupabaseConfigured()) {
-      return { byHour: {}, totalKeys: 0, hourlyKeysArray: [] };
-    }
+    const timeSlots = ['09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00'];
+    const empty = {
+      byHour: Object.fromEntries(timeSlots.map((s) => [s, 0])) as Record<string, number>,
+      totalKeys: 0,
+      hourlyKeysArray: timeSlots.map(() => 0),
+      byEmployeeName: {} as Record<string, number[]>,
+    };
+    if (!isSupabaseConfigured()) return empty;
+
     try {
-      const { data: aggs } = await supabase
+      const { data: empRows } = await supabase
+        .from('employees')
+        .select('id, user_id, full_name, email, manager_id');
+
+      const employees = empRows || [];
+      const idToName = new Map<string, string>();
+      for (const e of employees) {
+        const name = e.full_name || e.email || e.id;
+        if (e.id) idToName.set(e.id, name);
+        if (e.user_id) idToName.set(e.user_id, name);
+      }
+
+      const allowedIds = resolveTelemetryEmployeeIds(employees, role, employeeFilter);
+      if (allowedIds && allowedIds.size === 0) return empty;
+
+      const dayStart = new Date();
+      dayStart.setHours(0, 0, 0, 0);
+
+      let query = supabase
         .from('activity_aggregates')
         .select('window_start, key_press_count, employee_id')
+        .gte('window_start', dayStart.toISOString())
         .order('window_start', { ascending: true });
 
-      const timeSlots = ['09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00'];
+      const { data: aggs, error } = await query;
+      if (error) throw error;
+
       const byHour: Record<string, number> = {};
+      for (const slot of timeSlots) byHour[slot] = 0;
+
+      const perEmpHour: Record<string, Record<string, number>> = {};
       let totalKeys = 0;
 
-      for (const slot of timeSlots) {
-        byHour[slot] = 0;
-      }
-
       for (const a of aggs || []) {
-        if (role === 'manager') {
-          if (a.employee_id === ADMIN_USER_ID || isAdminRecord(a.employee_id)) {
-            continue;
-          }
-        }
-        if (employeeId && employeeId !== 'all' && a.employee_id !== employeeId) {
-          continue;
-        }
+        const empId = a.employee_id as string;
+        if (!empId) continue;
+        if (role === 'manager' && (empId === ADMIN_USER_ID || isAdminRecord(empId))) continue;
+        if (allowedIds && !allowedIds.has(empId)) continue;
 
         const keys = Number(a.key_press_count) || 0;
+        if (!keys || !a.window_start) continue;
+
+        const date = new Date(a.window_start);
+        const hour = date.getHours();
+        const slotStr = timeSlots.includes(`${hour.toString().padStart(2, '0')}:00`)
+          ? `${hour.toString().padStart(2, '0')}:00`
+          : timeSlots.find((s) => Number(s.split(':')[0]) === hour);
+        if (!slotStr) continue;
+
+        byHour[slotStr] = (byHour[slotStr] || 0) + keys;
         totalKeys += keys;
 
-        if (a.window_start) {
-          const date = new Date(a.window_start);
-          const hour = date.getHours();
-          const slotStr = `${hour.toString().padStart(2, '0')}:00`;
-          if (byHour[slotStr] !== undefined) {
-            byHour[slotStr] += keys;
-          } else {
-            const mappedSlot = timeSlots.find((s) => Number(s.split(':')[0]) === hour) || '09:00';
-            byHour[mappedSlot] = (byHour[mappedSlot] || 0) + keys;
-          }
+        const displayName = idToName.get(empId) || empId;
+        if (!perEmpHour[displayName]) {
+          perEmpHour[displayName] = Object.fromEntries(timeSlots.map((s) => [s, 0]));
         }
+        perEmpHour[displayName][slotStr] = (perEmpHour[displayName][slotStr] || 0) + keys;
       }
 
-      const hourlyKeysArray = timeSlots.map((s) => byHour[s] || 0);
-      return { byHour, totalKeys, hourlyKeysArray };
+      const byEmployeeName: Record<string, number[]> = {};
+      for (const [name, hours] of Object.entries(perEmpHour)) {
+        const row = timeSlots.map((s) => hours[s] || 0);
+        byEmployeeName[name] = row;
+        byEmployeeName[name.split('(')[0].trim()] = row;
+      }
+
+      return {
+        byHour,
+        totalKeys,
+        hourlyKeysArray: timeSlots.map((s) => byHour[s] || 0),
+        byEmployeeName,
+      };
     } catch (e) {
       console.warn('Failed to fetch live keystroke telemetry:', e);
-      return { byHour: {}, totalKeys: 0, hourlyKeysArray: [] };
+      return empty;
     }
   },
 
   // 5f. Real-time Mouse Telemetry Stream from Supabase activity_aggregates
   getLiveMouseTelemetry: async (
     role?: UserRole,
-    employeeId?: string
+    employeeFilter?: string
   ): Promise<{
     byHour: Record<string, { moves: number; clicks: number; intensityPct: number }>;
     totalMoves: number;
     totalClicks: number;
     hourlyIntensityArray: number[];
+    byEmployeeName: Record<string, number[]>;
   }> => {
-    if (!isSupabaseConfigured()) {
-      return { byHour: {}, totalMoves: 0, totalClicks: 0, hourlyIntensityArray: [] };
-    }
+    const timeSlots = ['09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00'];
+    const empty = {
+      byHour: {} as Record<string, { moves: number; clicks: number; intensityPct: number }>,
+      totalMoves: 0,
+      totalClicks: 0,
+      hourlyIntensityArray: timeSlots.map(() => 0),
+      byEmployeeName: {} as Record<string, number[]>,
+    };
+    if (!isSupabaseConfigured()) return empty;
+
     try {
-      const { data: aggs } = await supabase
+      const { data: empRows } = await supabase
+        .from('employees')
+        .select('id, user_id, full_name, email, manager_id');
+      const employees = empRows || [];
+      const idToName = new Map<string, string>();
+      for (const e of employees) {
+        const name = e.full_name || e.email || e.id;
+        if (e.id) idToName.set(e.id, name);
+        if (e.user_id) idToName.set(e.user_id, name);
+      }
+
+      const allowedIds = resolveTelemetryEmployeeIds(employees, role, employeeFilter);
+      if (allowedIds && allowedIds.size === 0) return empty;
+
+      const dayStart = new Date();
+      dayStart.setHours(0, 0, 0, 0);
+
+      const { data: aggs, error } = await supabase
         .from('activity_aggregates')
         .select('window_start, mouse_move_count, mouse_click_count, active_seconds, employee_id')
+        .gte('window_start', dayStart.toISOString())
         .order('window_start', { ascending: true });
+      if (error) throw error;
 
-      const timeSlots = ['09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00'];
       const byHour: Record<string, { moves: number; clicks: number; intensityPct: number }> = {};
-      let totalMoves = 0;
-      let totalClicks = 0;
-
       for (const slot of timeSlots) {
         byHour[slot] = { moves: 0, clicks: 0, intensityPct: 0 };
       }
 
+      const perEmp: Record<string, Record<string, { moves: number; clicks: number; active: number }>> = {};
+      let totalMoves = 0;
+      let totalClicks = 0;
+
       for (const a of aggs || []) {
-        if (role === 'manager') {
-          if (a.employee_id === ADMIN_USER_ID || isAdminRecord(a.employee_id)) {
-            continue;
-          }
-        }
-        if (employeeId && employeeId !== 'all' && a.employee_id !== employeeId) {
-          continue;
-        }
+        const empId = a.employee_id as string;
+        if (!empId) continue;
+        if (role === 'manager' && (empId === ADMIN_USER_ID || isAdminRecord(empId))) continue;
+        if (allowedIds && !allowedIds.has(empId)) continue;
 
         const moves = Number(a.mouse_move_count) || 0;
         const clicks = Number(a.mouse_click_count) || 0;
+        const active = Number(a.active_seconds) || 0;
+        if (!a.window_start) continue;
+
+        const date = new Date(a.window_start);
+        const hour = date.getHours();
+        const slotStr = `${hour.toString().padStart(2, '0')}:00`;
+        const targetSlot = byHour[slotStr] ? slotStr : timeSlots.find((s) => Number(s.split(':')[0]) === hour);
+        if (!targetSlot || !byHour[targetSlot]) continue;
+
+        byHour[targetSlot].moves += moves;
+        byHour[targetSlot].clicks += clicks;
         totalMoves += moves;
         totalClicks += clicks;
 
-        if (a.window_start) {
-          const date = new Date(a.window_start);
-          const hour = date.getHours();
-          const slotStr = `${hour.toString().padStart(2, '0')}:00`;
-          const targetSlot = byHour[slotStr] ? slotStr : (timeSlots.find((s) => Number(s.split(':')[0]) === hour) || '09:00');
-          byHour[targetSlot].moves += moves;
-          byHour[targetSlot].clicks += clicks;
-          const pct = Math.min(98, Math.round(((byHour[targetSlot].moves + byHour[targetSlot].clicks * 5) / 1200) * 100));
-          byHour[targetSlot].intensityPct = Math.max(byHour[targetSlot].intensityPct, pct);
+        const denom = Math.max(1, active || 60);
+        const pct = Math.min(
+          100,
+          Math.round(((byHour[targetSlot].moves + byHour[targetSlot].clicks * 5) / (denom * 8)) * 100)
+        );
+        byHour[targetSlot].intensityPct = Math.max(byHour[targetSlot].intensityPct, pct);
+
+        const displayName = idToName.get(empId) || empId;
+        if (!perEmp[displayName]) {
+          perEmp[displayName] = Object.fromEntries(
+            timeSlots.map((s) => [s, { moves: 0, clicks: 0, active: 0 }])
+          );
         }
+        perEmp[displayName][targetSlot].moves += moves;
+        perEmp[displayName][targetSlot].clicks += clicks;
+        perEmp[displayName][targetSlot].active += active;
       }
 
-      const hourlyIntensityArray = timeSlots.map((s) => byHour[s]?.intensityPct || 0);
-      return { byHour, totalMoves, totalClicks, hourlyIntensityArray };
+      const byEmployeeName: Record<string, number[]> = {};
+      for (const [name, hours] of Object.entries(perEmp)) {
+        const row = timeSlots.map((s) => {
+          const h = hours[s];
+          const denom = Math.max(1, h.active || 60);
+          return Math.min(100, Math.round(((h.moves + h.clicks * 5) / (denom * 8)) * 100));
+        });
+        byEmployeeName[name] = row;
+        byEmployeeName[name.split('(')[0].trim()] = row;
+      }
+
+      return {
+        byHour,
+        totalMoves,
+        totalClicks,
+        hourlyIntensityArray: timeSlots.map((s) => byHour[s]?.intensityPct || 0),
+        byEmployeeName,
+      };
     } catch (e) {
       console.warn('Failed to fetch live mouse telemetry:', e);
-      return { byHour: {}, totalMoves: 0, totalClicks: 0, hourlyIntensityArray: [] };
+      return empty;
     }
   },
 
@@ -2516,12 +2671,25 @@ export const dataService = {
         ? 'Zuhr Namaz & Lunch (01:00 – 02:00 PM)'
         : 'Authorized Recess Window';
 
-    // Baseline telemetry values for slot
-    const defaultHeatmapVal = breakType === 'coffee' ? 89.3 : 72.1;
-    const defaultKeysVal = breakType === 'coffee' ? 3036 : 2451;
+    // Use only real live telemetry provided by the caller — never invent keystroke/heatmap values
+    let liveKeys = params.keyboardData?.[0]?.[slotIndex];
+    let liveHeat = params.heatmapData?.[0]?.[slotIndex];
+    if (liveKeys == null || liveHeat == null) {
+      try {
+        const [keysRes, mouseRes] = await Promise.all([
+          dataService.getLiveKeystrokeTelemetry('employee', employeeId),
+          dataService.getLiveMouseTelemetry('employee', employeeId),
+        ]);
+        if (liveKeys == null) liveKeys = keysRes.hourlyKeysArray?.[slotIndex] ?? 0;
+        if (liveHeat == null) liveHeat = mouseRes.hourlyIntensityArray?.[slotIndex] ?? 0;
+      } catch {
+        liveKeys = liveKeys ?? 0;
+        liveHeat = liveHeat ?? 0;
+      }
+    }
 
-    const preBreakHeatmap = params.heatmapData?.[0]?.[slotIndex] ?? defaultHeatmapVal;
-    const preBreakKeys = params.keyboardData?.[0]?.[slotIndex] ?? defaultKeysVal;
+    const preBreakKeys = Number(liveKeys) || 0;
+    const preBreakHeatmap = Number(liveHeat) || 0;
 
     const hourlyState: BreakTelemetryHourlyState = {
       time_slot: slotName,
@@ -2535,6 +2703,7 @@ export const dataService = {
       hourly_delta_pct: 0,
     };
 
+    const zeroRow = () => TELEMETRY_TIME_SLOTS.map(() => 0);
     const snapshot: BreakTelemetrySnapshot = {
       id: `snap-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
       employee_id: employeeId,
@@ -2544,28 +2713,10 @@ export const dataService = {
       started_at: new Date().toISOString(),
       current_time_slot: slotName,
       time_slot_index: slotIndex,
-      heatmap_data: params.heatmapData || [
-        [60.5, 86.7, 89.3, 92.7, 72.1, 70.1, 94.9, 87.6],
-        [11.6, 65.6, 81.8, 74.6, 62.5, 57.4, 82.8, 70.3],
-        [18.6, 67.6, 83.9, 74.3, 60.1, 58.4, 83.0, 72.8],
-        [18.5, 65.4, 78.7, 70.8, 60.6, 52.7, 81.9, 64.4],
-        [32.1, 67.2, 84.7, 75.5, 61.1, 57.4, 89.3, 70.3],
-        [75.5, 92.3, 93.9, 97.3, 75.2, 92.6, 97.8, 93.0],
-        [67.8, 90.8, 92.3, 95.4, 74.3, 88.2, 96.7, 92.2],
-        [71.6, 92.2, 92.8, 96.9, 75.1, 92.8, 97.5, 93.1],
-      ],
-      keyboard_data: params.keyboardData || [
-        [2057, 2948, 3036, 3152, 2451, 2383, 3226, 2978],
-        [394,  2230, 2781, 2536, 2125, 1951, 2815, 2390],
-        [632,  2298, 2852, 2526, 2043, 1985, 2822, 2475],
-        [629,  2223, 2675, 2407, 2060, 1791, 2784, 2189],
-        [1091, 2284, 2879, 2567, 2077, 1951, 3036, 2390],
-        [2567, 3138, 3192, 3308, 2556, 3148, 3325, 3162],
-        [2305, 3087, 3138, 3243, 2526, 2998, 3287, 3134],
-        [2434, 3134, 3155, 3294, 2553, 3155, 3315, 3165],
-      ],
+      heatmap_data: params.heatmapData?.length ? params.heatmapData : [zeroRow()],
+      keyboard_data: params.keyboardData?.length ? params.keyboardData : [zeroRow()],
       hourly_state: hourlyState,
-      device_id: params.deviceId || 'WIN-DESKTOP-QUVQI4B-ok',
+      device_id: params.deviceId || '',
       status: 'active_break',
     };
 
@@ -2635,26 +2786,16 @@ export const dataService = {
     }
 
     if (!snapshot) {
-      // Fallback starter snapshot if none existed
-      snapshot = {
-        id: `snap-${Date.now()}`,
-        employee_id: employeeId,
-        employee_name: employeeName,
-        break_type: 'coffee',
-        break_title: 'Coffee Break (11:00 – 11:30 AM)',
-        started_at: new Date(Date.now() - 1000 * 60 * 30).toISOString(),
-        current_time_slot: '11:00',
-        time_slot_index: 2,
-        heatmap_data: [],
-        keyboard_data: [],
-        hourly_state: {
-          time_slot: '11:00',
-          slot_index: 2,
-          pre_break_keys: 1520,
-          pre_break_heatmap_pct: 46.5,
-        },
-        status: 'active_break',
-      };
+      return null;
+    }
+
+    if (isSeedBreakKeyboardMatrix(snapshot.keyboard_data)) {
+      snapshot.keyboard_data = [];
+      snapshot.heatmap_data = [];
+      if (snapshot.hourly_state) {
+        snapshot.hourly_state.pre_break_keys = 0;
+        snapshot.hourly_state.pre_break_heatmap_pct = 0;
+      }
     }
 
     const breakDuration =
@@ -2662,13 +2803,23 @@ export const dataService = {
         ? params.breakSeconds
         : Math.max(60, Math.round((Date.now() - new Date(snapshot.started_at).getTime()) / 1000));
 
-    // Calculate continuation on top of preserved state
-    const preBreakKeys = snapshot.hourly_state?.pre_break_keys || 1520;
-    const preBreakHeatmap = snapshot.hourly_state?.pre_break_heatmap_pct || 46.5;
+    // Calculate continuation on top of preserved state (zeros when unknown — never invent)
+    const preBreakKeys = snapshot.hourly_state?.pre_break_keys ?? 0;
+    const preBreakHeatmap = snapshot.hourly_state?.pre_break_heatmap_pct ?? 0;
 
-    // Subsequent work continues seamlessly from preserved state
-    const postBreakKeys = typeof params.additionalKeys === 'number' ? params.additionalKeys : 1516;
-    const postBreakHeatmap = typeof params.additionalHeatmapPct === 'number' ? params.additionalHeatmapPct : 42.8;
+    let postBreakKeys = typeof params.additionalKeys === 'number' ? params.additionalKeys : 0;
+    let postBreakHeatmap =
+      typeof params.additionalHeatmapPct === 'number' ? params.additionalHeatmapPct : 0;
+    if (typeof params.additionalKeys !== 'number') {
+      try {
+        const keysRes = await dataService.getLiveKeystrokeTelemetry('employee', employeeId);
+        const slotIdx = snapshot.time_slot_index ?? 2;
+        const liveNow = keysRes.hourlyKeysArray?.[slotIdx] ?? 0;
+        postBreakKeys = Math.max(0, liveNow - preBreakKeys);
+      } catch {
+        postBreakKeys = 0;
+      }
+    }
 
     const adjustedTotalKeys = preBreakKeys + postBreakKeys;
     const adjustedHeatmap = Math.min(100, Number((preBreakHeatmap + postBreakHeatmap).toFixed(1)));
@@ -2742,17 +2893,28 @@ export const dataService = {
   },
 
   getLatestBreakTelemetry: async (employeeId?: string): Promise<BreakTelemetrySnapshot | null> => {
-    const id = employeeId || 'cccccccc-cccc-cccc-cccc-cccccccccccc';
+    const id = employeeId || '';
     try {
       const raw =
-        localStorage.getItem(`stitch_break_telemetry_${id}`) ||
+        (id && localStorage.getItem(`stitch_break_telemetry_${id}`)) ||
         localStorage.getItem('stitch_active_break_snapshot');
-      if (raw) return JSON.parse(raw);
+      if (raw) {
+        const parsed = JSON.parse(raw) as BreakTelemetrySnapshot;
+        if (isSeedBreakKeyboardMatrix(parsed.keyboard_data)) {
+          localStorage.removeItem('stitch_active_break_snapshot');
+          if (id) localStorage.removeItem(`stitch_break_telemetry_${id}`);
+        } else {
+          return parsed;
+        }
+      }
     } catch (e) {
       console.error(e);
     }
 
-    return await supabaseSync.fetchLatestBreakSnapshot(id);
+    if (!id) return null;
+    const remote = await supabaseSync.fetchLatestBreakSnapshot(id);
+    if (remote && isSeedBreakKeyboardMatrix(remote.keyboard_data)) return null;
+    return remote;
   },
 
   subscribeToBreakTelemetry: (
@@ -2779,7 +2941,7 @@ export const dataService = {
         const snap: BreakTelemetrySnapshot = {
           id: meta.snapshot_id || payload.new.id,
           employee_id: payload.new.employee_id,
-          employee_name: meta.employee_name || 'Arsal',
+          employee_name: meta.employee_name || 'Employee',
           break_type: meta.break_type || 'coffee',
           break_title: meta.break_title || 'Break Window',
           started_at: payload.new.occurred_at,
@@ -2792,8 +2954,8 @@ export const dataService = {
           hourly_state: meta.hourly_state || {
             time_slot: meta.current_time_slot || '11:00',
             slot_index: meta.time_slot_index ?? 2,
-            pre_break_keys: 1520,
-            pre_break_heatmap_pct: 46.5,
+            pre_break_keys: 0,
+            pre_break_heatmap_pct: 0,
           },
           status: payload.new.event_type === 'BREAK_TELEMETRY_RESUMED' ? 'resumed' : 'active_break',
         };

@@ -344,17 +344,9 @@ export const AdminMonitoringPage: React.FC<AdminMonitoringPageProps> = ({ initia
             <option value="all">All Organization Employees</option>
             {employees.map((e) => (
               <option key={e.id} value={e.id}>
-                {e.name} ({e.team_name})
+                {e.name}{e.team_name ? ` (${e.team_name})` : ''}
               </option>
             ))}
-            {/* Additional Organization Roster Employees for Granular Filter Telemetry */}
-            {['Alex Vance', 'Elena Vance', 'Marcus Bell', 'Sarah Chen', 'David Kim', 'Jessica Lee', 'Michael Torres']
-              .filter((name) => !employees.some((e) => e.name.toLowerCase().includes(name.toLowerCase())))
-              .map((name) => (
-                <option key={name} value={name}>
-                  {name}
-                </option>
-              ))}
           </select>
         </div>
       </div>

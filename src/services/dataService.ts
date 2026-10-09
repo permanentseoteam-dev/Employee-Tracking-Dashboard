@@ -287,10 +287,89 @@ function mapDbProjectItem(row: any): ProjectTreeItem {
   };
 }
 
-/** Raw project tree fetch (no employee ACL filter) — avoids circular dataService refs. */
+/** True when PostgREST / Postgres says the relation is missing (not yet migrated). */
+function isMissingRelationError(err: unknown): boolean {
+  if (!err) return false;
+  const e = err as { code?: string; message?: string };
+  const msg = String(e.message || err || '');
+  return (
+    e.code === 'PGRST205' ||
+    e.code === '42P01' ||
+    msg.includes('schema cache') ||
+    msg.includes('does not exist') ||
+    /relation .* does not exist/i.test(msg) ||
+    /Could not find the table/i.test(msg)
+  );
+}
+
+/** null = unknown, true = table usable, false = missing (skip remote table calls). */
+let projectItemsTableOk: boolean | null = null;
+
+const PROJECT_TREE_BUCKET = 'screenshots';
+const projectTreeStoragePath = (projectId: string) => `project-trees/${projectId}.json`;
+
+function mergeProjectItemLists(...lists: ProjectTreeItem[][]): ProjectTreeItem[] {
+  const byId = new Map<string, ProjectTreeItem>();
+  for (const list of lists) {
+    for (const item of list) {
+      const prev = byId.get(item.id);
+      if (!prev) {
+        byId.set(item.id, item);
+        continue;
+      }
+      const prevT = Date.parse(prev.updated_at || prev.created_at || '') || 0;
+      const nextT = Date.parse(item.updated_at || item.created_at || '') || 0;
+      byId.set(item.id, nextT >= prevT ? item : prev);
+    }
+  }
+  return Array.from(byId.values());
+}
+
+async function loadStorageProjectItems(projectId: string): Promise<ProjectTreeItem[]> {
+  if (!projectId || !isSupabaseConfigured()) return [];
+  try {
+    const { data, error } = await supabase.storage
+      .from(PROJECT_TREE_BUCKET)
+      .download(projectTreeStoragePath(projectId));
+    if (error || !data) return [];
+    const text = await data.text();
+    const parsed = JSON.parse(text);
+    return Array.isArray(parsed) ? parsed.map((row) => mapDbProjectItem(row)) : [];
+  } catch {
+    return [];
+  }
+}
+
+async function saveStorageProjectItems(projectId: string, items: ProjectTreeItem[]): Promise<void> {
+  if (!projectId || !isSupabaseConfigured()) return;
+  try {
+    const body = JSON.stringify(items);
+    const blob = new Blob([body], { type: 'application/json' });
+    await supabase.storage
+      .from(PROJECT_TREE_BUCKET)
+      .upload(projectTreeStoragePath(projectId), blob, {
+        upsert: true,
+        contentType: 'application/json',
+      });
+  } catch (e) {
+    console.warn('saveStorageProjectItems:', e);
+  }
+}
+
+/** Persist tree locally + cloud storage; never throws for missing DB table. */
+async function persistProjectItems(projectId: string, items: ProjectTreeItem[]): Promise<void> {
+  saveLocalProjectItems(projectId, items);
+  await saveStorageProjectItems(projectId, items);
+}
+
+/** Raw project tree fetch (no employee ACL filter) — table → storage → local, merged. */
 async function fetchProjectItemsRaw(projectId: string): Promise<ProjectTreeItem[]> {
   if (!projectId) return [];
-  if (isSupabaseConfigured()) {
+  const local = loadLocalProjectItems(projectId);
+  let remote: ProjectTreeItem[] = [];
+  let storage: ProjectTreeItem[] = [];
+
+  if (isSupabaseConfigured() && projectItemsTableOk !== false) {
     try {
       const { data, error } = await supabase
         .from('project_items')
@@ -298,16 +377,26 @@ async function fetchProjectItemsRaw(projectId: string): Promise<ProjectTreeItem[
         .eq('project_id', projectId)
         .order('item_type', { ascending: true })
         .order('name', { ascending: true });
-      if (!error && data) {
-        const mapped = data.map(mapDbProjectItem);
-        saveLocalProjectItems(projectId, mapped);
-        return mapped;
+      if (error) {
+        if (isMissingRelationError(error)) projectItemsTableOk = false;
+      } else if (data) {
+        projectItemsTableOk = true;
+        remote = data.map(mapDbProjectItem);
       }
     } catch (e) {
-      console.warn('fetchProjectItemsRaw supabase fallback:', e);
+      if (isMissingRelationError(e)) projectItemsTableOk = false;
+      else console.warn('fetchProjectItemsRaw supabase fallback:', e);
     }
   }
-  return loadLocalProjectItems(projectId);
+
+  storage = await loadStorageProjectItems(projectId);
+  const merged = mergeProjectItemLists(local, storage, remote);
+  saveLocalProjectItems(projectId, merged);
+  // Keep storage in sync when we learned newer local/table rows
+  if (merged.length && (storage.length !== merged.length || local.length !== merged.length)) {
+    void saveStorageProjectItems(projectId, merged);
+  }
+  return merged;
 }
 
 let localAuditLogs: AuditLogItem[] = [];
@@ -2006,7 +2095,9 @@ export const dataService = {
             ? { slides: [{ title: name, body: '' }], format: 'internal_presentation' }
             : null);
 
-    if (isSupabaseConfigured()) {
+    let item: ProjectTreeItem | null = null;
+
+    if (isSupabaseConfigured() && projectItemsTableOk !== false) {
       try {
         const { data, error } = await supabase
           .from('project_items')
@@ -2026,41 +2117,38 @@ export const dataService = {
           .select()
           .single();
         if (!error && data) {
-          const item = mapDbProjectItem(data);
-          const local = loadLocalProjectItems(params.projectId);
-          saveLocalProjectItems(params.projectId, [item, ...local.filter((x) => x.id !== item.id)]);
-          return item;
-        }
-        if (error && !(error.message.includes('schema cache') || error.code === '42P01')) {
-          throw new Error(error.message);
+          projectItemsTableOk = true;
+          item = mapDbProjectItem(data);
+        } else if (error) {
+          if (isMissingRelationError(error)) projectItemsTableOk = false;
+          else console.warn('createProjectItem remote:', error.message);
         }
       } catch (e: any) {
-        if (e?.message && !String(e.message).includes('schema cache') && e?.code !== '42P01') {
-          // fall through to local for missing table; rethrow other errors
-          if (!String(e.message).includes('relation') && !String(e.message).includes('project_items')) {
-            console.warn('createProjectItem remote warning, using local:', e);
-          }
-        }
+        if (isMissingRelationError(e)) projectItemsTableOk = false;
+        else console.warn('createProjectItem remote warning, using fallback:', e);
       }
     }
 
-    const item: ProjectTreeItem = {
-      id: crypto.randomUUID?.() || `item-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-      project_id: params.projectId,
-      parent_id: params.parentId || null,
-      item_type: params.itemType,
-      name,
-      content: defaultContent,
-      data_url: params.dataUrl || null,
-      mime_type: params.mimeType || null,
-      external_provider: null,
-      external_file_id: null,
-      created_by: params.createdBy || null,
-      created_at: now,
-      updated_at: now,
-    };
-    const local = loadLocalProjectItems(params.projectId);
-    saveLocalProjectItems(params.projectId, [item, ...local]);
+    if (!item) {
+      item = {
+        id: crypto.randomUUID?.() || `item-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        project_id: params.projectId,
+        parent_id: params.parentId || null,
+        item_type: params.itemType,
+        name,
+        content: defaultContent,
+        data_url: params.dataUrl || null,
+        mime_type: params.mimeType || null,
+        external_provider: null,
+        external_file_id: null,
+        created_by: params.createdBy || null,
+        created_at: now,
+        updated_at: now,
+      };
+    }
+
+    const next = mergeProjectItemLists(existing, [item]);
+    await persistProjectItems(params.projectId, next);
     return item;
   },
 
@@ -2107,7 +2195,13 @@ export const dataService = {
     }
 
     const now = new Date().toISOString();
-    if (isSupabaseConfigured()) {
+    let updated: ProjectTreeItem = {
+      ...current,
+      ...patch,
+      updated_at: now,
+    };
+
+    if (isSupabaseConfigured() && projectItemsTableOk !== false) {
       try {
         const { data, error } = await supabase
           .from('project_items')
@@ -2117,46 +2211,40 @@ export const dataService = {
           .select()
           .single();
         if (!error && data) {
-          const item = mapDbProjectItem(data);
-          saveLocalProjectItems(
-            projectId,
-            items.map((i) => (i.id === itemId ? item : i))
-          );
-          return item;
+          projectItemsTableOk = true;
+          updated = mapDbProjectItem(data);
+        } else if (error && isMissingRelationError(error)) {
+          projectItemsTableOk = false;
         }
       } catch (e) {
-        console.warn('updateProjectItem remote fallback:', e);
+        if (isMissingRelationError(e)) projectItemsTableOk = false;
+        else console.warn('updateProjectItem remote fallback:', e);
       }
     }
 
-    const updated: ProjectTreeItem = {
-      ...current,
-      ...patch,
-      updated_at: now,
-    };
-    saveLocalProjectItems(
-      projectId,
-      items.map((i) => (i.id === itemId ? updated : i))
-    );
+    const next = items.map((i) => (i.id === itemId ? updated : i));
+    await persistProjectItems(projectId, next);
     return updated;
   },
 
   deleteProjectItem: async (projectId: string, itemId: string): Promise<void> => {
-    if (isSupabaseConfigured()) {
+    if (isSupabaseConfigured() && projectItemsTableOk !== false) {
       try {
         const { error } = await supabase
           .from('project_items')
           .delete()
           .eq('id', itemId)
           .eq('project_id', projectId);
-        if (error && !(error.message.includes('schema cache') || error.code === '42P01')) {
-          console.warn('deleteProjectItem remote:', error.message);
+        if (error) {
+          if (isMissingRelationError(error)) projectItemsTableOk = false;
+          else console.warn('deleteProjectItem remote:', error.message);
         }
       } catch (e) {
-        console.warn('deleteProjectItem remote fallback:', e);
+        if (isMissingRelationError(e)) projectItemsTableOk = false;
+        else console.warn('deleteProjectItem remote fallback:', e);
       }
     }
-    const items = loadLocalProjectItems(projectId);
+    const items = await fetchProjectItemsRaw(projectId);
     const toRemove = new Set<string>([itemId]);
     let changed = true;
     while (changed) {
@@ -2168,7 +2256,7 @@ export const dataService = {
         }
       }
     }
-    saveLocalProjectItems(
+    await persistProjectItems(
       projectId,
       items.filter((i) => !toRemove.has(i.id))
     );
@@ -2190,7 +2278,15 @@ export const dataService = {
       // allow for own projects
     }
     if (!isSupabaseConfigured()) throw new Error('Supabase is not configured');
-    await supabase.from('project_items').delete().eq('project_id', projectId);
+    if (projectItemsTableOk !== false) {
+      const { error } = await supabase.from('project_items').delete().eq('project_id', projectId);
+      if (error && isMissingRelationError(error)) projectItemsTableOk = false;
+    }
+    try {
+      await supabase.storage.from(PROJECT_TREE_BUCKET).remove([projectTreeStoragePath(projectId)]);
+    } catch {
+      /* ignore */
+    }
     const { error } = await supabase.from('projects').delete().eq('id', projectId);
     if (error) throw error;
     try {

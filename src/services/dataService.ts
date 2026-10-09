@@ -181,6 +181,72 @@ function saveAllProjectAssignments(rows: ProjectMemberAssignment[]) {
   }
 }
 
+/** projects.manager_id FK → public.users(id). Upsert missing owners before insert. */
+async function ensureProjectManagerUser(params: {
+  id: string;
+  email?: string;
+  fullName?: string;
+  role: UserRole;
+}): Promise<void> {
+  if (!params.id || !isSupabaseConfigured()) return;
+
+  const { data: existing } = await supabase
+    .from('users')
+    .select('id')
+    .eq('id', params.id)
+    .maybeSingle();
+  if (existing?.id) return;
+
+  const email =
+    params.email ||
+    (params.role === 'project_manager'
+      ? 'project.manager@company.com'
+      : `${params.id.slice(0, 8)}@local.users`);
+
+  // Live DB may still reject project_manager on users_role_check — fall back to manager.
+  const attempts: Array<'project_manager' | 'manager' | 'employee' | 'admin'> =
+    params.role === 'project_manager'
+      ? ['project_manager', 'manager']
+      : params.role === 'admin'
+        ? ['admin']
+        : params.role === 'manager'
+          ? ['manager']
+          : ['employee'];
+
+  let lastErr: string | null = null;
+  const emails = [email, `${params.id}@local.users`];
+  for (const dbRole of attempts) {
+    for (const tryEmail of emails) {
+      const { error } = await supabase.from('users').upsert({
+        id: params.id,
+        organization_id: '00000000-0000-0000-0000-000000000001',
+        email: tryEmail,
+        full_name: params.fullName || 'Project Owner',
+        role: dbRole,
+      });
+      if (!error) {
+        await supabase.from('profiles').upsert({
+          id: params.id,
+          email: tryEmail,
+          full_name: params.fullName || 'Project Owner',
+          role: dbRole,
+          department: 'Delivery',
+        });
+        return;
+      }
+      lastErr = error.message;
+      // try next email on unique conflict; next role on check constraint
+      if (error.code === '23505') continue;
+      if (error.code === '23514' || error.message.includes('users_role_check')) break;
+      throw new Error(error.message);
+    }
+  }
+  throw new Error(
+    lastErr ||
+      `Cannot create project: manager_id ${params.id} is not in users (FK projects_manager_id_fkey)`
+  );
+}
+
 const projectItemsLocalKey = (projectId: string) => `stitch_project_items_${projectId}`;
 
 function loadLocalProjectItems(projectId: string): ProjectTreeItem[] {
@@ -1707,14 +1773,24 @@ export const dataService = {
       throw new Error('403 Forbidden: Cannot create project');
     }
 
+    const manager_id =
+      role === 'manager' || role === 'project_manager' || role === 'employee'
+        ? managerId || project.manager_id
+        : project.manager_id || managerId;
+
+    if (manager_id) {
+      await ensureProjectManagerUser({
+        id: manager_id,
+        fullName: project.manager_name || 'Project Owner',
+        role,
+      });
+    }
+
     const newProj = {
       name: project.name,
       description: project.code || project.description || '',
       status: project.status || 'active',
-      manager_id:
-        role === 'manager' || role === 'project_manager' || role === 'employee'
-          ? managerId || project.manager_id
-          : project.manager_id,
+      manager_id: manager_id || null,
       organization_id: '00000000-0000-0000-0000-000000000001',
     };
 
@@ -1724,6 +1800,7 @@ export const dataService = {
     return {
       ...project,
       id: data.id,
+      manager_id: data.manager_id || manager_id || '',
       completed_tasks: 0,
     };
   },

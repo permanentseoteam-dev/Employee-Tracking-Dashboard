@@ -26,9 +26,11 @@ const DEFAULT_PROFILES: Record<UserRole, UserProfile> = {
     team_name: 'Core Backend Team',
   },
   project_manager: {
-    id: 'dddddddd-dddd-dddd-dddd-dddddddddddd',
+    // Dedicated id — must exist in public.users (projects.manager_id FK).
+    // Do not reuse dddddddd (Michael Chen employee seed).
+    id: 'eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee',
     name: 'Arsal (Project Manager)',
-    email: 'arsal.pm@company.com',
+    email: 'project.manager@company.com',
     role: 'project_manager',
     avatar: 'PM',
     department: 'Delivery',

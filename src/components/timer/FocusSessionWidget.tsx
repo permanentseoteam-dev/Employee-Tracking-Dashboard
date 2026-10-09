@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   X,
@@ -34,6 +34,8 @@ export const FocusSessionWidget: React.FC<FocusSessionWidgetProps> = ({
   onTargetMinutesChange,
 }) => {
   const [showOptions, setShowOptions] = useState(false);
+  const [isDialDragging, setIsDialDragging] = useState(false);
+  const dialContainerRef = useRef<HTMLDivElement>(null);
 
   const targetSeconds = Math.max(60, targetMinutes * 60);
   // Calculate progress ratio (0 to 1) - strictly 0 when timerSeconds is 0
@@ -72,6 +74,53 @@ export const FocusSessionWidget: React.FC<FocusSessionWidgetProps> = ({
   });
 
   const presetDurations = [15, 20, 25, 30, 45, 60];
+
+  const handleDialPointerDown = (e: React.PointerEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDialDragging(true);
+
+    const updateFromPointer = (clientX: number, clientY: number) => {
+      if (!dialContainerRef.current) return;
+      const rect = dialContainerRef.current.getBoundingClientRect();
+      const cx = rect.left + rect.width / 2;
+      const cy = rect.top + rect.height / 2;
+      const dx = clientX - cx;
+      const dy = clientY - cy;
+
+      let deg = (Math.atan2(dy, dx) * 180) / Math.PI;
+      let clockDeg = deg + 90;
+      if (clockDeg < 0) clockDeg += 360;
+
+      let newMins = Math.round((clockDeg / 360) * 60);
+      if (newMins <= 0) newMins = 60;
+      newMins = Math.max(5, Math.min(120, Math.round(newMins / 5) * 5));
+
+      onTargetMinutesChange(newMins);
+    };
+
+    updateFromPointer(e.clientX, e.clientY);
+
+    const onPointerMove = (ev: PointerEvent) => {
+      updateFromPointer(ev.clientX, ev.clientY);
+    };
+
+    const onPointerUp = () => {
+      setIsDialDragging(false);
+      window.removeEventListener('pointermove', onPointerMove);
+      window.removeEventListener('pointerup', onPointerUp);
+    };
+
+    window.addEventListener('pointermove', onPointerMove, { passive: false });
+    window.addEventListener('pointerup', onPointerUp);
+  };
+
+  // Knob position for widget dial (radius ~87.5)
+  const widgetRatio = Math.min(1, Math.max(0, targetMinutes / 60));
+  const knobAngleDeg = widgetRatio * 360;
+  const knobAngleRad = ((knobAngleDeg - 90) * Math.PI) / 180;
+  const widgetKnobX = 110 + 87.5 * Math.cos(knobAngleRad);
+  const widgetKnobY = 110 + 87.5 * Math.sin(knobAngleRad);
 
   return (
     <AnimatePresence>
@@ -187,6 +236,8 @@ export const FocusSessionWidget: React.FC<FocusSessionWidgetProps> = ({
           >
             {/* Circular Ticks Meter */}
             <div
+              ref={dialContainerRef}
+              onPointerDown={handleDialPointerDown}
               style={{
                 position: 'relative',
                 width: 220,
@@ -194,9 +245,13 @@ export const FocusSessionWidget: React.FC<FocusSessionWidgetProps> = ({
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
+                cursor: isDialDragging ? 'grabbing' : 'grab',
+                touchAction: 'none',
+                userSelect: 'none',
               }}
+              title="Drag around the dial to adjust target focus duration"
             >
-              <svg width="220" height="220" viewBox="0 0 220 220">
+              <svg width="220" height="220" viewBox="0 0 220 220" style={{ overflow: 'visible' }}>
                 {ticks.map((t) => (
                   <line
                     key={t.i}
@@ -208,11 +263,30 @@ export const FocusSessionWidget: React.FC<FocusSessionWidgetProps> = ({
                     strokeWidth={t.isActive ? 3.5 : 2.5}
                     strokeLinecap="round"
                     style={{
-                      transition: 'stroke 0.25s ease, stroke-width 0.25s ease',
+                      transition: isDialDragging ? 'none' : 'stroke 0.25s ease, stroke-width 0.25s ease',
                       opacity: t.isActive ? 1 : 0.35,
                     }}
                   />
                 ))}
+
+                {/* Tactile drag knob for widget */}
+                <g style={{ transition: isDialDragging ? 'none' : 'all 0.25s ease' }}>
+                  <circle
+                    cx={widgetKnobX}
+                    cy={widgetKnobY}
+                    r="8"
+                    fill="rgba(101, 163, 13, 0.25)"
+                  />
+                  <circle
+                    cx={widgetKnobX}
+                    cy={widgetKnobY}
+                    r="5.5"
+                    fill="#ffffff"
+                    stroke="#65a30d"
+                    strokeWidth="2.5"
+                    style={{ filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.35))' }}
+                  />
+                </g>
               </svg>
 
               {/* Center Info in Dial */}

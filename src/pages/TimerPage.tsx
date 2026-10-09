@@ -1,6 +1,15 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
-import { Play, Pause, Coffee, Moon, CheckCircle2 } from 'lucide-react';
+import {
+  Play,
+  Pause,
+  Coffee,
+  Moon,
+  CheckCircle2,
+  RotateCcw,
+  Plus,
+  Minus,
+} from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { supabaseSync } from '../services/supabaseService';
 import { dataService } from '../services/dataService';
@@ -15,16 +24,30 @@ export const TimerPage: React.FC<TimerPageProps> = ({
   onActiveTaskChange,
 }) => {
   const { user } = useAuth();
-  const [secondsElapsed, setSecondsElapsed] = useState(20700); // 05:45:00
+  const [durationMinutes, setDurationMinutes] = useState(25);
+  const [remainingSeconds, setRemainingSeconds] = useState(25 * 60);
+  const [secondsElapsed, setSecondsElapsed] = useState(20700); // 05:45:00 cumulative workday time
   const [isRunning, setIsRunning] = useState(Boolean(activeTaskTitle));
+  const [isDragging, setIsDragging] = useState(false);
   const [activeBreak, setActiveBreak] = useState<'general' | 'namaz' | null>(null);
   const [breakSeconds, setBreakSeconds] = useState(0);
   const [sessionStartTime, setSessionStartTime] = useState<string>(() => new Date().toISOString());
+  const [breakSyncMessage, setBreakSyncMessage] = useState<string | null>(null);
 
+  const dialRef = useRef<HTMLDivElement>(null);
+
+  // Ticking effect
   useEffect(() => {
     let interval: any = null;
-    if (isRunning && !activeBreak) {
+    if (isRunning && !activeBreak && !isDragging) {
       interval = setInterval(() => {
+        setRemainingSeconds((prev) => {
+          if (prev <= 1) {
+            setIsRunning(false);
+            return 0;
+          }
+          return prev - 1;
+        });
         setSecondsElapsed((prev) => prev + 1);
       }, 1000);
     } else if (activeBreak) {
@@ -33,13 +56,78 @@ export const TimerPage: React.FC<TimerPageProps> = ({
       }, 1000);
     }
     return () => clearInterval(interval);
-  }, [isRunning, activeBreak]);
+  }, [isRunning, activeBreak, isDragging]);
+
+  const formatRemaining = (totalSecs: number) => {
+    const mins = Math.floor(totalSecs / 60);
+    const secs = totalSecs % 60;
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  };
 
   const formatTime = (totalSecs: number) => {
     const hrs = Math.floor(totalSecs / 3600);
     const mins = Math.floor((totalSecs % 3600) / 60);
     const secs = totalSecs % 60;
     return `${hrs.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  // Circular drag interaction
+  const handleDialPointerDown = (e: React.PointerEvent) => {
+    if (activeBreak) return;
+    e.preventDefault();
+    setIsDragging(true);
+
+    const updateTimeFromPointer = (clientX: number, clientY: number) => {
+      if (!dialRef.current) return;
+      const rect = dialRef.current.getBoundingClientRect();
+      const cx = rect.left + rect.width / 2;
+      const cy = rect.top + rect.height / 2;
+      const dx = clientX - cx;
+      const dy = clientY - cy;
+
+      let deg = (Math.atan2(dy, dx) * 180) / Math.PI;
+      let clockDeg = deg + 90;
+      if (clockDeg < 0) clockDeg += 360;
+
+      // Map clockDeg [0, 360) to 1..60 minutes
+      let newMins = Math.round((clockDeg / 360) * 60);
+      if (newMins <= 0) newMins = 60;
+      newMins = Math.max(1, Math.min(60, newMins));
+
+      setDurationMinutes(newMins);
+      setRemainingSeconds(newMins * 60);
+    };
+
+    updateTimeFromPointer(e.clientX, e.clientY);
+
+    const onPointerMove = (ev: PointerEvent) => {
+      updateTimeFromPointer(ev.clientX, ev.clientY);
+    };
+
+    const onPointerUp = () => {
+      setIsDragging(false);
+      window.removeEventListener('pointermove', onPointerMove);
+      window.removeEventListener('pointerup', onPointerUp);
+    };
+
+    window.addEventListener('pointermove', onPointerMove, { passive: false });
+    window.addEventListener('pointerup', onPointerUp);
+  };
+
+  const handleAdjustMinutes = (delta: number) => {
+    const next = Math.max(1, Math.min(60, durationMinutes + delta));
+    setDurationMinutes(next);
+    setRemainingSeconds(next * 60);
+  };
+
+  const handleSelectPreset = (mins: number) => {
+    setDurationMinutes(mins);
+    setRemainingSeconds(mins * 60);
+  };
+
+  const handleReset = () => {
+    setIsRunning(false);
+    setRemainingSeconds(durationMinutes * 60);
   };
 
   const handleStart = () => {
@@ -54,8 +142,6 @@ export const TimerPage: React.FC<TimerPageProps> = ({
   const handlePause = () => {
     setIsRunning(false);
   };
-
-  const [breakSyncMessage, setBreakSyncMessage] = useState<string | null>(null);
 
   const handleBreak = async (type: 'general' | 'namaz') => {
     setActiveBreak(type);
@@ -116,7 +202,6 @@ export const TimerPage: React.FC<TimerPageProps> = ({
     );
   };
 
-
   const handleFinish = async () => {
     const taskTitle = activeTaskTitle || 'Active Engineering Session';
     setIsRunning(false);
@@ -151,6 +236,35 @@ export const TimerPage: React.FC<TimerPageProps> = ({
     }
   };
 
+  // Progress Ratio & Dial Arc Coordinates
+  const displayMinutes = isRunning ? remainingSeconds / 60 : durationMinutes;
+  const progressRatio = Math.max(0, Math.min(1, displayMinutes / 60));
+  // Total circumference for radius 42 is 263.89 ~ 264
+  const strokeDashoffset = progressRatio === 0 ? 264 : Math.round(264 * (1 - progressRatio));
+
+  // Knob coordinate calculation on circle perimeter (radius 42)
+  const knobAngleDeg = progressRatio * 360;
+  const knobAngleRad = ((knobAngleDeg - 90) * Math.PI) / 180;
+  const knobX = 50 + 42 * Math.cos(knobAngleRad);
+  const knobY = 50 + 42 * Math.sin(knobAngleRad);
+
+  // Clock tick marks for a physical dial look
+  const clockTicks = Array.from({ length: 60 }, (_, i) => {
+    const isMajor = i % 5 === 0;
+    const angleDeg = i * 6 - 90;
+    const angleRad = (angleDeg * Math.PI) / 180;
+    const r1 = isMajor ? 36 : 38;
+    const r2 = 40.5;
+    const x1 = 50 + r1 * Math.cos(angleRad);
+    const y1 = 50 + r1 * Math.sin(angleRad);
+    const x2 = 50 + r2 * Math.cos(angleRad);
+    const y2 = 50 + r2 * Math.sin(angleRad);
+    const isPassed = (i / 60) <= progressRatio;
+    return { i, x1, y1, x2, y2, isMajor, isPassed };
+  });
+
+  const presetDurations = [15, 20, 25, 30, 45, 60];
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 8 }}
@@ -168,7 +282,7 @@ export const TimerPage: React.FC<TimerPageProps> = ({
             Precision Task Timer
           </h1>
           <p style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 4 }}>
-            Timestamp-based session tracker &bull; Auto-excludes break intervals &bull; Direct Supabase telemetry
+            Drag the circular handle to adjust session time &bull; Auto-excludes break intervals &bull; Direct Supabase telemetry
           </p>
         </div>
       </div>
@@ -181,41 +295,236 @@ export const TimerPage: React.FC<TimerPageProps> = ({
           flexDirection: 'column',
           alignItems: 'center',
           justifyContent: 'center',
-          padding: '3rem 2rem',
+          padding: '2.5rem 2rem',
           textAlign: 'center',
-          gap: '1.5rem',
+          gap: '1.25rem',
         }}
       >
-        <div style={{ fontSize: 14, color: 'var(--text-muted)' }}>
-          Active Task Focus: <strong style={{ color: 'var(--text-primary)', fontSize: 16 }}>{activeTaskTitle || 'General Engineering Work'}</strong>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, color: 'var(--text-muted)' }}>
+          <span>Active Task Focus:</span>
+          <strong style={{ color: 'var(--text-primary)', fontSize: 15 }}>
+            {activeTaskTitle || 'General Engineering Work'}
+          </strong>
         </div>
 
-        {/* Big Circular SVG Dial */}
-        <div style={{ position: 'relative', width: 240, height: 240, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <svg style={{ width: '100%', height: '100%', transform: 'rotate(-90deg)' }} viewBox="0 0 100 100">
-            <circle className="timer-track" cx="50" cy="50" r="42" strokeWidth="4" />
+        {/* Big Interactive Circular SVG Dial with Drag Handle */}
+        <div
+          ref={dialRef}
+          onPointerDown={handleDialPointerDown}
+          style={{
+            position: 'relative',
+            width: 270,
+            height: 270,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            touchAction: 'none',
+            userSelect: 'none',
+            cursor: isDragging ? 'grabbing' : 'grab',
+          }}
+          title="Drag the green circle handle to adjust the timer duration"
+        >
+          <svg
+            style={{ width: '100%', height: '100%', overflow: 'visible' }}
+            viewBox="0 0 100 100"
+          >
+            {/* Clock face ticks */}
+            {clockTicks.map((t) => (
+              <line
+                key={t.i}
+                x1={t.x1}
+                y1={t.y1}
+                x2={t.x2}
+                y2={t.y2}
+                stroke={t.isPassed ? 'var(--color-secondary, #10b981)' : 'var(--surface-border-subtle, rgba(255,255,255,0.12))'}
+                strokeWidth={t.isMajor ? 1.4 : 0.8}
+                strokeLinecap="round"
+                opacity={t.isPassed ? 0.9 : 0.35}
+              />
+            ))}
+
+            {/* Dial Track Circle (Radius 42) */}
+            <circle
+              className="timer-track"
+              cx="50"
+              cy="50"
+              r="42"
+              strokeWidth="5"
+              style={{
+                stroke: 'var(--surface-border-subtle, rgba(255,255,255,0.15))',
+                strokeDasharray: '2 3',
+              }}
+            />
+
+            {/* Progress Arc (starts at 12 o'clock, clockwise) */}
             <circle
               className="timer-progress-arc"
               cx="50"
               cy="50"
               r="42"
-              strokeWidth="4"
-              strokeDashoffset={secondsElapsed === 0 ? 264 : Math.round(264 * (1 - Math.min(1, secondsElapsed / (25 * 60))))}
+              strokeWidth="5"
+              strokeDasharray="264"
+              strokeDashoffset={strokeDashoffset}
               style={{
-                stroke: secondsElapsed === 0 ? 'transparent' : 'var(--color-secondary)',
-                transition: 'stroke-dashoffset 0.8s ease',
+                stroke: progressRatio === 0 ? 'transparent' : 'var(--color-secondary, #10b981)',
+                transform: 'rotate(-90deg)',
+                transformOrigin: '50px 50px',
+                transition: isDragging ? 'none' : 'stroke-dashoffset 0.35s ease',
               }}
             />
+
+            {/* Tactile Draggable Knob on the Ring Perimeter */}
+            <g
+              style={{
+                transformOrigin: '50px 50px',
+                transition: isDragging ? 'none' : 'all 0.35s ease',
+              }}
+            >
+              {/* Outer Glow Halo */}
+              <circle
+                cx={knobX}
+                cy={knobY}
+                r="7.5"
+                fill="rgba(16, 185, 129, 0.28)"
+                style={{
+                  filter: 'blur(1px)',
+                }}
+              />
+              {/* Main Knob Ring */}
+              <circle
+                cx={knobX}
+                cy={knobY}
+                r="5"
+                fill="#ffffff"
+                stroke="var(--color-secondary, #10b981)"
+                strokeWidth="2.5"
+                style={{
+                  filter: 'drop-shadow(0 2px 5px rgba(0,0,0,0.4))',
+                }}
+              />
+              {/* Center Accent Dot */}
+              <circle
+                cx={knobX}
+                cy={knobY}
+                r="1.6"
+                fill="var(--color-secondary, #10b981)"
+              />
+            </g>
           </svg>
 
-          <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
-            <span style={{ fontSize: 44, fontWeight: 800, letterSpacing: '-0.03em', color: activeBreak ? 'var(--status-warning)' : 'var(--text-primary)' }}>
-              {formatTime(secondsElapsed)}
+          {/* Center Info in Dial */}
+          <div
+            style={{
+              position: 'absolute',
+              inset: 0,
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              pointerEvents: 'none',
+            }}
+          >
+            <span
+              style={{
+                fontSize: 46,
+                fontWeight: 800,
+                letterSpacing: '-0.04em',
+                color: activeBreak ? 'var(--status-warning)' : 'var(--text-primary)',
+                fontVariantNumeric: 'tabular-nums',
+              }}
+            >
+              {formatRemaining(remainingSeconds)}
             </span>
-            <span style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-muted)' }}>
-              {activeBreak === 'general' ? 'Coffee Break Active (11:00 – 11:30 AM)' : activeBreak === 'namaz' ? 'Namaz / Prayer Recess Active (01:00 – 02:00 PM)' : isRunning ? 'Active Focus Session' : 'Paused'}
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 2 }}>
+              <span
+                style={{
+                  fontSize: 11,
+                  fontWeight: 700,
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.08em',
+                  color: isDragging ? 'var(--color-secondary, #10b981)' : 'var(--text-muted)',
+                }}
+              >
+                {isDragging
+                  ? `Set: ${durationMinutes} min`
+                  : activeBreak === 'general'
+                  ? 'Coffee Break Active'
+                  : activeBreak === 'namaz'
+                  ? 'Namaz Break Active'
+                  : isRunning
+                  ? 'Active Focus Session'
+                  : 'Drag Ring To Adjust'}
+              </span>
+            </div>
+
+            <span
+              style={{
+                fontSize: 10,
+                color: 'var(--text-muted)',
+                marginTop: 4,
+                background: 'rgba(255,255,255,0.05)',
+                padding: '2px 8px',
+                borderRadius: 10,
+              }}
+            >
+              Total Workday: {formatTime(secondsElapsed)}
             </span>
           </div>
+        </div>
+
+        {/* Quick Stepper Adjustments */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <button
+            type="button"
+            className="btn-icon-circle"
+            style={{ width: 32, height: 32 }}
+            onClick={() => handleAdjustMinutes(-5)}
+            title="Deduct 5 minutes"
+          >
+            <Minus size={14} />
+          </button>
+          <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-secondary)', minWidth: 70, textAlign: 'center' }}>
+            {durationMinutes} min
+          </span>
+          <button
+            type="button"
+            className="btn-icon-circle"
+            style={{ width: 32, height: 32 }}
+            onClick={() => handleAdjustMinutes(5)}
+            title="Add 5 minutes"
+          >
+            <Plus size={14} />
+          </button>
+          <button
+            type="button"
+            className="btn-icon-circle"
+            style={{ width: 32, height: 32, marginLeft: 6 }}
+            onClick={handleReset}
+            title="Reset timer to duration start"
+          >
+            <RotateCcw size={13} />
+          </button>
+        </div>
+
+        {/* Preset Pills */}
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, justifyContent: 'center' }}>
+          {presetDurations.map((mins) => (
+            <button
+              key={mins}
+              type="button"
+              className={`btn-pill ${durationMinutes === mins ? 'btn-pill-primary' : 'btn-pill-secondary'}`}
+              style={{
+                padding: '4px 12px',
+                fontSize: 12,
+                borderRadius: 20,
+                borderColor: durationMinutes === mins ? 'var(--color-secondary)' : undefined,
+              }}
+              onClick={() => handleSelectPreset(mins)}
+            >
+              {mins}m
+            </button>
+          ))}
         </div>
 
         {/* Break Banner */}
@@ -248,7 +557,7 @@ export const TimerPage: React.FC<TimerPageProps> = ({
         )}
 
         {/* Controls */}
-        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'center', gap: 12, marginTop: 8 }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'center', gap: 12, marginTop: 4 }}>
           {!isRunning && !activeBreak && (
             <button
               type="button"

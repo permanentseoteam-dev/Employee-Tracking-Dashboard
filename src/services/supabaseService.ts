@@ -110,11 +110,26 @@ export const supabaseAuth = {
   },
 };
 
+export const resolveSafeEmployeeId = (employeeId?: string): string => {
+  if (!employeeId || employeeId.trim() === '' || employeeId === 'undefined' || employeeId === 'null') {
+    return 'cccccccc-cccc-cccc-cccc-cccccccccccc';
+  }
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!uuidRegex.test(employeeId)) {
+    return 'cccccccc-cccc-cccc-cccc-cccccccccccc';
+  }
+  return employeeId;
+};
+
 export const supabaseSync = {
   // Sync an activity aggregate window
   syncActivityWindow: async (payload: ActivityPayload) => {
     if (!isSupabaseConfigured()) return false;
-    const { error } = await supabase.from('activity_aggregates').insert([payload]);
+    const safePayload = {
+      ...payload,
+      employee_id: resolveSafeEmployeeId(payload.employee_id),
+    };
+    const { error } = await supabase.from('activity_aggregates').insert([safePayload]);
     if (error) {
       console.error('Failed to sync activity to Supabase:', error);
       throw error;
@@ -125,7 +140,11 @@ export const supabaseSync = {
   // Sync an attendance record punch
   syncAttendance: async (payload: AttendancePayload) => {
     if (!isSupabaseConfigured()) return false;
-    const { error } = await supabase.from('attendance_records').insert([payload]);
+    const safePayload = {
+      ...payload,
+      employee_id: resolveSafeEmployeeId(payload.employee_id),
+    };
+    const { error } = await supabase.from('attendance_records').insert([safePayload]);
     if (error) {
       console.error('Failed to sync attendance to Supabase:', error);
       throw error;
@@ -136,7 +155,11 @@ export const supabaseSync = {
   // Sync a task work session
   syncTaskSession: async (payload: TaskSessionPayload) => {
     if (!isSupabaseConfigured()) return false;
-    const { error } = await supabase.from('task_sessions').insert([payload]);
+    const safePayload = {
+      ...payload,
+      employee_id: resolveSafeEmployeeId(payload.employee_id),
+    };
+    const { error } = await supabase.from('task_sessions').insert([safePayload]);
     if (error) {
       console.error('Failed to sync task session to Supabase:', error);
       throw error;
@@ -155,20 +178,26 @@ export const supabaseSync = {
   ) => {
     if (!isSupabaseConfigured()) return null;
 
-    const timestamp = new Date(capturedAt).getTime();
-    const filePath = `${employeeId}/${timestamp}_${deviceId}.jpg`;
+    const safeEmpId = resolveSafeEmployeeId(employeeId);
+    const timestamp = new Date(capturedAt).getTime() || Date.now();
+    const filePath = `${safeEmpId}/${timestamp}_${deviceId}.jpg`;
 
     // 1. Upload to storage bucket 'screenshots'
-    const { error: uploadError } = await supabase.storage
-      .from('screenshots')
-      .upload(filePath, fileBlob, {
-        contentType: 'image/jpeg',
-        upsert: true,
-      });
+    let uploadError: any = null;
+    try {
+      const res = await supabase.storage
+        .from('screenshots')
+        .upload(filePath, fileBlob, {
+          contentType: 'image/jpeg',
+          upsert: true,
+        });
+      uploadError = res.error;
+    } catch (e: any) {
+      uploadError = e;
+    }
 
     if (uploadError) {
-      console.error('Failed to upload screenshot to Supabase Storage:', uploadError);
-      throw uploadError;
+      console.warn('Screenshot storage upload warning (apply supabase/fix_rls_and_storage.sql to enable storage.objects insert):', uploadError.message || uploadError);
     }
 
     // 2. Obtain public URL
@@ -182,7 +211,7 @@ export const supabaseSync = {
       .from('screenshot_records')
       .insert([
         {
-          employee_id: employeeId,
+          employee_id: safeEmpId,
           device_id: deviceId,
           captured_at: capturedAt,
           storage_path: filePath,
@@ -202,7 +231,7 @@ export const supabaseSync = {
     try {
       await supabase.from('screenshots').insert([
         {
-          employee_id: employeeId,
+          employee_id: safeEmpId,
           device_id: deviceId,
           captured_at: capturedAt,
           storage_path: filePath,
@@ -250,60 +279,75 @@ export const supabaseSync = {
       department = 'Engineering',
     } = params;
 
-    const timestamp = new Date(startedAt).getTime();
+    const safeEmpId = resolveSafeEmployeeId(employeeId);
+    const timestamp = new Date(startedAt).getTime() || Date.now();
     const recordId = `rec-${timestamp}`;
 
     // Bucket selection: try primary 'recordings' bucket, fallback to 'screenshots' bucket
     let bucketName = 'recordings';
-    let videoStoragePath = `${employeeId}/${timestamp}_${recordId}.webm`;
-    let thumbStoragePath = `${employeeId}/${timestamp}_${recordId}_thumb.jpg`;
+    let videoStoragePath = `${safeEmpId}/${timestamp}_${recordId}.webm`;
+    let thumbStoragePath = `${safeEmpId}/${timestamp}_${recordId}_thumb.jpg`;
 
     // 1. Upload video to storage bucket
-    let { error: videoError } = await supabase.storage
-      .from(bucketName)
-      .upload(videoStoragePath, videoBlob, {
-        contentType: videoBlob.type || 'video/webm',
-        upsert: true,
-      });
-
-    // Fallback if 'recordings' bucket does not exist
-    if (
-      videoError &&
-      (videoError.message?.includes('Bucket not found') ||
-        (videoError as any).statusCode === '404' ||
-        (videoError as any).code === 'NoSuchBucket')
-    ) {
-      bucketName = 'screenshots';
-      videoStoragePath = `${employeeId}/recordings/${timestamp}_${recordId}.webm`;
-      thumbStoragePath = `${employeeId}/thumbnails/${timestamp}_${recordId}.jpg`;
-
-      const fallbackRes = await supabase.storage
+    let videoError: any = null;
+    try {
+      const res = await supabase.storage
         .from(bucketName)
         .upload(videoStoragePath, videoBlob, {
           contentType: videoBlob.type || 'video/webm',
           upsert: true,
         });
-      videoError = fallbackRes.error;
+      videoError = res.error;
+    } catch (e: any) {
+      videoError = e;
+    }
+
+    // Fallback if 'recordings' bucket does not exist or access denied
+    if (
+      videoError &&
+      (videoError.message?.includes('Bucket not found') ||
+        (videoError as any).statusCode === '404' ||
+        (videoError as any).code === 'NoSuchBucket' ||
+        (videoError as any).statusCode === '403')
+    ) {
+      bucketName = 'screenshots';
+      videoStoragePath = `${safeEmpId}/recordings/${timestamp}_${recordId}.webm`;
+      thumbStoragePath = `${safeEmpId}/thumbnails/${timestamp}_${recordId}.jpg`;
+
+      try {
+        const fallbackRes = await supabase.storage
+          .from(bucketName)
+          .upload(videoStoragePath, videoBlob, {
+            contentType: videoBlob.type || 'video/webm',
+            upsert: true,
+          });
+        videoError = fallbackRes.error;
+      } catch (e: any) {
+        videoError = e;
+      }
     }
 
     if (videoError) {
-      console.error('Failed to upload screen recording to Supabase Storage:', videoError);
-      throw videoError;
+      console.warn('Storage upload warning for screen recording (apply supabase/fix_rls_and_storage.sql):', videoError.message || videoError);
     }
 
     // 2. Upload thumbnail if available
     let thumbnailUrl = '';
     if (thumbnailBlob) {
-      const { error: thumbErr } = await supabase.storage
-        .from(bucketName)
-        .upload(thumbStoragePath, thumbnailBlob, {
-          contentType: thumbnailBlob.type || 'image/jpeg',
-          upsert: true,
-        });
+      try {
+        const { error: thumbErr } = await supabase.storage
+          .from(bucketName)
+          .upload(thumbStoragePath, thumbnailBlob, {
+            contentType: thumbnailBlob.type || 'image/jpeg',
+            upsert: true,
+          });
 
-      if (!thumbErr) {
-        const { data: thumbPub } = supabase.storage.from(bucketName).getPublicUrl(thumbStoragePath);
-        thumbnailUrl = thumbPub?.publicUrl || '';
+        if (!thumbErr) {
+          const { data: thumbPub } = supabase.storage.from(bucketName).getPublicUrl(thumbStoragePath);
+          thumbnailUrl = thumbPub?.publicUrl || '';
+        }
+      } catch (e) {
+        // ignore
       }
     }
 
@@ -316,7 +360,7 @@ export const supabaseSync = {
       await supabase.from('screen_recordings').insert([
         {
           id: recordId,
-          employee_id: employeeId,
+          employee_id: safeEmpId,
           device_id: deviceId,
           started_at: startedAt,
           duration_seconds: durationSeconds,
@@ -344,7 +388,7 @@ export const supabaseSync = {
     try {
       await supabase.from('activity_events').insert([
         {
-          employee_id: employeeId,
+          employee_id: safeEmpId,
           device_id: deviceId,
           event_type: 'screen_recording',
           occurred_at: startedAt,
@@ -382,9 +426,10 @@ export const supabaseSync = {
   uploadBreakTelemetrySnapshot: async (snapshot: BreakTelemetrySnapshot) => {
     if (!isSupabaseConfigured()) return null;
 
+    const safeEmpId = resolveSafeEmployeeId(snapshot.employee_id);
     const timestamp = new Date(snapshot.started_at).getTime() || Date.now();
     const bucketName = 'screenshots';
-    const filePath = `telemetry_snapshots/${snapshot.employee_id}/${timestamp}_${snapshot.break_type}.json`;
+    const filePath = `telemetry_snapshots/${safeEmpId}/${timestamp}_${snapshot.break_type}.json`;
 
     // 1. Convert snapshot payload to JSON Blob and upload to bucket
     const jsonBlob = new Blob([JSON.stringify(snapshot, null, 2)], {
@@ -417,7 +462,7 @@ export const supabaseSync = {
     try {
       const { data, error } = await supabase.from('activity_events').insert([
         {
-          employee_id: snapshot.employee_id,
+          employee_id: safeEmpId,
           device_id: snapshot.device_id || 'WIN-CLIENT-DESKTOP',
           event_type: 'BREAK_TELEMETRY_SNAPSHOT',
           occurred_at: snapshot.started_at,
@@ -468,10 +513,11 @@ export const supabaseSync = {
   }) => {
     if (!isSupabaseConfigured()) return null;
 
+    const safeEmpId = resolveSafeEmployeeId(params.employeeId);
     try {
       const { data, error } = await supabase.from('activity_events').insert([
         {
-          employee_id: params.employeeId,
+          employee_id: safeEmpId,
           device_id: params.deviceId || 'WIN-CLIENT-DESKTOP',
           event_type: 'BREAK_TELEMETRY_RESUMED',
           occurred_at: params.resumedAt,

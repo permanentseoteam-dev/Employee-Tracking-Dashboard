@@ -86,7 +86,7 @@ export const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({ role, manage
 
   const loadFolders = async (projId: string) => {
     try {
-      const fList = await dataService.getProjectFolders(projId);
+      const fList = await dataService.getProjectFolders(projId, role);
       setFolders(fList);
     } catch (err) {
       console.error('Failed to load folders:', err);
@@ -359,6 +359,44 @@ export const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({ role, manage
         </div>
       </div>
 
+      {/* Manager Isolation Scope Ribbon */}
+      {role === 'manager' && (
+        <div
+          className="frosted-card frosted-card-sm"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: '10px 16px',
+            background: 'rgba(59, 130, 246, 0.08)',
+            border: '1px solid rgba(59, 130, 246, 0.22)',
+            borderRadius: 'var(--radius-card-sm)',
+            fontSize: 12,
+            flexWrap: 'wrap',
+            gap: 10,
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <FolderKanban size={16} color="var(--color-primary)" />
+            <span style={{ fontWeight: 700, color: 'var(--text-primary)' }}>Manager Workstream Scope:</span>
+            <span style={{ color: 'var(--text-secondary)' }}>
+              Viewing your own managed projects and employee activity deliverables (Arsal). Admin projects and folders isolated.
+            </span>
+          </div>
+          <span
+            className="status-pill active"
+            style={{
+              fontSize: 10,
+              background: 'rgba(16, 185, 129, 0.14)',
+              color: '#10b981',
+              fontWeight: 700,
+            }}
+          >
+            Admin Isolated
+          </span>
+        </div>
+      )}
+
       {/* 2. Main Content: ALL PROJECTS GRID or SELECTED PROJECT FOLDERS */}
       {!selectedProject ? (
         // Grid of Projects
@@ -424,9 +462,41 @@ export const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({ role, manage
                           </span>
                         </div>
                       </div>
-                      <span className="status-pill active" style={{ fontSize: 10, padding: '2px 8px' }}>
-                        {proj.status.toUpperCase()}
-                      </span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        {proj.scope_type === 'employee_activity' && (
+                          <span
+                            className="status-pill active"
+                            style={{
+                              fontSize: 10,
+                              background: 'rgba(59, 130, 246, 0.15)',
+                              color: '#60a5fa',
+                              border: '1px solid rgba(59, 130, 246, 0.3)',
+                              padding: '2px 8px',
+                              fontWeight: 700,
+                            }}
+                          >
+                            Employee Activity &bull; {proj.assigned_employees?.join(', ') || 'Arsal'}
+                          </span>
+                        )}
+                        {proj.scope_type === 'manager_owned' && (
+                          <span
+                            className="status-pill active"
+                            style={{
+                              fontSize: 10,
+                              background: 'rgba(16, 185, 129, 0.15)',
+                              color: '#10b981',
+                              border: '1px solid rgba(16, 185, 129, 0.3)',
+                              padding: '2px 8px',
+                              fontWeight: 700,
+                            }}
+                          >
+                            Manager Workstream
+                          </span>
+                        )}
+                        <span className="status-pill active" style={{ fontSize: 10, padding: '2px 8px' }}>
+                          {proj.status.toUpperCase()}
+                        </span>
+                      </div>
                     </div>
 
                     <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 10, lineHeight: 1.5 }}>

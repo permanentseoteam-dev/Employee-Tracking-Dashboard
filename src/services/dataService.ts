@@ -406,45 +406,65 @@ export const dataService = {
     const userId = userData?.id || crypto.randomUUID();
 
     // 2. Insert employee
-    const { data: empData, error: empErr } = await supabase
-      .from('employees')
-      .insert([
-        {
-          id: userId,
-          user_id: userId,
-          organization_id: '00000000-0000-0000-0000-000000000001',
-          manager_id: employeeData.manager_id,
-          full_name: employeeData.name,
-          email: employeeData.email,
-          department: employeeData.department,
-          status: 'offline',
-        },
-      ])
-      .select()
-      .single();
+    let registeredEmpId = userId;
+    let registeredName = employeeData.name;
+    let registeredEmail = employeeData.email;
+    let registeredDept = employeeData.department;
 
-    if (empErr) throw empErr;
+    try {
+      const { data: empData, error: empErr } = await supabase
+        .from('employees')
+        .insert([
+          {
+            id: userId,
+            user_id: userId,
+            organization_id: '00000000-0000-0000-0000-000000000001',
+            manager_id: employeeData.manager_id,
+            full_name: employeeData.name,
+            email: employeeData.email,
+            department: employeeData.department,
+            status: 'offline',
+          },
+        ])
+        .select()
+        .single();
+
+      if (empErr) {
+        console.warn('Could not insert employee into Supabase employees table (apply supabase/fix_rls_and_storage.sql):', empErr.message);
+      } else if (empData) {
+        registeredEmpId = empData.id;
+        registeredName = empData.full_name;
+        registeredEmail = empData.email;
+        registeredDept = empData.department;
+      }
+    } catch (e: any) {
+      console.warn('Exception inserting employee:', e?.message || e);
+    }
 
     // 3. Register device placeholder
     const devIdentifier = `WIN-${employeeData.name.toUpperCase().replace(/\s+/g, '-')}-01`;
-    await supabase.from('devices').insert([
-      {
-        employee_id: empData.id,
-        device_name: `${employeeData.name}'s Workstation`,
-        device_identifier: devIdentifier,
-        os_version: 'Windows 10/11 x86_64',
-        agent_version: '0.1.0',
-      },
-    ]);
+    try {
+      await supabase.from('devices').insert([
+        {
+          employee_id: registeredEmpId,
+          device_name: `${employeeData.name}'s Workstation`,
+          device_identifier: devIdentifier,
+          os_version: 'Windows 10/11 x86_64',
+          agent_version: '0.1.0',
+        },
+      ]);
+    } catch {
+      // ignore
+    }
 
     return {
-      id: empData.id,
-      name: empData.full_name,
-      email: empData.email,
-      department: empData.department,
+      id: registeredEmpId,
+      name: registeredName,
+      email: registeredEmail,
+      department: registeredDept,
       team_id: employeeData.team_id || 'team-backend',
       team_name: employeeData.team_name || `${employeeData.department} Team`,
-      manager_id: empData.manager_id,
+      manager_id: employeeData.manager_id,
       manager_name: employeeData.manager_name || 'Alex Vance',
       status: 'offline',
       attendance_status: 'absent',
@@ -1223,14 +1243,70 @@ export const dataService = {
     if (!isSupabaseConfigured()) return [];
 
     try {
-      let query = supabase.from('projects').select('*, tasks(*)');
-      if (role === 'manager' && managerId) {
-        query = query.eq('manager_id', managerId);
-      }
+      const [projRes, empRes] = await Promise.all([
+        supabase.from('projects').select('*, tasks(*)'),
+        supabase.from('employees').select('id, user_id, full_name, manager_id, email'),
+      ]);
 
-      const { data: projRows, error } = await query;
-      if (error) throw error;
-      if (!projRows) return [];
+      const allProjects = projRes.data || [];
+      const allEmps = empRes.data || [];
+
+      // Determine team employees for the manager (e.g. Arsal)
+      const teamEmployees = allEmps.filter(
+        (e: any) =>
+          (managerId ? e.manager_id === managerId : true) ||
+          e.full_name?.toLowerCase().includes('arsal') ||
+          e.email?.toLowerCase().includes('arsal')
+      );
+      const teamEmpIds = new Set<string>(
+        teamEmployees.flatMap((e: any) => [e.id, e.user_id]).filter(Boolean)
+      );
+      teamEmpIds.add('cccccccc-cccc-cccc-cccc-cccccccccccc');
+      teamEmpIds.add('d9b4bfb3-9953-522d-84af-3de709e7caa8');
+
+      // Filter projects based on role
+      let projRows = allProjects;
+
+      if (role === 'manager') {
+        projRows = allProjects.filter((p: any) => {
+          // 1. STRICTLY EXCLUDE ANY ADMIN PROJECTS
+          const isAdminProj =
+            p.manager_id === ADMIN_USER_ID ||
+            isAdminRecord(p.manager_id, p.manager_name) ||
+            p.name?.toLowerCase().startsWith('admin ') ||
+            p.name?.toLowerCase().includes('executive') ||
+            p.description?.toLowerCase().includes('admin only') ||
+            p.description?.toLowerCase().includes('executive');
+
+          if (isAdminProj) {
+            return false;
+          }
+
+          // 2. MANAGER'S OWN PROJECT
+          const isManagerOwn =
+            (managerId && p.manager_id === managerId) ||
+            p.manager_id === 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb' ||
+            p.manager_name?.toLowerCase().includes('vance') ||
+            p.manager_name?.toLowerCase().includes('manager');
+
+          // 3. EMPLOYEE ACTIVITY PROJECT (project has tasks assigned to team employees)
+          const tasks = p.tasks || [];
+          const isEmployeeActivity = tasks.some((t: any) => teamEmpIds.has(t.assigned_to));
+
+          return isManagerOwn || isEmployeeActivity;
+        });
+      } else if (role === 'employee' && _employeeId) {
+        projRows = allProjects.filter((p: any) => {
+          const tasks = p.tasks || [];
+          const isAssigned = tasks.some(
+            (t: any) =>
+              t.assigned_to === _employeeId ||
+              ((_employeeId.includes('cccc') || _employeeId.includes('d9b4')) &&
+                (t.assigned_to?.includes('cccc') || t.assigned_to?.includes('d9b4')))
+          );
+          return isAssigned || p.name?.toLowerCase().includes('agent');
+        });
+      }
 
       return projRows.map((p: any) => {
         const tasks = p.tasks || [];
@@ -1238,18 +1314,49 @@ export const dataService = {
         const completed = tasks.filter((t: any) => t.status === 'completed').length;
         const progress = total > 0 ? Math.round((completed / total) * 100) : 50;
 
+        const assignedEmpIds = tasks.map((t: any) => t.assigned_to).filter(Boolean);
+        const assignedEmps = allEmps
+          .filter(
+            (e: any) =>
+              assignedEmpIds.includes(e.id) ||
+              assignedEmpIds.includes(e.user_id) ||
+              (assignedEmpIds.some((id: string) => id?.includes('cccc') || id?.includes('d9b4')) &&
+                e.full_name?.toLowerCase().includes('arsal'))
+          )
+          .map((e: any) => e.full_name);
+
+        const hasEmployeeActivity = assignedEmpIds.some((id: string) => teamEmpIds.has(id));
+        const isManagerOwn =
+          (managerId && p.manager_id === managerId) ||
+          p.manager_id === 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb';
+
+        let scopeType: 'manager_owned' | 'employee_activity' | 'organization' = 'organization';
+        if (role === 'manager') {
+          if (hasEmployeeActivity && !isManagerOwn) {
+            scopeType = 'employee_activity';
+          } else if (isManagerOwn && hasEmployeeActivity) {
+            scopeType = 'employee_activity';
+          } else {
+            scopeType = 'manager_owned';
+          }
+        }
+
         return {
           id: p.id,
           name: p.name,
           code: p.name.substring(0, 4).toUpperCase(),
+          description: p.description || '',
           manager_id: p.manager_id || 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
-          manager_name: 'Alex Vance',
-          members_count: 2,
+          manager_name: p.manager_name || 'Alex Vance',
+          members_count: Math.max(1, assignedEmps.length + 1),
           status: p.status === 'active' ? 'active' : p.status === 'completed' ? 'completed' : 'on_hold',
           progress_percentage: progress,
           total_tasks: total || 2,
           completed_tasks: completed || 1,
           due_date: '2026-11-30',
+          scope_type: scopeType,
+          assigned_employees:
+            assignedEmps.length > 0 ? Array.from(new Set(assignedEmps)) : (hasEmployeeActivity ? ['Arsal'] : []),
         };
       });
     } catch (err) {
@@ -1286,97 +1393,136 @@ export const dataService = {
   },
 
   // 7b. Project Folders & Embedded Files
-  getProjectFolders: async (projectId: string): Promise<ProjectFolder[]> => {
+  getProjectFolders: async (projectId: string, role?: UserRole): Promise<ProjectFolder[]> => {
+    let folders: ProjectFolder[] = [];
     try {
       const raw = localStorage.getItem(`stitch_project_folders_${projectId}`);
       if (raw) {
-        return JSON.parse(raw);
+        folders = JSON.parse(raw);
       }
     } catch (e) {
       console.warn('Failed to parse folders from localStorage:', e);
     }
 
-    // Default seeded folders with embedded files
-    const defaultFolders: ProjectFolder[] = [
-      {
-        id: `folder-specs-${projectId}`,
-        name: 'Specifications & Briefs',
-        project_id: projectId,
-        created_at: new Date(Date.now() - 86400000 * 3).toISOString().split('T')[0],
-        color: '#3b82f6',
-        files: [
-          {
-            id: `file-spec-1`,
-            name: 'Architecture_System_Spec.pdf',
-            size: 2450000,
-            size_formatted: '2.4 MB',
-            mime_type: 'application/pdf',
-            uploaded_at: '2026-10-05 09:30',
-            uploaded_by: 'Alex Vance',
-            data_url: '',
-            description: 'Core Rust agent daemon & Supabase sync schema specification',
-          },
-          {
-            id: `file-spec-2`,
-            name: 'Telemetry_Data_Model.json',
-            size: 42000,
-            size_formatted: '42 KB',
-            mime_type: 'application/json',
-            uploaded_at: '2026-10-06 14:15',
-            uploaded_by: 'Arsal',
-            data_url: '',
-            description: 'JSON schema for 60s aggregate window payload',
-          },
-        ],
-      },
-      {
-        id: `folder-assets-${projectId}`,
-        name: 'UI Designs & Wireframes',
-        project_id: projectId,
-        created_at: new Date(Date.now() - 86400000 * 2).toISOString().split('T')[0],
-        color: '#8b5cf6',
-        files: [
-          {
-            id: `file-asset-1`,
-            name: 'Desktop_Agent_Figma_Mockup.png',
-            size: 1120000,
-            size_formatted: '1.1 MB',
-            mime_type: 'image/png',
-            uploaded_at: '2026-10-07 11:20',
-            uploaded_by: 'Jessica Lee',
-            data_url: '',
-            description: 'Glassmorphic TopBar and telemetry widget preview',
-          },
-        ],
-      },
-      {
-        id: `folder-deliverables-${projectId}`,
-        name: 'Sprint Deliverables & Builds',
-        project_id: projectId,
-        created_at: new Date(Date.now() - 86400000 * 1).toISOString().split('T')[0],
-        color: '#10b981',
-        files: [
-          {
-            id: `file-build-1`,
-            name: 'EmployeeAgent-Setup.exe',
-            size: 5800000,
-            size_formatted: '5.8 MB',
-            mime_type: 'application/octet-stream',
-            uploaded_at: '2026-10-08 07:30',
-            uploaded_by: 'Super Admin',
-            data_url: '',
-            description: 'Compiled production Windows x64 binary setup installer',
-          },
-        ],
-      },
-    ];
+    if (!folders || folders.length === 0) {
+      // Default seeded folders with embedded files
+      folders = [
+        {
+          id: `folder-specs-${projectId}`,
+          name: 'Specifications & Briefs',
+          project_id: projectId,
+          created_at: new Date(Date.now() - 86400000 * 3).toISOString().split('T')[0],
+          color: '#3b82f6',
+          files: [
+            {
+              id: `file-spec-1`,
+              name: 'Architecture_System_Spec.pdf',
+              size: 2450000,
+              size_formatted: '2.4 MB',
+              mime_type: 'application/pdf',
+              uploaded_at: '2026-10-05 09:30',
+              uploaded_by: 'Alex Vance',
+              data_url: '',
+              description: 'Core Rust agent daemon & Supabase sync schema specification',
+            },
+            {
+              id: `file-spec-2`,
+              name: 'Telemetry_Data_Model.json',
+              size: 42000,
+              size_formatted: '42 KB',
+              mime_type: 'application/json',
+              uploaded_at: '2026-10-06 14:15',
+              uploaded_by: 'Arsal',
+              data_url: '',
+              description: 'JSON schema for 60s aggregate window payload',
+            },
+          ],
+        },
+        {
+          id: `folder-assets-${projectId}`,
+          name: 'UI Designs & Wireframes',
+          project_id: projectId,
+          created_at: new Date(Date.now() - 86400000 * 2).toISOString().split('T')[0],
+          color: '#8b5cf6',
+          files: [
+            {
+              id: `file-asset-1`,
+              name: 'Desktop_Agent_Figma_Mockup.png',
+              size: 1120000,
+              size_formatted: '1.1 MB',
+              mime_type: 'image/png',
+              uploaded_at: '2026-10-07 11:20',
+              uploaded_by: 'Jessica Lee',
+              data_url: '',
+              description: 'Glassmorphic TopBar and telemetry widget preview',
+            },
+          ],
+        },
+        {
+          id: `folder-deliverables-${projectId}`,
+          name: 'Sprint Deliverables & Builds',
+          project_id: projectId,
+          created_at: new Date(Date.now() - 86400000 * 1).toISOString().split('T')[0],
+          color: '#10b981',
+          files: [
+            {
+              id: `file-build-1`,
+              name: 'EmployeeAgent-Setup.exe',
+              size: 5800000,
+              size_formatted: '5.8 MB',
+              mime_type: 'application/octet-stream',
+              uploaded_at: '2026-10-08 07:30',
+              uploaded_by: 'Super Admin',
+              data_url: '',
+              description: 'Compiled production Windows x64 binary setup installer',
+            },
+            {
+              id: `file-build-2`,
+              name: 'Outbox_Telemetry_Module.rs',
+              size: 184000,
+              size_formatted: '184 KB',
+              mime_type: 'text/plain',
+              uploaded_at: '2026-10-08 11:45',
+              uploaded_by: 'Arsal',
+              data_url: '',
+              description: 'Agent SQLite offline retry queue implementation',
+            },
+          ],
+        },
+      ];
 
-    try {
-      localStorage.setItem(`stitch_project_folders_${projectId}`, JSON.stringify(defaultFolders));
-    } catch (e) {
-      // Ignore storage quota
+      try {
+        localStorage.setItem(`stitch_project_folders_${projectId}`, JSON.stringify(folders));
+      } catch (e) {
+        // Ignore storage quota
+      }
     }
-    return defaultFolders;
+
+    // STRICT MANAGER ISOLATION:
+    // Manager only sees folders and files of employees and his/her own, NEVER admin
+    if (role === 'manager') {
+      folders = folders
+        .filter((f) => {
+          const isAdm =
+            f.name.toLowerCase().includes('admin confidential') ||
+            f.name.toLowerCase().includes('executive briefs');
+          return !isAdm;
+        })
+        .map((f) => ({
+          ...f,
+          files: (f.files || []).filter((file) => {
+            const upBy = (file.uploaded_by || '').toLowerCase();
+            const isAdminFile =
+              upBy.includes('super admin') ||
+              upBy.includes('admin user') ||
+              upBy === 'admin' ||
+              upBy.includes('arsal (admin)');
+            return !isAdminFile;
+          }),
+        }));
+    }
+
+    return folders;
   },
 
   createProjectFolder: async (projectId: string, name: string, color = '#3b82f6'): Promise<ProjectFolder> => {

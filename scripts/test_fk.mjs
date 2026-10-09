@@ -32,6 +32,16 @@ async function check() {
     }
   ]).select();
   console.log('Insert with random uuid result:', d2, 'Error:', e2);
+
+  // Test employee_presence with d9b4...
+  const { data: d3, error: e3 } = await supabase.from('employee_presence').insert([
+    {
+      employee_id: 'd9b4bfb3-9953-522d-84af-3de709e7caa8',
+      status: 'online',
+      last_seen_at: new Date().toISOString()
+    }
+  ]).select();
+  console.log('Insert presence with d9b4 result:', d3, 'Error:', e3);
 }
 
 check();

@@ -148,6 +148,8 @@ export interface ProjectItem {
   due_date: string;
   documents?: { title: string; type: 'doc' | 'sheet'; url: string }[];
   folders?: ProjectFolder[];
+  scope_type?: 'manager_owned' | 'employee_activity' | 'organization';
+  assigned_employees?: string[];
 }
 
 export interface TaskItem {

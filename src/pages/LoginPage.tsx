@@ -19,8 +19,17 @@ export const LoginPage: React.FC = () => {
     try {
       await signIn(email.trim(), password);
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Sign in failed';
-      setError(msg);
+      const raw = err instanceof Error ? err.message : 'Sign in failed';
+      const lower = raw.toLowerCase();
+      if (lower.includes('email not confirmed')) {
+        setError(
+          'Email not confirmed yet. In Supabase → Authentication → Users, open this account and confirm the email, then try again.'
+        );
+      } else if (lower.includes('invalid login') || lower.includes('invalid credentials')) {
+        setError('Wrong email or password. Use shahroz@company.com / the password you set.');
+      } else {
+        setError(raw);
+      }
     } finally {
       setBusy(false);
     }

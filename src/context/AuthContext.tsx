@@ -321,17 +321,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const signIn = async (email: string, password: string) => {
-    setIsLoading(true);
-    try {
-      const { user: authedUser, session: newSession } = await supabaseAuth.signIn(email, password);
-      setSupabaseUser(authedUser);
-      setSession(newSession);
-      sessionRef.current = newSession;
-      if (authedUser) {
-        await syncSupabaseProfile(authedUser);
-      }
-    } finally {
-      setIsLoading(false);
+    // Do not flip global isLoading — that unmounts LoginPage and looks like a blank reload.
+    const { user: authedUser, session: newSession } = await supabaseAuth.signIn(email, password);
+    setSupabaseUser(authedUser);
+    setSession(newSession);
+    sessionRef.current = newSession;
+    if (authedUser) {
+      await syncSupabaseProfile(authedUser);
     }
   };
 

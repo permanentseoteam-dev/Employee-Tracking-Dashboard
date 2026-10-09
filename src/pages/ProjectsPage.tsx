@@ -1,8 +1,10 @@
 import React from 'react';
-import { ProjectWorkspace } from '../components/projects/ProjectWorkspace';
+import { useAuth } from '../context/AuthContext';
+import { ProjectExplorer } from '../components/projects/ProjectExplorer';
 
 export const ProjectsPage: React.FC = () => {
-  return <ProjectWorkspace role="employee" />;
+  const { user } = useAuth();
+  return <ProjectExplorer role="employee" managerId={user?.id} />;
 };
 
 export default ProjectsPage;

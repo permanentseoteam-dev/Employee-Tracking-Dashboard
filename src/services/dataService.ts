@@ -22,8 +22,20 @@ import type {
   BreakScheduleConfig,
   ProjectMemberAssignment,
   ProjectAccessLevel,
+  ProjectAccessScope,
+  ProjectTreeItem,
+  ProjectTreeItemType,
 } from '../types/roles';
 import { DEFAULT_BREAK_SCHEDULE } from '../types/roles';
+import {
+  filterVisibleItems,
+  grantIdentity,
+  normalizeAssignment,
+  resolveItemAccess,
+  resolveProjectAccess,
+  canEdit as accessCanEdit,
+  canAdmin as accessCanAdmin,
+} from '../utils/projectAccess';
 import type { AgentRuntimeConfig } from '../types';
 import { DEFAULT_AGENT_RUNTIME_CONFIG } from '../types';
 import { supabase, isSupabaseConfigured } from './supabaseClient';
@@ -154,7 +166,8 @@ function loadAllProjectAssignments(): ProjectMemberAssignment[] {
     const raw = localStorage.getItem(PROJECT_ASSIGNMENTS_KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
+    if (!Array.isArray(parsed)) return [];
+    return parsed.map((row) => normalizeAssignment(row));
   } catch {
     return [];
   }
@@ -162,10 +175,73 @@ function loadAllProjectAssignments(): ProjectMemberAssignment[] {
 
 function saveAllProjectAssignments(rows: ProjectMemberAssignment[]) {
   try {
-    localStorage.setItem(PROJECT_ASSIGNMENTS_KEY, JSON.stringify(rows));
+    localStorage.setItem(PROJECT_ASSIGNMENTS_KEY, JSON.stringify(rows.map(normalizeAssignment)));
   } catch {
     /* ignore */
   }
+}
+
+const projectItemsLocalKey = (projectId: string) => `stitch_project_items_${projectId}`;
+
+function loadLocalProjectItems(projectId: string): ProjectTreeItem[] {
+  try {
+    const raw = localStorage.getItem(projectItemsLocalKey(projectId));
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveLocalProjectItems(projectId: string, items: ProjectTreeItem[]) {
+  try {
+    localStorage.setItem(projectItemsLocalKey(projectId), JSON.stringify(items));
+  } catch {
+    /* ignore */
+  }
+}
+
+function mapDbProjectItem(row: any): ProjectTreeItem {
+  return {
+    id: row.id,
+    project_id: row.project_id,
+    parent_id: row.parent_id ?? null,
+    item_type: row.item_type,
+    name: row.name,
+    content: row.content ?? null,
+    storage_path: row.storage_path ?? null,
+    data_url: row.data_url ?? null,
+    mime_type: row.mime_type ?? null,
+    external_provider: row.external_provider ?? null,
+    external_file_id: row.external_file_id ?? null,
+    created_by: row.created_by ?? null,
+    created_at: row.created_at || new Date().toISOString(),
+    updated_at: row.updated_at || new Date().toISOString(),
+  };
+}
+
+/** Raw project tree fetch (no employee ACL filter) — avoids circular dataService refs. */
+async function fetchProjectItemsRaw(projectId: string): Promise<ProjectTreeItem[]> {
+  if (!projectId) return [];
+  if (isSupabaseConfigured()) {
+    try {
+      const { data, error } = await supabase
+        .from('project_items')
+        .select('*')
+        .eq('project_id', projectId)
+        .order('item_type', { ascending: true })
+        .order('name', { ascending: true });
+      if (!error && data) {
+        const mapped = data.map(mapDbProjectItem);
+        saveLocalProjectItems(projectId, mapped);
+        return mapped;
+      }
+    } catch (e) {
+      console.warn('fetchProjectItemsRaw supabase fallback:', e);
+    }
+  }
+  return loadLocalProjectItems(projectId);
 }
 
 let localAuditLogs: AuditLogItem[] = [];
@@ -1553,7 +1629,11 @@ export const dataService = {
         const assignedIds = new Set(assigns.map((a) => a.project_id));
         projRows = allProjects.filter((p: any) => {
           const tasks = p.tasks || [];
-          return assignedIds.has(p.id) || tasks.some((t: any) => t.assigned_to === _employeeId);
+          return (
+            p.manager_id === _employeeId ||
+            assignedIds.has(p.id) ||
+            tasks.some((t: any) => t.assigned_to === _employeeId)
+          );
         });
       }
 
@@ -1618,16 +1698,21 @@ export const dataService = {
     project: Omit<ProjectItem, 'id' | 'completed_tasks'>,
     managerId?: string
   ): Promise<ProjectItem> => {
-    if (role !== 'admin' && role !== 'manager' && role !== 'project_manager') {
+    if (
+      role !== 'admin' &&
+      role !== 'manager' &&
+      role !== 'project_manager' &&
+      role !== 'employee'
+    ) {
       throw new Error('403 Forbidden: Cannot create project');
     }
 
     const newProj = {
       name: project.name,
-      description: project.code || '',
+      description: project.code || project.description || '',
       status: project.status || 'active',
       manager_id:
-        role === 'manager' || role === 'project_manager'
+        role === 'manager' || role === 'project_manager' || role === 'employee'
           ? managerId || project.manager_id
           : project.manager_id,
       organization_id: '00000000-0000-0000-0000-000000000001',
@@ -1775,6 +1860,270 @@ export const dataService = {
     }
   },
 
+  // 7c. Nested Drive-style project items
+  listProjectItems: async (
+    projectId: string,
+    opts?: { employeeId?: string; role?: UserRole }
+  ): Promise<ProjectTreeItem[]> => {
+    const items = await fetchProjectItemsRaw(projectId);
+
+    // Employees only see granted scopes — unless they own the project
+    if (opts?.role === 'employee' && opts.employeeId) {
+      if (isSupabaseConfigured()) {
+        try {
+          const { data: proj } = await supabase
+            .from('projects')
+            .select('manager_id')
+            .eq('id', projectId)
+            .maybeSingle();
+          if (proj?.manager_id === opts.employeeId) return items;
+        } catch {
+          /* fall through to grants */
+        }
+      }
+      const grants = loadAllProjectAssignments().filter(
+        (a) => a.employee_id === opts.employeeId && a.project_id === projectId
+      );
+      // Owner-created trees with no grants yet: show all local/remote items
+      if (!grants.length) return items;
+      return filterVisibleItems(grants, items);
+    }
+    return items;
+  },
+
+  createProjectItem: async (params: {
+    projectId: string;
+    parentId?: string | null;
+    itemType: ProjectTreeItemType;
+    name: string;
+    content?: Record<string, unknown> | string | null;
+    dataUrl?: string | null;
+    mimeType?: string | null;
+    createdBy?: string | null;
+  }): Promise<ProjectTreeItem> => {
+    const name = params.name.trim();
+    if (!name) throw new Error('Name is required');
+
+    const existing = await fetchProjectItemsRaw(params.projectId);
+    const siblings = existing.filter(
+      (i: ProjectTreeItem) => (i.parent_id || null) === (params.parentId || null)
+    );
+    if (siblings.some((s: ProjectTreeItem) => s.name.toLowerCase() === name.toLowerCase())) {
+      throw new Error(`An item named "${name}" already exists here`);
+    }
+
+    if (params.parentId) {
+      const parent = existing.find((i: ProjectTreeItem) => i.id === params.parentId);
+      if (!parent) throw new Error('Parent folder not found');
+      if (parent.item_type !== 'folder') throw new Error('Parent must be a folder');
+    }
+
+    const now = new Date().toISOString();
+    const defaultContent =
+      params.content ??
+      (params.itemType === 'document'
+        ? { body: '', format: 'internal_document' }
+        : params.itemType === 'spreadsheet'
+          ? { sheets: [{ name: 'Sheet1', rows: [['', ''], ['', '']] }], format: 'internal_spreadsheet' }
+          : params.itemType === 'presentation'
+            ? { slides: [{ title: name, body: '' }], format: 'internal_presentation' }
+            : null);
+
+    if (isSupabaseConfigured()) {
+      try {
+        const { data, error } = await supabase
+          .from('project_items')
+          .insert([
+            {
+              project_id: params.projectId,
+              parent_id: params.parentId || null,
+              item_type: params.itemType,
+              name,
+              content: defaultContent ?? {},
+              data_url: params.dataUrl || null,
+              mime_type: params.mimeType || null,
+              created_by: params.createdBy || null,
+              updated_at: now,
+            },
+          ])
+          .select()
+          .single();
+        if (!error && data) {
+          const item = mapDbProjectItem(data);
+          const local = loadLocalProjectItems(params.projectId);
+          saveLocalProjectItems(params.projectId, [item, ...local.filter((x) => x.id !== item.id)]);
+          return item;
+        }
+        if (error && !(error.message.includes('schema cache') || error.code === '42P01')) {
+          throw new Error(error.message);
+        }
+      } catch (e: any) {
+        if (e?.message && !String(e.message).includes('schema cache') && e?.code !== '42P01') {
+          // fall through to local for missing table; rethrow other errors
+          if (!String(e.message).includes('relation') && !String(e.message).includes('project_items')) {
+            console.warn('createProjectItem remote warning, using local:', e);
+          }
+        }
+      }
+    }
+
+    const item: ProjectTreeItem = {
+      id: crypto.randomUUID?.() || `item-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      project_id: params.projectId,
+      parent_id: params.parentId || null,
+      item_type: params.itemType,
+      name,
+      content: defaultContent,
+      data_url: params.dataUrl || null,
+      mime_type: params.mimeType || null,
+      external_provider: null,
+      external_file_id: null,
+      created_by: params.createdBy || null,
+      created_at: now,
+      updated_at: now,
+    };
+    const local = loadLocalProjectItems(params.projectId);
+    saveLocalProjectItems(params.projectId, [item, ...local]);
+    return item;
+  },
+
+  updateProjectItem: async (
+    projectId: string,
+    itemId: string,
+    patch: Partial<Pick<ProjectTreeItem, 'name' | 'parent_id' | 'content' | 'data_url' | 'mime_type'>>
+  ): Promise<ProjectTreeItem> => {
+    const items = await fetchProjectItemsRaw(projectId);
+    const current = items.find((i: ProjectTreeItem) => i.id === itemId);
+    if (!current) throw new Error('Item not found');
+
+    if (patch.name != null) {
+      const name = patch.name.trim();
+      if (!name) throw new Error('Name is required');
+      const parentId = patch.parent_id !== undefined ? patch.parent_id : current.parent_id;
+      const clash = items.some(
+        (i: ProjectTreeItem) =>
+          i.id !== itemId &&
+          (i.parent_id || null) === (parentId || null) &&
+          i.name.toLowerCase() === name.toLowerCase()
+      );
+      if (clash) throw new Error(`An item named "${name}" already exists here`);
+      patch.name = name;
+    }
+
+    if (patch.parent_id !== undefined && patch.parent_id) {
+      if (patch.parent_id === itemId) throw new Error('Cannot move item into itself');
+      const parent = items.find((i: ProjectTreeItem) => i.id === patch.parent_id);
+      if (!parent || parent.item_type !== 'folder') throw new Error('Move target must be a folder');
+      // Prevent moving into own descendant
+      const isDescendant = (id: string, ancestorId: string): boolean => {
+        let cursor: string | null = id;
+        const byId = new Map<string, ProjectTreeItem>(items.map((i: ProjectTreeItem) => [i.id, i]));
+        while (cursor) {
+          if (cursor === ancestorId) return true;
+          cursor = byId.get(cursor)?.parent_id || null;
+        }
+        return false;
+      };
+      if (isDescendant(patch.parent_id, itemId)) {
+        throw new Error('Cannot move a folder into its own descendant');
+      }
+    }
+
+    const now = new Date().toISOString();
+    if (isSupabaseConfigured()) {
+      try {
+        const { data, error } = await supabase
+          .from('project_items')
+          .update({ ...patch, updated_at: now })
+          .eq('id', itemId)
+          .eq('project_id', projectId)
+          .select()
+          .single();
+        if (!error && data) {
+          const item = mapDbProjectItem(data);
+          saveLocalProjectItems(
+            projectId,
+            items.map((i) => (i.id === itemId ? item : i))
+          );
+          return item;
+        }
+      } catch (e) {
+        console.warn('updateProjectItem remote fallback:', e);
+      }
+    }
+
+    const updated: ProjectTreeItem = {
+      ...current,
+      ...patch,
+      updated_at: now,
+    };
+    saveLocalProjectItems(
+      projectId,
+      items.map((i) => (i.id === itemId ? updated : i))
+    );
+    return updated;
+  },
+
+  deleteProjectItem: async (projectId: string, itemId: string): Promise<void> => {
+    if (isSupabaseConfigured()) {
+      try {
+        const { error } = await supabase
+          .from('project_items')
+          .delete()
+          .eq('id', itemId)
+          .eq('project_id', projectId);
+        if (error && !(error.message.includes('schema cache') || error.code === '42P01')) {
+          console.warn('deleteProjectItem remote:', error.message);
+        }
+      } catch (e) {
+        console.warn('deleteProjectItem remote fallback:', e);
+      }
+    }
+    const items = loadLocalProjectItems(projectId);
+    const toRemove = new Set<string>([itemId]);
+    let changed = true;
+    while (changed) {
+      changed = false;
+      for (const i of items) {
+        if (i.parent_id && toRemove.has(i.parent_id) && !toRemove.has(i.id)) {
+          toRemove.add(i.id);
+          changed = true;
+        }
+      }
+    }
+    saveLocalProjectItems(
+      projectId,
+      items.filter((i) => !toRemove.has(i.id))
+    );
+  },
+
+  renameProject: async (role: UserRole, projectId: string, name: string): Promise<void> => {
+    const trimmed = name.trim();
+    if (!trimmed) throw new Error('Project name is required');
+    if (role === 'employee') {
+      // employees may rename only own projects — enforced loosely via manager_id at call site
+    }
+    if (!isSupabaseConfigured()) throw new Error('Supabase is not configured');
+    const { error } = await supabase.from('projects').update({ name: trimmed }).eq('id', projectId);
+    if (error) throw error;
+  },
+
+  deleteProject: async (role: UserRole, projectId: string): Promise<void> => {
+    if (role === 'employee') {
+      // allow for own projects
+    }
+    if (!isSupabaseConfigured()) throw new Error('Supabase is not configured');
+    await supabase.from('project_items').delete().eq('project_id', projectId);
+    const { error } = await supabase.from('projects').delete().eq('id', projectId);
+    if (error) throw error;
+    try {
+      localStorage.removeItem(projectItemsLocalKey(projectId));
+      localStorage.removeItem(`stitch_project_folders_${projectId}`);
+    } catch {
+      /* ignore */
+    }
+  },
+
   // 8. Tasks Query & Mutations
   getTasks: async (role: UserRole, managerId?: string, employeeId?: string): Promise<TaskItem[]> => {
     if (!isSupabaseConfigured()) return [];
@@ -1862,11 +2211,42 @@ export const dataService = {
   getAllProjectAssignments: async (projectManagerId?: string): Promise<ProjectMemberAssignment[]> => {
     const all = loadAllProjectAssignments();
     if (!projectManagerId) return all;
-    return all.filter((a) => (a as any).project_manager_id === projectManagerId);
+    return all.filter((a) => a.project_manager_id === projectManagerId);
   },
 
   getProjectAssignments: async (projectId: string): Promise<ProjectMemberAssignment[]> => {
     return loadAllProjectAssignments().filter((a) => a.project_id === projectId);
+  },
+
+  getEmployeeProjectGrants: async (
+    employeeId: string,
+    projectId?: string
+  ): Promise<ProjectMemberAssignment[]> => {
+    return loadAllProjectAssignments().filter(
+      (a) => a.employee_id === employeeId && (!projectId || a.project_id === projectId)
+    );
+  },
+
+  resolveEmployeeItemAccess: async (
+    employeeId: string,
+    projectId: string,
+    itemId: string
+  ): Promise<ProjectAccessLevel | null> => {
+    const grants = loadAllProjectAssignments().filter(
+      (a) => a.employee_id === employeeId && a.project_id === projectId
+    );
+    const items = await fetchProjectItemsRaw(projectId);
+    return resolveItemAccess(grants, itemId, items);
+  },
+
+  resolveEmployeeProjectAccess: async (
+    employeeId: string,
+    projectId: string
+  ): Promise<ProjectAccessLevel | null> => {
+    const grants = loadAllProjectAssignments().filter(
+      (a) => a.employee_id === employeeId && a.project_id === projectId
+    );
+    return resolveProjectAccess(grants);
   },
 
   assignUserToProject: async (params: {
@@ -1876,14 +2256,37 @@ export const dataService = {
     employeeName: string;
     employeeEmail?: string;
     access: ProjectAccessLevel;
+    scope?: ProjectAccessScope;
+    resourceId?: string | null;
+    resourceName?: string;
+    resourcePath?: string;
+    includeDescendants?: boolean;
     assignedBy?: string;
     projectManagerId?: string;
   }): Promise<ProjectMemberAssignment> => {
+    const scope: ProjectAccessScope = params.scope || 'project';
+    if (scope !== 'project' && !params.resourceId) {
+      throw new Error('resourceId is required for folder/item grants');
+    }
+
     const all = loadAllProjectAssignments();
+    const identity = grantIdentity({
+      project_id: params.projectId,
+      employee_id: params.employeeId,
+      scope,
+      resource_id: scope === 'project' ? null : params.resourceId,
+    });
     const existingIdx = all.findIndex(
-      (a) => a.project_id === params.projectId && a.employee_id === params.employeeId
+      (a) =>
+        grantIdentity({
+          project_id: a.project_id,
+          employee_id: a.employee_id,
+          scope: a.scope,
+          resource_id: a.resource_id,
+        }) === identity
     );
-    const row: ProjectMemberAssignment & { project_manager_id?: string } = {
+
+    const row = normalizeAssignment({
       id:
         existingIdx >= 0
           ? all[existingIdx].id
@@ -1894,14 +2297,53 @@ export const dataService = {
       employee_name: params.employeeName,
       employee_email: params.employeeEmail,
       access: params.access,
+      scope,
+      resource_id: scope === 'project' ? null : params.resourceId || null,
+      resource_name: params.resourceName,
+      resource_path: params.resourcePath,
+      include_descendants: params.includeDescendants !== false,
       assigned_by: params.assignedBy,
       assigned_at: new Date().toISOString(),
       project_manager_id: params.projectManagerId,
-    };
+    });
+
     if (existingIdx >= 0) all[existingIdx] = row;
     else all.push(row);
     saveAllProjectAssignments(all);
     return row;
+  },
+
+  /** Grant the same scoped access to every employee in the list. */
+  assignUsersToProjectBulk: async (
+    employeeIds: string[],
+    params: {
+      projectId: string;
+      projectName?: string;
+      access: ProjectAccessLevel;
+      scope?: ProjectAccessScope;
+      resourceId?: string | null;
+      resourceName?: string;
+      resourcePath?: string;
+      includeDescendants?: boolean;
+      assignedBy?: string;
+      projectManagerId?: string;
+    },
+    roster: { id: string; name: string; email?: string }[]
+  ): Promise<ProjectMemberAssignment[]> => {
+    const out: ProjectMemberAssignment[] = [];
+    for (const id of employeeIds) {
+      const emp = roster.find((e) => e.id === id);
+      if (!emp) continue;
+      out.push(
+        await dataService.assignUserToProject({
+          ...params,
+          employeeId: emp.id,
+          employeeName: emp.name,
+          employeeEmail: emp.email,
+        })
+      );
+    }
+    return out;
   },
 
   removeProjectAssignment: async (assignmentId: string, projectManagerId?: string): Promise<void> => {
@@ -1910,12 +2352,37 @@ export const dataService = {
     if (!target) return;
     if (
       projectManagerId &&
-      (target as any).project_manager_id &&
-      (target as any).project_manager_id !== projectManagerId
+      target.project_manager_id &&
+      target.project_manager_id !== projectManagerId
     ) {
       throw new Error("403 Forbidden: Cannot revoke another PM's assignment");
     }
     saveAllProjectAssignments(all.filter((a) => a.id !== assignmentId));
+  },
+
+  /** True if employee may mutate items under a parent (or project root). */
+  employeeCanEditIn: async (
+    employeeId: string,
+    projectId: string,
+    parentOrItemId: string | null
+  ): Promise<boolean> => {
+    const grants = loadAllProjectAssignments().filter(
+      (a) => a.employee_id === employeeId && a.project_id === projectId
+    );
+    if (!grants.length) return false;
+    if (grants.some((g) => g.scope === 'project' && accessCanEdit(g.access))) return true;
+    if (!parentOrItemId) {
+      return accessCanEdit(resolveProjectAccess(grants));
+    }
+    const items = await fetchProjectItemsRaw(projectId);
+    return accessCanEdit(resolveItemAccess(grants, parentOrItemId, items));
+  },
+
+  employeeCanAdminProject: async (employeeId: string, projectId: string): Promise<boolean> => {
+    const grants = loadAllProjectAssignments().filter(
+      (a) => a.employee_id === employeeId && a.project_id === projectId
+    );
+    return accessCanAdmin(resolveProjectAccess(grants));
   },
 
   updateTaskStatus: async (

@@ -38,6 +38,7 @@ import { ProjectManagerTasksPage } from './pages/project-manager/ProjectManagerT
 
 // Project Workspace (Folders & File Embedding)
 import { ProjectWorkspace } from './components/projects/ProjectWorkspace';
+import { ProjectExplorer } from './components/projects/ProjectExplorer';
 
 import { api } from './services/tauriBridge';
 import { useAuth } from './context/AuthContext';
@@ -154,6 +155,7 @@ export const App: React.FC = () => {
         case '/admin/break-schedule':
           return <AdminBreakSchedulePage />;
         case '/admin/projects':
+          return <ProjectExplorer role="admin" managerId={user?.id} />;
         case '/admin/tasks':
           return <ProjectWorkspace role="admin" />;
         case '/admin/finance':
@@ -209,7 +211,7 @@ export const App: React.FC = () => {
         case '/project-manager/projects':
         case '/project_manager/projects':
         case '/project-manager/documents':
-          return <ProjectWorkspace role="project_manager" managerId={user?.id} />;
+          return <ProjectExplorer role="project_manager" managerId={user?.id} />;
         case '/project-manager/allocations':
         case '/project_manager/allocations':
           return <ProjectAllocationsPage />;
@@ -278,8 +280,9 @@ export const App: React.FC = () => {
         case '/manager/attendance':
           return <ManagerAttendancePage />;
         case '/manager/projects':
-        case '/manager/tasks':
         case '/manager/documents':
+          return <ProjectExplorer role="manager" managerId={user?.id} />;
+        case '/manager/tasks':
           return <ProjectWorkspace role="manager" managerId={user?.id} />;
         case '/manager/performance':
           return <ManagerPerformancePage />;

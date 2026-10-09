@@ -1,23 +1,45 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
-import { UserPlus, Save, Trash2, RefreshCw, Shield, Eye, Pencil, Users } from 'lucide-react';
+import {
+  UserPlus,
+  Save,
+  Trash2,
+  RefreshCw,
+  Shield,
+  Eye,
+  Pencil,
+  Users,
+  FolderKanban,
+  Folder,
+  FileText,
+  CheckSquare,
+} from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { dataService } from '../../services/dataService';
+import { buildResourcePath } from '../../utils/projectAccess';
 import type {
   EmployeeRecord,
   ProjectAccessLevel,
+  ProjectAccessScope,
   ProjectItem,
   ProjectMemberAssignment,
+  ProjectTreeItem,
 } from '../../types/roles';
+
+const ALL_EMPLOYEES = '__all__';
 
 export const ProjectAllocationsPage: React.FC = () => {
   const { user } = useAuth();
   const [projects, setProjects] = useState<ProjectItem[]>([]);
   const [employees, setEmployees] = useState<EmployeeRecord[]>([]);
   const [assignments, setAssignments] = useState<ProjectMemberAssignment[]>([]);
+  const [treeItems, setTreeItems] = useState<ProjectTreeItem[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState('');
   const [selectedEmployeeId, setSelectedEmployeeId] = useState('');
   const [access, setAccess] = useState<ProjectAccessLevel>('edit');
+  const [scope, setScope] = useState<ProjectAccessScope>('project');
+  const [resourceId, setResourceId] = useState('');
+  const [includeDescendants, setIncludeDescendants] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
@@ -48,6 +70,15 @@ export const ProjectAllocationsPage: React.FC = () => {
     loadData();
   }, [user.id]);
 
+  useEffect(() => {
+    if (!selectedProjectId) {
+      setTreeItems([]);
+      return;
+    }
+    dataService.listProjectItems(selectedProjectId).then(setTreeItems).catch(console.error);
+    setResourceId('');
+  }, [selectedProjectId]);
+
   const projectAssignments = useMemo(
     () => assignments.filter((a) => a.project_id === selectedProjectId),
     [assignments, selectedProjectId]
@@ -55,33 +86,80 @@ export const ProjectAllocationsPage: React.FC = () => {
 
   const selectedProject = projects.find((p) => p.id === selectedProjectId);
 
+  const folders = useMemo(
+    () => treeItems.filter((i) => i.item_type === 'folder'),
+    [treeItems]
+  );
+  const files = useMemo(
+    () => treeItems.filter((i) => i.item_type !== 'folder'),
+    [treeItems]
+  );
+
+  const scopeLabel = (a: ProjectMemberAssignment) => {
+    if (a.scope === 'project' || !a.scope) return 'Whole project';
+    if (a.scope === 'folder') {
+      const base = a.resource_path || a.resource_name || a.resource_id || 'Folder';
+      return a.include_descendants === false ? `Folder only: ${base}` : `Folder + children: ${base}`;
+    }
+    return `File: ${a.resource_path || a.resource_name || a.resource_id}`;
+  };
+
   const handleAssign = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedProjectId || !selectedEmployeeId) return;
-    const emp = employees.find((x) => x.id === selectedEmployeeId);
-    if (!emp) return;
+    if (scope !== 'project' && !resourceId) {
+      alert('Pick a folder or file for scoped access.');
+      return;
+    }
+
+    const targets =
+      selectedEmployeeId === ALL_EMPLOYEES
+        ? employees
+        : employees.filter((x) => x.id === selectedEmployeeId);
+    if (!targets.length) return;
+
+    const resource = treeItems.find((i) => i.id === resourceId);
+    const resourcePath =
+      scope !== 'project' && resourceId ? buildResourcePath(resourceId, treeItems) : undefined;
 
     setIsSaving(true);
     try {
-      await dataService.assignUserToProject({
-        projectId: selectedProjectId,
-        projectName: selectedProject?.name,
-        employeeId: emp.id,
-        employeeName: emp.name,
-        employeeEmail: emp.email,
-        access,
-        assignedBy: user.name,
-        projectManagerId: user.id,
-      });
+      for (const emp of targets) {
+        await dataService.assignUserToProject({
+          projectId: selectedProjectId,
+          projectName: selectedProject?.name,
+          employeeId: emp.id,
+          employeeName: emp.name,
+          employeeEmail: emp.email,
+          access,
+          scope,
+          resourceId: scope === 'project' ? null : resourceId,
+          resourceName: resource?.name,
+          resourcePath,
+          includeDescendants: scope === 'folder' ? includeDescendants : true,
+          assignedBy: user.name,
+          projectManagerId: user.id,
+        });
+      }
+      const who =
+        selectedEmployeeId === ALL_EMPLOYEES
+          ? `All ${targets.length} employees`
+          : targets[0].name;
+      const where =
+        scope === 'project'
+          ? selectedProject?.name || 'project'
+          : scope === 'folder'
+            ? `folder “${resourcePath || resource?.name}”`
+            : `file “${resourcePath || resource?.name}”`;
       dataService.logAction(
         user.name,
         'project_manager',
         'ASSIGN_PROJECT_MEMBER',
-        `${emp.name} → ${selectedProject?.name || selectedProjectId}`,
-        `Access: ${access}`
+        `${who} → ${where}`,
+        `Access: ${access}; scope: ${scope}`
       );
-      setMessage(`${emp.name} allocated with ${access} access.`);
-      setTimeout(() => setMessage(null), 3500);
+      setMessage(`${who} granted ${access} on ${where}.`);
+      setTimeout(() => setMessage(null), 4000);
       setSelectedEmployeeId('');
       await loadData();
     } catch (err: any) {
@@ -99,7 +177,7 @@ export const ProjectAllocationsPage: React.FC = () => {
         'project_manager',
         'REMOVE_PROJECT_MEMBER',
         assignmentId,
-        'Revoked project access'
+        'Revoked scoped access'
       );
       await loadData();
     } catch (err: any) {
@@ -149,7 +227,8 @@ export const ProjectAllocationsPage: React.FC = () => {
             User Allocation
           </h1>
           <p style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 4 }}>
-            Grant view, edit, or admin access to employees on projects you own
+            Grant view / edit / admin on the whole project, a folder (+ children), or a single file —
+            to one employee or everyone.
           </p>
         </div>
         <button type="button" className="btn-pill btn-pill-secondary" onClick={loadData}>
@@ -167,7 +246,7 @@ export const ProjectAllocationsPage: React.FC = () => {
           <div className="content-card-title">
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <UserPlus size={18} color="var(--color-secondary)" />
-              <span style={{ fontSize: 16, fontWeight: 700 }}>Allocate Contributor</span>
+              <span style={{ fontSize: 16, fontWeight: 700 }}>Grant Access</span>
             </div>
           </div>
 
@@ -212,6 +291,7 @@ export const ProjectAllocationsPage: React.FC = () => {
               required
             >
               <option value="">Select employee…</option>
+              <option value={ALL_EMPLOYEES}>All employees ({employees.length})</option>
               {employees.map((emp) => (
                 <option key={emp.id} value={emp.id}>
                   {emp.name}
@@ -220,6 +300,100 @@ export const ProjectAllocationsPage: React.FC = () => {
               ))}
             </select>
           </div>
+
+          <div className="stitch-form-group">
+            <label className="stitch-label">Scope</label>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+              {(
+                [
+                  { id: 'project' as const, label: 'Whole project', icon: <FolderKanban size={13} /> },
+                  { id: 'folder' as const, label: 'Folder', icon: <Folder size={13} /> },
+                  { id: 'item' as const, label: 'File', icon: <FileText size={13} /> },
+                ] as const
+              ).map((s) => (
+                <button
+                  key={s.id}
+                  type="button"
+                  className={`nav-pill-item ${scope === s.id ? 'active' : ''}`}
+                  onClick={() => {
+                    setScope(s.id);
+                    setResourceId('');
+                  }}
+                >
+                  {s.icon}
+                  <span>{s.label}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {scope === 'folder' && (
+            <>
+              <div className="stitch-form-group">
+                <label className="stitch-label">Folder</label>
+                <select
+                  className="stitch-input"
+                  value={resourceId}
+                  onChange={(e) => setResourceId(e.target.value)}
+                  required
+                >
+                  <option value="">Select folder…</option>
+                  {folders.map((f) => (
+                    <option key={f.id} value={f.id}>
+                      {buildResourcePath(f.id, treeItems)}
+                    </option>
+                  ))}
+                </select>
+                {!folders.length && (
+                  <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                    No folders in this project yet — create one under Projects & Folders.
+                  </span>
+                )}
+              </div>
+              <label
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  fontSize: 12,
+                  color: 'var(--text-secondary)',
+                  cursor: 'pointer',
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={includeDescendants}
+                  onChange={(e) => setIncludeDescendants(e.target.checked)}
+                />
+                <CheckSquare size={14} />
+                Include all nested folders & files
+              </label>
+            </>
+          )}
+
+          {scope === 'item' && (
+            <div className="stitch-form-group">
+              <label className="stitch-label">File / document</label>
+              <select
+                className="stitch-input"
+                value={resourceId}
+                onChange={(e) => setResourceId(e.target.value)}
+                required
+              >
+                <option value="">Select file…</option>
+                {files.map((f) => (
+                  <option key={f.id} value={f.id}>
+                    {buildResourcePath(f.id, treeItems)} ({f.item_type})
+                  </option>
+                ))}
+              </select>
+              {!files.length && (
+                <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                  No files in this project yet.
+                </span>
+              )}
+            </div>
+          )}
 
           <div className="stitch-form-group">
             <label className="stitch-label">Access level</label>
@@ -238,7 +412,8 @@ export const ProjectAllocationsPage: React.FC = () => {
               ))}
             </div>
             <span style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>
-              View = read folders · Edit = upload/embed · Admin = manage members on this project
+              View = open/download · Edit = create/upload/rename · Admin = same as edit + manage
+              members on this project
             </span>
           </div>
 
@@ -249,7 +424,7 @@ export const ProjectAllocationsPage: React.FC = () => {
             style={{ marginTop: 4 }}
           >
             <Save size={15} />
-            <span>{isSaving ? 'Allocating…' : 'Allocate to Project'}</span>
+            <span>{isSaving ? 'Granting…' : 'Grant access'}</span>
           </button>
         </form>
 
@@ -258,15 +433,15 @@ export const ProjectAllocationsPage: React.FC = () => {
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <Users size={18} color="var(--color-secondary)" />
               <span style={{ fontSize: 16, fontWeight: 700 }}>
-                {selectedProject ? `${selectedProject.name} Members` : 'Project Members'}
+                {selectedProject ? `${selectedProject.name} Grants` : 'Project Grants'}
               </span>
             </div>
-            <span className="live-telemetry-badge">{projectAssignments.length} assigned</span>
+            <span className="live-telemetry-badge">{projectAssignments.length} grants</span>
           </div>
 
           {projectAssignments.length === 0 ? (
             <p style={{ fontSize: 13, color: 'var(--text-muted)', margin: 0 }}>
-              No members allocated to this project yet.
+              No grants on this project yet. Employees will not see it until you allocate access.
             </p>
           ) : (
             <div className="stitch-table-wrapper">
@@ -274,6 +449,7 @@ export const ProjectAllocationsPage: React.FC = () => {
                 <thead>
                   <tr>
                     <th>Member</th>
+                    <th>Scope</th>
                     <th>Access</th>
                     <th>Assigned</th>
                     <th />
@@ -283,13 +459,25 @@ export const ProjectAllocationsPage: React.FC = () => {
                   {projectAssignments.map((a) => (
                     <tr key={a.id}>
                       <td>
-                        <div style={{ fontWeight: 700, color: 'var(--text-primary)' }}>{a.employee_name}</div>
-                        <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{a.employee_email || a.employee_id}</div>
+                        <div style={{ fontWeight: 700, color: 'var(--text-primary)' }}>
+                          {a.employee_name}
+                        </div>
+                        <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                          {a.employee_email || a.employee_id}
+                        </div>
+                      </td>
+                      <td style={{ fontSize: 12, color: 'var(--text-secondary)', maxWidth: 220 }}>
+                        {scopeLabel(a)}
                       </td>
                       <td>
                         <span
                           className="status-pill active"
-                          style={{ textTransform: 'capitalize', display: 'inline-flex', gap: 4, alignItems: 'center' }}
+                          style={{
+                            textTransform: 'capitalize',
+                            display: 'inline-flex',
+                            gap: 4,
+                            alignItems: 'center',
+                          }}
                         >
                           {accessIcon(a.access)}
                           {a.access}

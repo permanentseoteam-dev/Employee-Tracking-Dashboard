@@ -14,6 +14,9 @@ export function roleFromPath(path: string): UserRole {
 
 export type ProjectAccessLevel = 'view' | 'edit' | 'admin';
 
+/** What the grant applies to inside a project. */
+export type ProjectAccessScope = 'project' | 'folder' | 'item';
+
 export interface ProjectMemberAssignment {
   id: string;
   project_id: string;
@@ -22,8 +25,18 @@ export interface ProjectMemberAssignment {
   employee_name: string;
   employee_email?: string;
   access: ProjectAccessLevel;
+  /** Defaults to `project` for legacy rows. */
+  scope: ProjectAccessScope;
+  /** Folder or item id when scope is folder/item; null for whole project. */
+  resource_id: string | null;
+  resource_name?: string;
+  /** Breadcrumb e.g. "Docs / Specs / brief.md" for UI. */
+  resource_path?: string;
+  /** Folder grants include children (default true). */
+  include_descendants?: boolean;
   assigned_by?: string;
   assigned_at: string;
+  project_manager_id?: string;
 }
 
 export interface UserProfile {
@@ -157,6 +170,31 @@ export interface ProjectFolder {
   created_at: string;
   color?: string;
   files: ProjectFolderFile[];
+}
+
+/** Nested Drive-style project tree node (folders & files). */
+export type ProjectTreeItemType =
+  | 'folder'
+  | 'document'
+  | 'spreadsheet'
+  | 'presentation'
+  | 'uploaded_file';
+
+export interface ProjectTreeItem {
+  id: string;
+  project_id: string;
+  parent_id: string | null;
+  item_type: ProjectTreeItemType;
+  name: string;
+  content?: Record<string, unknown> | string | null;
+  storage_path?: string | null;
+  data_url?: string | null;
+  mime_type?: string | null;
+  external_provider?: string | null;
+  external_file_id?: string | null;
+  created_by?: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface ProjectItem {

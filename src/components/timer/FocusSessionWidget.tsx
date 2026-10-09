@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   X,
@@ -11,6 +11,14 @@ import {
   MoreHorizontal,
   Check,
 } from 'lucide-react';
+import {
+  attachFocusClockMinimizeWatcher,
+  FOCUS_CLOCK_CMD_KEY,
+  parseFocusClockCommand,
+  popOutFocusClockAndMinimizeMain,
+  publishFocusClockClosed,
+  publishFocusClockOpen,
+} from '../../utils/focusClockPopout';
 
 interface FocusSessionWidgetProps {
   isOpen: boolean;
@@ -21,6 +29,8 @@ interface FocusSessionWidgetProps {
   onResetTimer: () => void;
   targetMinutes: number;
   onTargetMinutesChange: (mins: number) => void;
+  /** Fill the dedicated pop-out window instead of floating over the dashboard */
+  embedded?: boolean;
 }
 
 export const FocusSessionWidget: React.FC<FocusSessionWidgetProps> = ({
@@ -32,10 +42,65 @@ export const FocusSessionWidget: React.FC<FocusSessionWidgetProps> = ({
   onResetTimer,
   targetMinutes,
   onTargetMinutesChange,
+  embedded = false,
 }) => {
   const [showOptions, setShowOptions] = useState(false);
   const [isDialDragging, setIsDialDragging] = useState(false);
   const dialContainerRef = useRef<HTMLDivElement>(null);
+  const wasOpenRef = useRef(false);
+
+  // Publish open clock state so minimize can pop it out of the main window
+  useEffect(() => {
+    if (embedded) return;
+    if (isOpen) {
+      wasOpenRef.current = true;
+      publishFocusClockOpen({ timerSeconds, isTimerRunning, targetMinutes });
+      return;
+    }
+    if (wasOpenRef.current) {
+      wasOpenRef.current = false;
+      publishFocusClockClosed();
+      void import('../../utils/focusClockPopout').then((m) => m.hideFocusClockPopout());
+    }
+  }, [embedded, isOpen, timerSeconds, isTimerRunning, targetMinutes]);
+
+  // When main app is minimized/hidden, spawn always-on-top clock window
+  useEffect(() => {
+    if (embedded || !isOpen) return;
+    let cleanup: (() => void) | undefined;
+    void attachFocusClockMinimizeWatcher().then((fn) => {
+      cleanup = fn;
+    });
+    return () => cleanup?.();
+  }, [embedded, isOpen]);
+
+  // Apply commands from the pop-out window
+  useEffect(() => {
+    if (embedded || !isOpen) return;
+    let lastAt = 0;
+    const apply = (raw: string | null) => {
+      const cmd = parseFocusClockCommand(raw);
+      if (!cmd || cmd.at <= lastAt) return;
+      lastAt = cmd.at;
+      if (cmd.type === 'toggle') onToggleTimer();
+      else if (cmd.type === 'reset') onResetTimer();
+      else if (cmd.type === 'setTarget') onTargetMinutesChange(cmd.minutes);
+      else if (cmd.type === 'close') onClose();
+    };
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === FOCUS_CLOCK_CMD_KEY) apply(e.newValue);
+    };
+    const onCustom = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      apply(detail ? JSON.stringify(detail) : localStorage.getItem(FOCUS_CLOCK_CMD_KEY));
+    };
+    window.addEventListener('storage', onStorage);
+    window.addEventListener('focus-clock-cmd', onCustom as EventListener);
+    return () => {
+      window.removeEventListener('storage', onStorage);
+      window.removeEventListener('focus-clock-cmd', onCustom as EventListener);
+    };
+  }, [embedded, isOpen, onToggleTimer, onResetTimer, onTargetMinutesChange, onClose]);
 
   const targetSeconds = Math.max(60, targetMinutes * 60);
   // Calculate progress ratio (0 to 1) - strictly 0 when timerSeconds is 0
@@ -122,33 +187,51 @@ export const FocusSessionWidget: React.FC<FocusSessionWidgetProps> = ({
   const widgetKnobX = 110 + 87.5 * Math.cos(knobAngleRad);
   const widgetKnobY = 110 + 87.5 * Math.sin(knobAngleRad);
 
+  const shellStyle: React.CSSProperties = embedded
+    ? {
+        position: 'relative',
+        width: '100%',
+        height: '100vh',
+        background: 'var(--surface-card, #ffffff)',
+        borderRadius: 0,
+        border: 'none',
+        boxShadow: 'none',
+        zIndex: 1,
+        overflow: 'hidden',
+        userSelect: 'none',
+        display: 'flex',
+        flexDirection: 'column',
+      }
+    : {
+        position: 'fixed',
+        top: 100,
+        right: 36,
+        width: 296,
+        background: 'var(--surface-card, #ffffff)',
+        backdropFilter: 'blur(30px) saturate(180%)',
+        WebkitBackdropFilter: 'blur(30px) saturate(180%)',
+        borderRadius: 14,
+        border: '1px solid var(--surface-border, rgba(0, 0, 0, 0.12))',
+        boxShadow:
+          '0 20px 48px -10px rgba(0, 0, 0, 0.28), 0 0 0 1px rgba(255, 255, 255, 0.15) inset',
+        zIndex: 9999,
+        overflow: 'visible',
+        userSelect: 'none',
+        display: 'flex',
+        flexDirection: 'column',
+      };
+
   return (
     <AnimatePresence>
       {isOpen && (
         <motion.div
-          initial={{ opacity: 0, scale: 0.92, y: 16 }}
+          initial={embedded ? false : { opacity: 0, scale: 0.92, y: 16 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
-          exit={{ opacity: 0, scale: 0.92, y: 16 }}
+          exit={embedded ? undefined : { opacity: 0, scale: 0.92, y: 16 }}
           transition={{ type: 'spring', damping: 25, stiffness: 350 }}
-          drag
+          drag={!embedded}
           dragMomentum={false}
-          style={{
-            position: 'fixed',
-            top: 100,
-            right: 36,
-            width: 296,
-            background: 'var(--surface-card, #ffffff)',
-            backdropFilter: 'blur(30px) saturate(180%)',
-            WebkitBackdropFilter: 'blur(30px) saturate(180%)',
-            borderRadius: 14,
-            border: '1px solid var(--surface-border, rgba(0, 0, 0, 0.12))',
-            boxShadow: '0 20px 48px -10px rgba(0, 0, 0, 0.28), 0 0 0 1px rgba(255, 255, 255, 0.15) inset',
-            zIndex: 9999,
-            overflow: 'visible',
-            userSelect: 'none',
-            display: 'flex',
-            flexDirection: 'column',
-          }}
+          style={shellStyle}
         >
           {/* Windows Clock Focus Session Title Bar */}
           <div
@@ -158,25 +241,47 @@ export const FocusSessionWidget: React.FC<FocusSessionWidgetProps> = ({
               justifyContent: 'space-between',
               padding: '9px 12px',
               borderBottom: '1px solid var(--surface-border-subtle, rgba(0, 0, 0, 0.06))',
-              cursor: 'grab',
+              cursor: embedded ? 'default' : 'grab',
               background: 'var(--surface-frosted-subdued, rgba(255, 255, 255, 0.04))',
-              borderTopLeftRadius: 14,
-              borderTopRightRadius: 14,
+              borderTopLeftRadius: embedded ? 0 : 14,
+              borderTopRightRadius: embedded ? 0 : 14,
             }}
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-              <div
-                style={{
-                  width: 18,
-                  height: 18,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  color: 'var(--text-secondary, #64748b)',
-                }}
-              >
-                <Minimize2 size={13} strokeWidth={2.2} />
-              </div>
+              {!embedded ? (
+                <button
+                  type="button"
+                  onClick={() => void popOutFocusClockAndMinimizeMain()}
+                  style={{
+                    width: 26,
+                    height: 26,
+                    background: 'transparent',
+                    border: 'none',
+                    borderRadius: 6,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    cursor: 'pointer',
+                    color: 'var(--text-secondary, #64748b)',
+                  }}
+                  title="Pop out clock (stays visible when app is minimized)"
+                >
+                  <Minimize2 size={13} strokeWidth={2.2} />
+                </button>
+              ) : (
+                <div
+                  style={{
+                    width: 18,
+                    height: 18,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: 'var(--text-secondary, #64748b)',
+                  }}
+                >
+                  <Minimize2 size={13} strokeWidth={2.2} />
+                </div>
+              )}
               <span
                 style={{
                   fontSize: 12.5,

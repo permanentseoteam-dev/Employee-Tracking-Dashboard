@@ -1013,6 +1013,18 @@ select.form-input {
   color: var(--text-muted);
 }
 
+/* Focus clock pop-out window — flush, no app chrome padding */
+html[data-popout-clock='1'],
+html[data-popout-clock='1'] body,
+html[data-popout-clock='1'] #root {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: var(--surface-card, #ffffff);
+}
+
 /* ==========================================================================
    App modals — always solid & portaled to body (never clip under sticky header)
    ========================================================================== */

@@ -11,7 +11,7 @@ use std::path::PathBuf;
 pub fn run() {
     init_logging();
     let log_buf = get_log_buffer();
-    log_buf.push("INFO", "core::init", "Starting Employee Tracking Agent core");
+    log_buf.push("INFO", "core::init", "Starting Employee Tracking App core");
 
     let platform = create_platform_service();
 

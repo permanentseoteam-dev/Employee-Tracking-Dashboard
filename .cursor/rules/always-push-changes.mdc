@@ -1,0 +1,15 @@
+---
+description: Always commit and push completed changes to GitHub origin
+alwaysApply: true
+---
+
+# Always Push Changes
+
+After finishing any code, config, or asset change in this repo:
+
+1. Stage the relevant files (never stage secrets like `.env`, credentials, or build artifacts like `target/`, `*.exe`, `node_modules/`).
+2. Create a git commit with a concise message focused on why.
+3. Push to `origin` on the current branch (usually `main`) without waiting to be asked.
+4. If push fails (auth, protected branch, network), report the error and the commit hash that is ready to push.
+
+Do this for every completed change set in the session, not only when the user says "push".

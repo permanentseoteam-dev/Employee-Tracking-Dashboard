@@ -23,19 +23,7 @@ interface KeyboardActivityViewProps {
   role?: 'admin' | 'manager' | 'employee';
 }
 
-// 8 Default Employees
-const DEFAULT_EMPLOYEES = [
-  'Arsal',
-  'Alex Vance',
-  'Elena Vance',
-  'Marcus Bell',
-  'Sarah Chen',
-  'David Kim',
-  'Jessica Lee',
-  'Michael Torres',
-];
-
-// Shift hours
+// Shift hours (office window used for live aggregates)
 const TIME_SLOTS = [
   '09:00',
   '10:00',
@@ -47,17 +35,7 @@ const TIME_SLOTS = [
   '16:00',
 ];
 
-// Base keypress matrix per employee per hour (derived from activity metrics * 34 keys/min)
-const BASE_KEYPRESS_DATA: number[][] = [
-  [2057, 2948, 3036, 3152, 2451, 2383, 3226, 2978], // Arsal (total 22,231)
-  [394,  2230, 2781, 2536, 2125, 1951, 2815, 2390], // Alex Vance (total 17,222)
-  [632,  2298, 2852, 2526, 2043, 1985, 2822, 2475], // Elena Vance (total 17,633)
-  [629,  2223, 2675, 2407, 2060, 1791, 2784, 2189], // Marcus Bell (total 16,758)
-  [1091, 2284, 2879, 2567, 2077, 1951, 3036, 2390], // Sarah Chen (total 18,275)
-  [2567, 3138, 3192, 3308, 2556, 3148, 3325, 3162], // David Kim (total 24,396)
-  [2305, 3087, 3138, 3243, 2526, 2998, 3287, 3134], // Jessica Lee (total 23,718)
-  [2434, 3134, 3155, 3294, 2553, 3155, 3315, 3165], // Michael Torres (total 24,205)
-];
+const zeroRow = () => TIME_SLOTS.map(() => 0);
 
 // Color mapping for keystrokes intensity (from dark indigo to bright peach/cream)
 function getKeypressCellColor(val: number, min = 300, max = 3400) {
@@ -101,9 +79,7 @@ export const KeyboardActivityView: React.FC<KeyboardActivityViewProps> = ({
   role = 'admin',
 }) => {
   const showBreaks = showBreakSchedule !== undefined ? showBreakSchedule : role !== 'admin';
-  const [employeesList, setEmployeesList] = useState<string[]>(
-    role === 'manager' ? ['Arsal (Engineering Team)'] : DEFAULT_EMPLOYEES
-  );
+  const [employeesList, setEmployeesList] = useState<string[]>([]);
   const [hoveredCell, setHoveredCell] = useState<{
     row: number;
     col: number;
@@ -135,16 +111,9 @@ export const KeyboardActivityView: React.FC<KeyboardActivityViewProps> = ({
             : true
         );
         const dbNames = validEmps.map((e) => (e.team_name ? `${e.name} (${e.team_name})` : e.name));
-        if (role === 'manager') {
-          setEmployeesList(dbNames.length > 0 ? dbNames : ['Arsal (Engineering Team)']);
-        } else {
-          const remaining = DEFAULT_EMPLOYEES.filter(
-            (def) => !dbNames.some((db) => db.toLowerCase().split(' ')[0] === def.toLowerCase().split(' ')[0])
-          );
-          setEmployeesList([...dbNames, ...remaining]);
-        }
-      } else if (role === 'manager') {
-        setEmployeesList(['Arsal (Engineering Team)']);
+        setEmployeesList(dbNames);
+      } else {
+        setEmployeesList([]);
       }
     });
 
@@ -154,9 +123,7 @@ export const KeyboardActivityView: React.FC<KeyboardActivityViewProps> = ({
 
     const loadLiveKeys = () => {
       dataService.getLiveKeystrokeTelemetry(role, selectedEmployeeName).then((res) => {
-        if (res && res.totalKeys > 0) {
-          setLiveKeysArray(res.hourlyKeysArray);
-        }
+        setLiveKeysArray(res?.hourlyKeysArray?.length ? res.hourlyKeysArray : zeroRow());
       });
     };
     loadLiveKeys();
@@ -209,91 +176,43 @@ export const KeyboardActivityView: React.FC<KeyboardActivityViewProps> = ({
     }
   };
 
-  // Filter rows down to ONLY the specific employee when filtered, or show all organization employees
-  let activeEmployees: string[] = [];
-  let activeMatrixData: number[][] = [];
-
+  // Real employees only — matrix values come from live aggregates (zeros when no data)
+  let activeEmployees: string[] = [...employeesList];
   if (selectedEmployeeName && selectedEmployeeName !== 'all') {
     const sName = selectedEmployeeName.toLowerCase().trim();
-    let matchIdx = employeesList.findIndex((e) => {
+    const match = employeesList.find((e) => {
       const eName = e.toLowerCase().trim();
       return (
         eName === sName ||
         eName.startsWith(sName) ||
-        sName.startsWith(eName) ||
-        eName.split('(')[0].trim() === sName ||
-        sName.split('(')[0].trim() === eName.split('(')[0].trim()
+        sName.startsWith(eName.split('(')[0].trim()) ||
+        eName.split('(')[0].trim() === sName.split('(')[0].trim()
       );
     });
-
-    if (matchIdx < 0) {
-      matchIdx = employeesList.findIndex((e) => e.toLowerCase().includes(sName) || sName.includes(e.toLowerCase()));
-    }
-
-    if (matchIdx >= 0) {
-      activeEmployees = [employeesList[matchIdx]];
-      activeMatrixData = [BASE_KEYPRESS_DATA[matchIdx] ? [...BASE_KEYPRESS_DATA[matchIdx]] : [...BASE_KEYPRESS_DATA[0]]];
-    } else {
-      activeEmployees = [selectedEmployeeName];
-      activeMatrixData = [[...BASE_KEYPRESS_DATA[0]]];
-    }
-  } else {
-    activeEmployees = [...employeesList];
-    activeMatrixData = employeesList.map((_emp, idx) =>
-      BASE_KEYPRESS_DATA[idx] ? [...BASE_KEYPRESS_DATA[idx]] : [...BASE_KEYPRESS_DATA[0]]
-    );
+    activeEmployees = match ? [match] : [];
   }
 
-  // Strict Manager Role isolation: Manager must ONLY see team employees, NEVER the Admin
   if (role === 'manager') {
-    const safeIndices: number[] = [];
-    activeEmployees = activeEmployees.filter((empName, i) => {
-      const isAdm = empName.toLowerCase().includes('admin');
-      if (!isAdm) safeIndices.push(i);
-      return !isAdm;
-    });
-    activeMatrixData = safeIndices.map((i) => activeMatrixData[i] || [...BASE_KEYPRESS_DATA[0]]);
-    if (activeEmployees.length === 0) {
-      activeEmployees = ['Arsal (Engineering Team)'];
-      activeMatrixData = [[...BASE_KEYPRESS_DATA[0]]];
-    }
+    activeEmployees = activeEmployees.filter((empName) => !empName.toLowerCase().includes('admin'));
   }
+
+  const liveRow = liveKeysArray && liveKeysArray.length === TIME_SLOTS.length ? liveKeysArray : zeroRow();
+  let activeMatrixData: number[][] = activeEmployees.map(() => [...liveRow]);
 
   // Adjust row for break continuation if active or resumed
   if (showBreaks && breakSnapshot) {
     const sIdx = breakSnapshot.time_slot_index;
     if (sIdx >= 0) {
-      activeMatrixData = activeMatrixData.map((row, rIdx) => {
-        const empLabel = (activeEmployees[rIdx] || '').toLowerCase();
-        if (
-          empLabel.includes('arsal') ||
-          (selectedEmployeeName && empLabel.includes(selectedEmployeeName.toLowerCase()))
-        ) {
-          const newRow = [...row];
-          if (breakSnapshot.status === 'active_break') {
-            newRow[sIdx] = breakSnapshot.hourly_state.pre_break_keys;
-          } else if (breakSnapshot.status === 'resumed') {
-            newRow[sIdx] = breakSnapshot.hourly_state.adjusted_total_keys || newRow[sIdx];
-          }
-          return newRow;
+      activeMatrixData = activeMatrixData.map((row) => {
+        const newRow = [...row];
+        if (breakSnapshot.status === 'active_break') {
+          newRow[sIdx] = breakSnapshot.hourly_state.pre_break_keys;
+        } else if (breakSnapshot.status === 'resumed') {
+          newRow[sIdx] = breakSnapshot.hourly_state.adjusted_total_keys || newRow[sIdx];
         }
-        return row;
+        return newRow;
       });
     }
-  }
-
-  // Merge live desktop agent keypress telemetry onto active target employee
-  if (liveKeysArray) {
-    activeMatrixData = activeMatrixData.map((row, rIdx) => {
-      const empLabel = (activeEmployees[rIdx] || '').toLowerCase();
-      if (
-        empLabel.includes('arsal') ||
-        (selectedEmployeeName && empLabel.includes(selectedEmployeeName.toLowerCase()))
-      ) {
-        return row.map((val, cIdx) => val + (liveKeysArray[cIdx] || 0));
-      }
-      return row;
-    });
   }
 
   // Calculate totals
@@ -750,12 +669,7 @@ export const KeyboardActivityView: React.FC<KeyboardActivityViewProps> = ({
             {/* Matrix Rows */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
               {activeEmployees.map((empName, rIdx) => {
-                const origIdx = employeesList.indexOf(empName);
-                const rowData =
-                  (origIdx >= 0 && BASE_KEYPRESS_DATA[origIdx]) ||
-                  activeMatrixData[rIdx] ||
-                  BASE_KEYPRESS_DATA[0] ||
-                  [];
+                const rowData = activeMatrixData[rIdx] || zeroRow();
                 const rowTotal = rowData.reduce((a, b) => a + b, 0);
 
                 return (

@@ -18,11 +18,13 @@ import {
   Search,
   ShieldCheck,
   Keyboard,
+  Trash2,
 } from 'lucide-react';
 import { dataService } from '../../services/dataService';
 import { useAuth } from '../../context/AuthContext';
 import { MatrixHeatmap } from '../../components/telemetry/MatrixHeatmap';
 import { KeyboardActivityView } from '../../components/telemetry/KeyboardActivityView';
+import { formatCaptureDateTime, formatCaptureTime } from '../../utils/datetime';
 import type { ScreenshotItem, EmployeeRecord, ScreenRecordingItem } from '../../types/roles';
 
 interface AdminMonitoringPageProps {
@@ -45,6 +47,8 @@ export const AdminMonitoringPage: React.FC<AdminMonitoringPageProps> = ({ initia
   const [isRecordingMap, setIsRecordingMap] = useState<Record<string, boolean>>({});
   const [recordingSecondsMap, setRecordingSecondsMap] = useState<Record<string, number>>({});
   const [recordingSuccessMessage, setRecordingSuccessMessage] = useState<string | null>(null);
+  const [screenshotActionMessage, setScreenshotActionMessage] = useState<string | null>(null);
+  const [isDeletingScreenshots, setIsDeletingScreenshots] = useState(false);
 
   useEffect(() => {
     if (initialSubTab) {
@@ -130,7 +134,48 @@ export const AdminMonitoringPage: React.FC<AdminMonitoringPageProps> = ({ initia
 
   const handleOpenScreenshot = (sc: ScreenshotItem) => {
     setSelectedScreenshot(sc);
-    dataService.logAction('Super Admin', 'admin', 'VIEW_SCREENSHOT', `${sc.employee_name} (${sc.captured_at})`, 'Inspected full resolution capture');
+    dataService.logAction(
+      'Super Admin',
+      'admin',
+      'VIEW_SCREENSHOT',
+      `${sc.employee_name} (${formatCaptureDateTime(sc.captured_at)})`,
+      'Inspected full resolution capture'
+    );
+  };
+
+  const handleDeleteScreenshot = async (sc: ScreenshotItem, e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    if (!window.confirm(`Delete screenshot for ${sc.employee_name} captured at ${formatCaptureDateTime(sc.captured_at)}?`)) {
+      return;
+    }
+    setIsDeletingScreenshots(true);
+    const res = await dataService.deleteScreenshot(sc);
+    setScreenshotActionMessage(res.message);
+    if (selectedScreenshot?.id === sc.id) setSelectedScreenshot(null);
+    await loadData();
+    setIsDeletingScreenshots(false);
+    setTimeout(() => setScreenshotActionMessage(null), 4000);
+  };
+
+  const handleDeleteAllScreenshots = async () => {
+    if (
+      !window.confirm(
+        `Delete ALL ${screenshots.length} screenshot(s) in the current filter? This cannot be undone.`
+      )
+    ) {
+      return;
+    }
+    setIsDeletingScreenshots(true);
+    const res = await dataService.deleteAllScreenshots(
+      'admin',
+      undefined,
+      selectedEmployeeId === 'all' ? undefined : selectedEmployeeId
+    );
+    setScreenshotActionMessage(res.message);
+    setSelectedScreenshot(null);
+    await loadData();
+    setIsDeletingScreenshots(false);
+    setTimeout(() => setScreenshotActionMessage(null), 5000);
   };
 
   const handleOpenLiveModal = (emp: EmployeeRecord) => {
@@ -848,7 +893,41 @@ export const AdminMonitoringPage: React.FC<AdminMonitoringPageProps> = ({ initia
 
       {/* 3. Screenshots Gallery Tab */}
       {activeSubTab === 'screenshots' && (
-        <div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          <div
+            className="frosted-card frosted-card-sm"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              flexWrap: 'wrap',
+              gap: 12,
+              padding: '10px 16px',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Camera size={16} color="var(--color-secondary)" />
+              <span style={{ fontSize: 13, fontWeight: 700 }}>
+                Screenshots ({screenshots.length})
+              </span>
+              {screenshotActionMessage && (
+                <span className="live-telemetry-badge" style={{ fontSize: 11 }}>
+                  {screenshotActionMessage}
+                </span>
+              )}
+            </div>
+            <button
+              type="button"
+              className="btn-pill btn-pill-secondary"
+              style={{ padding: '6px 12px', fontSize: 12, opacity: screenshots.length === 0 || isDeletingScreenshots ? 0.5 : 1 }}
+              disabled={screenshots.length === 0 || isDeletingScreenshots}
+              onClick={handleDeleteAllScreenshots}
+            >
+              <Trash2 size={13} />
+              <span>{isDeletingScreenshots ? 'Deleting…' : 'Delete all screenshots'}</span>
+            </button>
+          </div>
+
           {screenshots.length === 0 ? (
             <div className="frosted-card" style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>
               No screenshot records available for selected filter.
@@ -877,15 +956,33 @@ export const AdminMonitoringPage: React.FC<AdminMonitoringPageProps> = ({ initia
                     <div style={{ position: 'absolute', top: 10, right: 10 }} className="status-pill active">
                       {sc.activity_type || 'Active'}
                     </div>
+                    <button
+                      type="button"
+                      className="btn-pill btn-pill-secondary"
+                      title="Delete this screenshot"
+                      style={{
+                        position: 'absolute',
+                        top: 10,
+                        left: 10,
+                        padding: '4px 8px',
+                        fontSize: 11,
+                        background: 'rgba(15,23,42,0.72)',
+                        color: '#fff',
+                      }}
+                      onClick={(e) => handleDeleteScreenshot(sc, e)}
+                    >
+                      <Trash2 size={12} />
+                      <span>Delete</span>
+                    </button>
                   </div>
 
                   <div style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: 6 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
                       <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>
                         {sc.employee_name}
                       </span>
-                      <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-                        {sc.captured_at ? new Date(sc.captured_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Just now'}
+                      <span style={{ fontSize: 11, color: 'var(--text-muted)', whiteSpace: 'nowrap' }} title={formatCaptureDateTime(sc.captured_at)}>
+                        {formatCaptureTime(sc.captured_at)}
                       </span>
                     </div>
                     <div style={{ fontSize: 11, color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -1279,7 +1376,7 @@ export const AdminMonitoringPage: React.FC<AdminMonitoringPageProps> = ({ initia
                     {selectedScreenshot.employee_name}
                   </h3>
                   <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-                    Capture timestamp: {selectedScreenshot.captured_at} &bull; {selectedScreenshot.window_title}
+                    Capture timestamp: {formatCaptureDateTime(selectedScreenshot.captured_at)} &bull; {selectedScreenshot.window_title}
                   </span>
                 </div>
                 <button

@@ -36,20 +36,6 @@ export interface HeatmapMatrixDataset {
   unit?: string;
 }
 
-// Default Organization Employees
-const DEFAULT_EMPLOYEES = [
-  'Arsal (Engineering Team)',
-  'Alex Vance',
-  'Elena Vance',
-  'Marcus Bell',
-  'Sarah Chen',
-  'David Kim',
-  'Jessica Lee',
-  'Michael Torres',
-];
-
-
-// 8 Time slots (replaces CoLA, MNLI, MRPC, QNLI, QQP, RTE, SST-2, STS-B)
 const DEFAULT_TIME_SLOTS = [
   '09:00',
   '10:00',
@@ -61,49 +47,35 @@ const DEFAULT_TIME_SLOTS = [
   '16:00',
 ];
 
-// Preset 1: Hourly Employee Activity Matrix (Exact replica with Employee Names & Time)
+const WEEK_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun', 'Avg'];
+
+const zeroHourlyRow = () => DEFAULT_TIME_SLOTS.map(() => 0);
+const zeroWeeklyRow = () => WEEK_LABELS.map(() => 0);
+
+/** Template metadata only — cell values are filled from live agent telemetry. */
 export const HOURLY_EMPLOYEE_ACTIVITY_PRESET: HeatmapMatrixDataset = {
   id: 'hourly-employee-activity',
   title: 'Employee Activity Heatmap',
-  subtitle: 'Real-time telemetry and workstation activity intensity (%) per employee across shift hours',
+  subtitle: 'Live workstation activity intensity (%) from agent telemetry across shift hours',
   xAxisLabel: 'TIME',
   yAxisLabel: 'EMPLOYEE',
   xLabels: DEFAULT_TIME_SLOTS,
-  yLabels: DEFAULT_EMPLOYEES,
-  data: [
-    [60.5, 86.7, 89.3, 92.7, 72.1, 70.1, 94.9, 87.6], // Arsal
-    [11.6, 65.6, 81.8, 74.6, 62.5, 57.4, 82.8, 70.3], // Alex Vance
-    [18.6, 67.6, 83.9, 74.3, 60.1, 58.4, 83.0, 72.8], // Elena Vance
-    [18.5, 65.4, 78.7, 70.8, 60.6, 52.7, 81.9, 64.4], // Marcus Bell
-    [32.1, 67.2, 84.7, 75.5, 61.1, 57.4, 89.3, 70.3], // Sarah Chen
-    [75.5, 92.3, 93.9, 97.3, 75.2, 92.6, 97.8, 93.0], // David Kim
-    [67.8, 90.8, 92.3, 95.4, 74.3, 88.2, 96.7, 92.2], // Jessica Lee
-    [71.6, 92.2, 92.8, 96.9, 75.1, 92.8, 97.5, 93.1], // Michael Torres
-  ],
-  minValue: 10,
+  yLabels: [],
+  data: [],
+  minValue: 0,
   maxValue: 100,
   unit: '%',
 };
 
-// Preset 2: Weekly Employee Productivity Matrix
 export const WEEKLY_EMPLOYEE_CADENCE_PRESET: HeatmapMatrixDataset = {
   id: 'weekly-employee-cadence',
   title: 'Weekly Employee Productivity & Engagement Matrix',
-  subtitle: 'Aggregated daily active hours and task delivery throughput over the sprint week',
+  subtitle: 'Weekly view uses live hourly intensity until daily aggregates are available',
   xAxisLabel: 'DAY',
   yAxisLabel: 'EMPLOYEE',
-  xLabels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun', 'Avg'],
-  yLabels: DEFAULT_EMPLOYEES,
-  data: [
-    [94.2, 91.8, 96.5, 92.0, 88.7, 45.0, 15.0, 88.6],
-    [92.0, 88.5, 82.3, 86.4, 95.0, 30.0, 10.0, 84.2],
-    [95.0, 91.0, 89.4, 88.0, 94.2, 40.0, 12.0, 87.5],
-    [62.4, 58.0, 54.2, 61.0, 68.5, 20.0,  5.0, 56.4],
-    [99.0, 96.5, 95.2, 98.0, 98.5, 50.0, 20.0, 94.8],
-    [88.4, 82.0, 79.5, 84.2, 86.0, 35.0, 10.0, 80.2],
-    [96.2, 93.0, 91.8, 94.5, 95.0, 42.0, 18.0, 91.4],
-    [74.0, 71.5, 68.2, 70.0, 76.0, 25.0,  8.0, 68.5],
-  ],
+  xLabels: WEEK_LABELS,
+  yLabels: [],
+  data: [],
   minValue: 0,
   maxValue: 100,
   unit: '%',
@@ -111,7 +83,7 @@ export const WEEKLY_EMPLOYEE_CADENCE_PRESET: HeatmapMatrixDataset = {
 
 // Magma Colormap matching reference visual:
 // Deep dark purple/black -> Wine Magenta -> Vivid Coral/Red -> Warm Orange -> Apricot Cream
-export function getHeatmapColor(value: number, min = 10, max = 100): {
+export function getHeatmapColor(value: number, min = 0, max = 100): {
   bg: string;
   textColor: string;
   borderColor: string;
@@ -187,9 +159,7 @@ export const MatrixHeatmap: React.FC<MatrixHeatmapProps> = ({
 }) => {
   const showBreaks = showBreakSchedule !== undefined ? showBreakSchedule : role !== 'admin';
   const [activeMode, setActiveMode] = useState<'hourly' | 'weekly'>(initialPreset);
-  const [employeesList, setEmployeesList] = useState<string[]>(
-    role === 'manager' ? ['Arsal (Engineering Team)'] : DEFAULT_EMPLOYEES
-  );
+  const [employeesList, setEmployeesList] = useState<string[]>([]);
   const [showValues, setShowValues] = useState(true);
 
   const [hoveredCell, setHoveredCell] = useState<{
@@ -224,17 +194,9 @@ export const MatrixHeatmap: React.FC<MatrixHeatmapProps> = ({
               !e.email?.toLowerCase().includes('admin')
             : true
         );
-        const dbNames = validEmps.map((e) => (e.team_name ? `${e.name} (${e.team_name})` : e.name));
-        if (role === 'manager') {
-          setEmployeesList(dbNames.length > 0 ? dbNames : ['Arsal (Engineering Team)']);
-        } else {
-          const remaining = DEFAULT_EMPLOYEES.filter(
-            (def) => !dbNames.some((db) => db.toLowerCase().split(' ')[0] === def.toLowerCase().split(' ')[0])
-          );
-          setEmployeesList([...dbNames, ...remaining]);
-        }
-      } else if (role === 'manager') {
-        setEmployeesList(['Arsal (Engineering Team)']);
+        setEmployeesList(validEmps.map((e) => (e.team_name ? `${e.name} (${e.team_name})` : e.name)));
+      } else {
+        setEmployeesList([]);
       }
     });
 
@@ -244,9 +206,9 @@ export const MatrixHeatmap: React.FC<MatrixHeatmapProps> = ({
 
     const loadLiveMouse = () => {
       dataService.getLiveMouseTelemetry(role, selectedEmployeeName).then((res) => {
-        if (res && (res.totalMoves > 0 || res.totalClicks > 0)) {
-          setLiveMouseArray(res.hourlyIntensityArray);
-        }
+        setLiveMouseArray(
+          res?.hourlyIntensityArray?.length ? res.hourlyIntensityArray : zeroHourlyRow()
+        );
       });
     };
     loadLiveMouse();
@@ -299,99 +261,52 @@ export const MatrixHeatmap: React.FC<MatrixHeatmapProps> = ({
     }
   };
 
-  const baseDataset = activeMode === 'weekly' 
-    ? WEEKLY_EMPLOYEE_CADENCE_PRESET 
+  const baseDataset = activeMode === 'weekly'
+    ? WEEKLY_EMPLOYEE_CADENCE_PRESET
     : HOURLY_EMPLOYEE_ACTIVITY_PRESET;
 
-  // Filter down to ONLY the specific employee when filtered, or show all organization employees
-  let filteredEmployees: string[] = [];
-  let filteredData: number[][] = [];
-
+  let filteredEmployees: string[] = [...employeesList];
   if (selectedEmployeeName && selectedEmployeeName !== 'all') {
     const sName = selectedEmployeeName.toLowerCase().trim();
-    // 1. Try exact match, prefix match or team-wrapped match
-    let matchIdx = employeesList.findIndex((e) => {
+    const match = employeesList.find((e) => {
       const eName = e.toLowerCase().trim();
       return (
         eName === sName ||
         eName.startsWith(sName) ||
-        sName.startsWith(eName) ||
-        eName.split('(')[0].trim() === sName ||
-        sName.split('(')[0].trim() === eName.split('(')[0].trim()
+        sName.startsWith(eName.split('(')[0].trim()) ||
+        eName.split('(')[0].trim() === sName.split('(')[0].trim()
       );
     });
-
-    if (matchIdx < 0) {
-      matchIdx = employeesList.findIndex((e) => e.toLowerCase().includes(sName) || sName.includes(e.toLowerCase()));
-    }
-
-    if (matchIdx >= 0) {
-      filteredEmployees = [employeesList[matchIdx]];
-      filteredData = [baseDataset.data[matchIdx] ? [...baseDataset.data[matchIdx]] : [...baseDataset.data[0]]];
-    } else {
-      filteredEmployees = [selectedEmployeeName];
-      filteredData = [[...baseDataset.data[0]]];
-    }
-  } else {
-    filteredEmployees = [...employeesList];
-    filteredData = employeesList.map((_emp, idx) =>
-      baseDataset.data[idx] ? [...baseDataset.data[idx]] : [...baseDataset.data[0]]
-    );
+    filteredEmployees = match ? [match] : [];
   }
 
-  // Strict Manager Role isolation: Manager must ONLY see team employees, NEVER the Admin
   if (role === 'manager') {
-    const safeIndices: number[] = [];
-    filteredEmployees = filteredEmployees.filter((empName, i) => {
-      const isAdm = empName.toLowerCase().includes('admin');
-      if (!isAdm) safeIndices.push(i);
-      return !isAdm;
-    });
-    filteredData = safeIndices.map((i) => filteredData[i] || [...baseDataset.data[0]]);
-    if (filteredEmployees.length === 0) {
-      filteredEmployees = ['Arsal (Engineering Team)'];
-      filteredData = [[...baseDataset.data[0]]];
-    }
+    filteredEmployees = filteredEmployees.filter((empName) => !empName.toLowerCase().includes('admin'));
   }
+
+  const liveRow =
+    activeMode === 'hourly'
+      ? liveMouseArray && liveMouseArray.length === DEFAULT_TIME_SLOTS.length
+        ? liveMouseArray.map((v) => Math.min(100, Math.max(0, v)))
+        : zeroHourlyRow()
+      : zeroWeeklyRow();
+
+  let filteredData: number[][] = filteredEmployees.map(() => [...liveRow]);
 
   // Adjust row for break continuation if break is active or resumed
   if (showBreaks && activeMode === 'hourly' && breakSnapshot) {
     const sIdx = breakSnapshot.time_slot_index;
     if (sIdx >= 0) {
-      filteredData = filteredData.map((row, rIdx) => {
-        const empLabel = (filteredEmployees[rIdx] || '').toLowerCase();
-        if (
-          empLabel.includes('arsal') ||
-          (selectedEmployeeName && empLabel.includes(selectedEmployeeName.toLowerCase()))
-        ) {
-          const newRow = [...row];
-          if (breakSnapshot.status === 'active_break') {
-            newRow[sIdx] = breakSnapshot.hourly_state.pre_break_heatmap_pct;
-          } else if (breakSnapshot.status === 'resumed') {
-            newRow[sIdx] = breakSnapshot.hourly_state.adjusted_heatmap_pct || newRow[sIdx];
-          }
-          return newRow;
+      filteredData = filteredData.map((row) => {
+        const newRow = [...row];
+        if (breakSnapshot.status === 'active_break') {
+          newRow[sIdx] = breakSnapshot.hourly_state.pre_break_heatmap_pct;
+        } else if (breakSnapshot.status === 'resumed') {
+          newRow[sIdx] = breakSnapshot.hourly_state.adjusted_heatmap_pct || newRow[sIdx];
         }
-        return row;
+        return newRow;
       });
     }
-  }
-
-  // Merge live mouse intensity telemetry from desktop agent
-  if (liveMouseArray && activeMode === 'hourly') {
-    filteredData = filteredData.map((row, rIdx) => {
-      const empLabel = (filteredEmployees[rIdx] || '').toLowerCase();
-      if (
-        empLabel.includes('arsal') ||
-        (selectedEmployeeName && empLabel.includes(selectedEmployeeName.toLowerCase()))
-      ) {
-        return row.map((val, cIdx) => {
-          const added = liveMouseArray[cIdx] || 0;
-          return Math.min(100, val + (added > 0 ? added * 0.4 : 0));
-        });
-      }
-      return row;
-    });
   }
 
   const currentDataset: HeatmapMatrixDataset = {

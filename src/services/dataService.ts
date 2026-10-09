@@ -23,6 +23,7 @@ import type {
 import { supabase, isSupabaseConfigured } from './supabaseClient';
 import { supabaseSync } from './supabaseService';
 import { generateWorkstationRecordingClip } from '../utils/screenRecordingGenerator';
+import { formatCaptureTime, isDummyMediaUrl, parseCaptureDate } from '../utils/datetime';
 
 
 export const ADMIN_USER_ID = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
@@ -56,25 +57,8 @@ let attendanceRulesStore: AttendanceRuleConfig = {
 let localAuditLogs: AuditLogItem[] = [];
 const employeeStarsMap = new Map<string, number>();
 
-let screenRecordingsStore: ScreenRecordingItem[] = [
-  {
-    id: 'rec-1791460396530',
-    employee_id: 'cccccccc-cccc-cccc-cccc-cccccccccccc',
-    employee_name: 'Arsal',
-    department: 'Engineering',
-    device_id: 'WIN-DESKTOP-QUVQI4B-ok',
-    device_name: 'DESKTOP-QUVQI4B',
-    started_at: new Date(Date.now() - 1000 * 60 * 18).toISOString(),
-    duration_seconds: 10,
-    video_url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4',
-    thumbnail_url: 'https://images.unsplash.com/photo-1555066931-4365d14bab8c?auto=format&fit=crop&w=1200&q=80',
-    trigger_type: 'on_demand',
-    recorded_by: 'Arsal (Admin)',
-    active_window: 'Visual Studio Code - Employee Tracking Dashboard',
-    file_size_bytes: 2840120,
-    status: 'completed',
-  },
-];
+/** In-memory cache of recordings created in this session only (no seed/dummy clips). */
+let screenRecordingsStore: ScreenRecordingItem[] = [];
 
 let customTeamsStore: TeamRecord[] = [
   {
@@ -295,7 +279,7 @@ export const dataService = {
           latestEvent?.metadata?.window ||
           latestEvent?.metadata?.window_title ||
           activeTask?.title ||
-          'Visual Studio Code - Employee-Tracking-Dashboard';
+          '';
 
         // 5. Latest Screenshot
         const empScreenshots = screenshotRows.filter((s: any) => isMatchingEmp(s.employee_id));
@@ -308,8 +292,7 @@ export const dataService = {
           const { data: pubUrl } = supabase.storage.from('screenshots').getPublicUrl(latestSc.storage_path);
           latestScUrl = pubUrl?.publicUrl || '';
           if (latestSc.captured_at) {
-            const d = new Date(latestSc.captured_at);
-            lastScStr = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            lastScStr = formatCaptureTime(latestSc.captured_at);
           }
         }
 
@@ -339,17 +322,19 @@ export const dataService = {
           status,
           attendance_status: status === 'offline' ? 'absent' : 'on_time',
           first_activity: firstActivity,
-          active_seconds: totalActiveSecs > 0 ? totalActiveSecs : (status === 'active' ? 14400 : 3600),
-          idle_seconds: totalIdleSecs > 0 ? totalIdleSecs : (status === 'idle' ? 1800 : 600),
-          key_press_count: totalKeys > 0 ? totalKeys : (status === 'active' ? 4250 : 350),
-          mouse_move_count: totalMoves > 0 ? totalMoves : (status === 'active' ? 11200 : 920),
-          mouse_click_count: totalClicks > 0 ? totalClicks : (status === 'active' ? 840 : 60),
-          active_window: activeWindow,
+          active_seconds: totalActiveSecs,
+          idle_seconds: totalIdleSecs,
+          key_press_count: totalKeys,
+          mouse_move_count: totalMoves,
+          mouse_click_count: totalClicks,
+          active_window: activeWindow === 'Visual Studio Code - Employee-Tracking-Dashboard' && !latestEvent
+            ? '—'
+            : activeWindow,
           last_screenshot: lastScStr,
           latest_screenshot_url: latestScUrl,
-          latest_screenshot_time: latestSc?.captured_at,
-          current_task: activeTask?.title || activeWindow,
-          stars: employeeStarsMap.get(e.id) ?? 20,
+          latest_screenshot_time: latestSc?.captured_at || undefined,
+          current_task: activeTask?.title || (latestEvent ? activeWindow : '—'),
+          stars: employeeStarsMap.get(e.id) ?? 0,
           device_id: deviceIdentifier,
           device_name: deviceName,
           os_version: osVersion,
@@ -688,7 +673,7 @@ export const dataService = {
       const [recordsRes, legacyRes, empRes] = await Promise.all([
         supabase.from('screenshot_records').select('*').order('captured_at', { ascending: false }).limit(60),
         supabase.from('screenshots').select('*').order('captured_at', { ascending: false }).limit(60),
-        supabase.from('employees').select('id, full_name, manager_id'),
+        supabase.from('employees').select('id, full_name, manager_id, department'),
       ]);
 
       const scRows = [...(recordsRes.data || []), ...(legacyRes.data || [])];
@@ -703,7 +688,7 @@ export const dataService = {
         seenPaths.add(s.storage_path);
 
         const emp = empList.find((e: any) => e.id === s.employee_id);
-        const empName = emp?.full_name || (s.employee_id?.includes('cccc') || s.employee_id?.includes('d9b4') ? 'Arsal' : 'Michael Chen');
+        const empName = emp?.full_name || 'Unknown employee';
 
         if (filterEmployeeId && filterEmployeeId !== 'all') {
           const isArsalFilter =
@@ -741,29 +726,103 @@ export const dataService = {
         }
 
         const { data: pubUrl } = supabase.storage.from('screenshots').getPublicUrl(s.storage_path);
-        const d = new Date(s.captured_at || s.created_at || Date.now());
-        const dateStr = d.toISOString().replace('T', ' ').substring(0, 19);
+        const capturedRaw = s.captured_at || s.created_at || null;
+        const capturedDate = parseCaptureDate(capturedRaw);
+        const capturedIso = capturedDate ? capturedDate.toISOString() : (capturedRaw || new Date().toISOString());
 
         results.push({
           id: s.id,
           employee_id: s.employee_id,
           employee_name: empName,
-          team_name: 'Core Backend Team',
-          captured_at: dateStr,
+          team_name: emp?.department ? `${emp.department} Team` : '—',
+          captured_at: capturedIso,
           file_path: s.storage_path,
           thumbnail_url: pubUrl?.publicUrl || '',
           high_res_url: pubUrl?.publicUrl || '',
-          file_size_bytes: s.file_size_bytes || 134000,
+          file_size_bytes: Number(s.file_size_bytes) || 0,
           activity_type: 'active',
-          window_title: `Workstation Live Capture (${s.width || 1920}x${s.height || 1080})`,
+          window_title: s.window_title || `Workstation capture (${s.width || '?'}x${s.height || '?'})`,
         });
       }
 
-      return results.sort((a, b) => new Date(b.captured_at).getTime() - new Date(a.captured_at).getTime());
+      return results.sort((a, b) => {
+        const tb = parseCaptureDate(b.captured_at)?.getTime() || 0;
+        const ta = parseCaptureDate(a.captured_at)?.getTime() || 0;
+        return tb - ta;
+      });
     } catch (err) {
       console.error('getScreenshots Supabase error:', err);
       return [];
     }
+  },
+
+  deleteScreenshot: async (screenshot: ScreenshotItem): Promise<{ success: boolean; message: string }> => {
+    if (!isSupabaseConfigured()) {
+      return { success: false, message: 'Supabase is not configured.' };
+    }
+    try {
+      const path = screenshot.file_path;
+      if (path) {
+        const { error: storageErr } = await supabase.storage.from('screenshots').remove([path]);
+        if (storageErr) {
+          console.warn('Storage delete warning:', storageErr.message);
+        }
+      }
+
+      if (screenshot.id) {
+        await supabase.from('screenshot_records').delete().eq('id', screenshot.id);
+        await supabase.from('screenshots').delete().eq('id', screenshot.id);
+      }
+      if (path) {
+        await supabase.from('screenshot_records').delete().eq('storage_path', path);
+        await supabase.from('screenshots').delete().eq('storage_path', path);
+      }
+
+      return { success: true, message: 'Screenshot deleted.' };
+    } catch (err: any) {
+      console.error('deleteScreenshot failed:', err);
+      return { success: false, message: err?.message || 'Failed to delete screenshot.' };
+    }
+  },
+
+  deleteAllScreenshots: async (
+    role: UserRole,
+    managerId?: string,
+    filterEmployeeId?: string
+  ): Promise<{ success: boolean; deleted: number; message: string }> => {
+    const items = await dataService.getScreenshots(role, managerId, filterEmployeeId);
+    if (items.length === 0) {
+      return { success: true, deleted: 0, message: 'No screenshots to delete.' };
+    }
+
+    let deleted = 0;
+    const paths = items.map((s) => s.file_path).filter(Boolean) as string[];
+    if (paths.length > 0) {
+      const { error: storageErr } = await supabase.storage.from('screenshots').remove(paths);
+      if (storageErr) console.warn('Bulk storage delete warning:', storageErr.message);
+    }
+
+    for (const item of items) {
+      try {
+        if (item.id) {
+          await supabase.from('screenshot_records').delete().eq('id', item.id);
+          await supabase.from('screenshots').delete().eq('id', item.id);
+        }
+        if (item.file_path) {
+          await supabase.from('screenshot_records').delete().eq('storage_path', item.file_path);
+          await supabase.from('screenshots').delete().eq('storage_path', item.file_path);
+        }
+        deleted += 1;
+      } catch (e) {
+        console.warn('Failed deleting screenshot row', item.id, e);
+      }
+    }
+
+    return {
+      success: true,
+      deleted,
+      message: `Deleted ${deleted} screenshot${deleted === 1 ? '' : 's'}.`,
+    };
   },
 
   // 5b. Screen Recordings Query (Stores and fetches all recorded sessions from Supabase & memory)
@@ -802,21 +861,21 @@ export const dataService = {
             return {
               id: r.id,
               employee_id: r.employee_id,
-              employee_name: r.metadata?.employee_name || 'Arsal',
-              department: r.metadata?.department || 'Engineering',
+              employee_name: r.metadata?.employee_name || 'Unknown employee',
+              department: r.metadata?.department || '—',
               device_id: r.device_id,
               device_name: r.metadata?.device_name || r.device_id,
               started_at: r.started_at,
-              duration_seconds: r.duration_seconds || 10,
-              video_url: resolvedVideoUrl || 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4',
-              thumbnail_url: resolvedThumbUrl || 'https://images.unsplash.com/photo-1555066931-4365d14bab8c?auto=format&fit=crop&w=1200&q=80',
+              duration_seconds: r.duration_seconds || 0,
+              video_url: resolvedVideoUrl || '',
+              thumbnail_url: resolvedThumbUrl || '',
               trigger_type: r.trigger_type || 'on_demand',
-              recorded_by: r.recorded_by || 'Super Admin',
-              active_window: r.active_window || 'Visual Studio Code',
-              file_size_bytes: r.file_size_bytes || 2500000,
+              recorded_by: r.recorded_by || '—',
+              active_window: r.active_window || '—',
+              file_size_bytes: Number(r.file_size_bytes) || 0,
               status: r.status || 'completed',
             };
-          });
+          }).filter((r) => !isDummyMediaUrl(r.video_url) && !!r.video_url);
           list = [...mappedFromTable, ...list];
         }
 
@@ -830,7 +889,7 @@ export const dataService = {
         if (evData && evData.length > 0) {
           const mappedFromEvents: ScreenRecordingItem[] = evData.map((e: any) => {
             const meta = e.metadata || {};
-            const empName = meta.employee_name || (e.employee_id === 'cccccccc-cccc-cccc-cccc-cccccccccccc' ? 'Arsal' : 'Michael Chen');
+            const empName = meta.employee_name || 'Unknown employee';
 
             let resolvedVideoUrl = meta.video_url;
             let resolvedThumbUrl = meta.thumbnail_url;
@@ -845,20 +904,20 @@ export const dataService = {
               id: meta.session_id || e.id,
               employee_id: e.employee_id,
               employee_name: empName,
-              department: meta.department || 'Engineering',
-              device_id: e.device_id || 'WIN-CLIENT',
-              device_name: meta.device_name || e.device_id || 'Workstation',
+              department: meta.department || '—',
+              device_id: e.device_id || '—',
+              device_name: meta.device_name || e.device_id || '—',
               started_at: e.occurred_at || e.created_at,
-              duration_seconds: meta.duration_seconds || 10,
-              video_url: resolvedVideoUrl || 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4',
-              thumbnail_url: resolvedThumbUrl || 'https://images.unsplash.com/photo-1555066931-4365d14bab8c?auto=format&fit=crop&w=1200&q=80',
+              duration_seconds: meta.duration_seconds || 0,
+              video_url: resolvedVideoUrl || '',
+              thumbnail_url: resolvedThumbUrl || '',
               trigger_type: meta.trigger_type || 'on_demand',
-              recorded_by: meta.requested_by || meta.recorded_by || 'Super Admin',
-              active_window: meta.active_window || 'Visual Studio Code - Employee Tracking Dashboard',
-              file_size_bytes: meta.file_size_bytes || 2450000,
+              recorded_by: meta.requested_by || meta.recorded_by || '—',
+              active_window: meta.active_window || '—',
+              file_size_bytes: Number(meta.file_size_bytes) || 0,
               status: meta.status === 'initiated' ? 'completed' : (meta.status || 'completed'),
             };
-          });
+          }).filter((r) => !isDummyMediaUrl(r.video_url) && !!r.video_url);
 
           // Deduplicate by ID
           const existingIds = new Set(list.map((r) => r.id));
@@ -887,6 +946,9 @@ export const dataService = {
       list = list.filter((r) => r.employee_id === employeeId);
     }
 
+    // Never surface sample/dummy clips
+    list = list.filter((r) => !!r.video_url && !isDummyMediaUrl(r.video_url));
+
     return list.sort((a, b) => new Date(b.started_at).getTime() - new Date(a.started_at).getTime());
   },
 
@@ -900,8 +962,8 @@ export const dataService = {
   ): Promise<{ success: boolean; message: string; recordId: string; recording: ScreenRecordingItem }> => {
     const recordId = `rec-${Date.now()}`;
     const startedAt = new Date().toISOString();
-    const resolvedName = employeeName || (employeeId === 'cccccccc-cccc-cccc-cccc-cccccccccccc' ? 'Arsal' : 'Michael Chen');
-    const resolvedWindow = activeWindow || 'Visual Studio Code - Employee Tracking Dashboard';
+    const resolvedName = employeeName || 'Unknown employee';
+    const resolvedWindow = activeWindow || 'Workstation';
 
     // 1. Generate live workstation video clip and thumbnail
     let videoBlob: Blob | null = null;
@@ -911,12 +973,12 @@ export const dataService = {
       videoBlob = generated.videoBlob;
       thumbnailBlob = generated.thumbnailBlob;
     } catch (err) {
-      console.warn('Could not generate canvas recording clip, using fallback:', err);
+      console.warn('Could not generate canvas recording clip:', err);
     }
 
-    let videoUrl = 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4';
-    let thumbnailUrl = 'https://images.unsplash.com/photo-1555066931-4365d14bab8c?auto=format&fit=crop&w=1200&q=80';
-    let fileSizeBytes = 2840000;
+    let videoUrl = '';
+    let thumbnailUrl = '';
+    let fileSizeBytes = 0;
 
     // 2. Upload video and thumbnail to Supabase Storage inside bucket under employee folder
     if (videoBlob && isSupabaseConfigured()) {
@@ -942,6 +1004,15 @@ export const dataService = {
       } catch (uploadErr) {
         console.warn('Supabase screen recording storage upload failed:', uploadErr);
       }
+    }
+
+    if (!videoUrl || isDummyMediaUrl(videoUrl)) {
+      return {
+        success: false,
+        message: 'Recording failed: no real video was uploaded to storage.',
+        recordId,
+        recording: null as unknown as ScreenRecordingItem,
+      };
     }
 
     const newRecording: ScreenRecordingItem = {

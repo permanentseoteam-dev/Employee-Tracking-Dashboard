@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Camera, Flame, Filter, X, Eye, Activity, Monitor, Video, CheckCircle2, Play, Download, Clock, Film, Search, ShieldCheck, Keyboard, Trash2 } from 'lucide-react';
 import { dataService } from '../../services/dataService';
@@ -32,6 +32,7 @@ export const AdminMonitoringPage: React.FC<AdminMonitoringPageProps> = ({ initia
   const [recordingSuccessMessage, setRecordingSuccessMessage] = useState<string | null>(null);
   const [screenshotActionMessage, setScreenshotActionMessage] = useState<string | null>(null);
   const [isDeletingScreenshots, setIsDeletingScreenshots] = useState(false);
+  const isDeletingScreenshotsRef = useRef(false);
   const [liveKeysToday, setLiveKeysToday] = useState(0);
   const [liveMovesToday, setLiveMovesToday] = useState(0);
 
@@ -42,6 +43,8 @@ export const AdminMonitoringPage: React.FC<AdminMonitoringPageProps> = ({ initia
   }, [initialSubTab]);
 
   const loadData = async () => {
+    // Avoid gallery thrash while a bulk delete is in progress
+    if (isDeletingScreenshotsRef.current) return;
     try {
       const filter = selectedEmployeeId === 'all' ? undefined : selectedEmployeeId;
       const [empList, scList, recList, keysLive, mouseLive] = await Promise.all([
@@ -51,6 +54,7 @@ export const AdminMonitoringPage: React.FC<AdminMonitoringPageProps> = ({ initia
         dataService.getLiveKeystrokeTelemetry('admin', filter),
         dataService.getLiveMouseTelemetry('admin', filter),
       ]);
+      if (isDeletingScreenshotsRef.current) return;
       setEmployees(empList);
       setScreenshots(scList);
       setRecordings(recList);
@@ -137,37 +141,57 @@ export const AdminMonitoringPage: React.FC<AdminMonitoringPageProps> = ({ initia
 
   const handleDeleteScreenshot = async (sc: ScreenshotItem, e?: React.MouseEvent) => {
     e?.stopPropagation();
+    if (isDeletingScreenshotsRef.current) return;
     if (!window.confirm(`Delete screenshot for ${sc.employee_name} captured at ${formatCaptureDateTime(sc.captured_at)}?`)) {
       return;
     }
+    isDeletingScreenshotsRef.current = true;
     setIsDeletingScreenshots(true);
-    const res = await dataService.deleteScreenshot(sc);
-    setScreenshotActionMessage(res.message);
+    setScreenshots((prev) => prev.filter((s) => s.id !== sc.id));
     if (selectedScreenshot?.id === sc.id) setSelectedScreenshot(null);
-    await loadData();
-    setIsDeletingScreenshots(false);
-    setTimeout(() => setScreenshotActionMessage(null), 4000);
+    try {
+      const res = await dataService.deleteScreenshot(sc);
+      setScreenshotActionMessage(res.message);
+    } finally {
+      isDeletingScreenshotsRef.current = false;
+      setIsDeletingScreenshots(false);
+      await loadData();
+      setTimeout(() => setScreenshotActionMessage(null), 4000);
+    }
   };
 
   const handleDeleteAllScreenshots = async () => {
+    if (isDeletingScreenshotsRef.current) return;
+    const toDelete = [...screenshots];
+    if (toDelete.length === 0) return;
     if (
       !window.confirm(
-        `Delete ALL ${screenshots.length} screenshot(s) in the current filter? This cannot be undone.`
+        `Delete ALL ${toDelete.length} screenshot(s) in the current filter? This cannot be undone.`
       )
     ) {
       return;
     }
+    isDeletingScreenshotsRef.current = true;
     setIsDeletingScreenshots(true);
-    const res = await dataService.deleteAllScreenshots(
-      'admin',
-      undefined,
-      selectedEmployeeId === 'all' ? undefined : selectedEmployeeId
-    );
-    setScreenshotActionMessage(res.message);
+    setScreenshots([]);
     setSelectedScreenshot(null);
-    await loadData();
-    setIsDeletingScreenshots(false);
-    setTimeout(() => setScreenshotActionMessage(null), 5000);
+    setScreenshotActionMessage(`Deleting ${toDelete.length} screenshot(s)…`);
+    try {
+      const res = await dataService.deleteAllScreenshots(
+        'admin',
+        undefined,
+        selectedEmployeeId === 'all' ? undefined : selectedEmployeeId,
+        toDelete
+      );
+      setScreenshotActionMessage(res.message);
+    } catch (err: any) {
+      setScreenshotActionMessage(err?.message || 'Failed to delete screenshots.');
+    } finally {
+      isDeletingScreenshotsRef.current = false;
+      setIsDeletingScreenshots(false);
+      await loadData();
+      setTimeout(() => setScreenshotActionMessage(null), 5000);
+    }
   };
 
   const handleOpenLiveModal = (emp: EmployeeRecord) => {
@@ -909,9 +933,20 @@ export const AdminMonitoringPage: React.FC<AdminMonitoringPageProps> = ({ initia
             <button
               type="button"
               className="btn-pill btn-pill-secondary"
-              style={{ padding: '6px 12px', fontSize: 12, opacity: screenshots.length === 0 || isDeletingScreenshots ? 0.5 : 1 }}
+              style={{
+                padding: '6px 12px',
+                fontSize: 12,
+                opacity: screenshots.length === 0 || isDeletingScreenshots ? 0.55 : 1,
+                cursor: screenshots.length === 0 || isDeletingScreenshots ? 'not-allowed' : 'pointer',
+                pointerEvents: isDeletingScreenshots ? 'none' : 'auto',
+              }}
               disabled={screenshots.length === 0 || isDeletingScreenshots}
-              onClick={handleDeleteAllScreenshots}
+              aria-busy={isDeletingScreenshots}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                void handleDeleteAllScreenshots();
+              }}
             >
               <Trash2 size={13} />
               <span>{isDeletingScreenshots ? 'Deleting…' : 'Delete all screenshots'}</span>

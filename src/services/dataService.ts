@@ -1074,36 +1074,53 @@ export const dataService = {
   deleteAllScreenshots: async (
     role: UserRole,
     managerId?: string,
-    filterEmployeeId?: string
+    filterEmployeeId?: string,
+    /** Prefer the visible gallery list so UI and DB stay in sync */
+    itemsOverride?: ScreenshotItem[]
   ): Promise<{ success: boolean; deleted: number; message: string }> => {
-    const items = await dataService.getScreenshots(role, managerId, filterEmployeeId);
+    if (!isSupabaseConfigured()) {
+      return { success: false, deleted: 0, message: 'Supabase is not configured.' };
+    }
+
+    const items =
+      itemsOverride && itemsOverride.length > 0
+        ? itemsOverride
+        : await dataService.getScreenshots(role, managerId, filterEmployeeId);
+
     if (items.length === 0) {
       return { success: true, deleted: 0, message: 'No screenshots to delete.' };
     }
 
-    let deleted = 0;
-    const paths = items.map((s) => s.file_path).filter(Boolean) as string[];
-    if (paths.length > 0) {
-      const { error: storageErr } = await supabase.storage.from('screenshots').remove(paths);
+    const ids = [...new Set(items.map((s) => s.id).filter(Boolean))];
+    const paths = [...new Set(items.map((s) => s.file_path).filter(Boolean) as string[])];
+
+    // Storage API accepts limited batches
+    for (let i = 0; i < paths.length; i += 50) {
+      const chunk = paths.slice(i, i + 50);
+      const { error: storageErr } = await supabase.storage.from('screenshots').remove(chunk);
       if (storageErr) console.warn('Bulk storage delete warning:', storageErr.message);
     }
 
-    for (const item of items) {
-      try {
-        if (item.id) {
-          await supabase.from('screenshot_records').delete().eq('id', item.id);
-          await supabase.from('screenshots').delete().eq('id', item.id);
-        }
-        if (item.file_path) {
-          await supabase.from('screenshot_records').delete().eq('storage_path', item.file_path);
-          await supabase.from('screenshots').delete().eq('storage_path', item.file_path);
-        }
-        deleted += 1;
-      } catch (e) {
-        console.warn('Failed deleting screenshot row', item.id, e);
-      }
+    // Batch row deletes (both table names used historically)
+    for (let i = 0; i < ids.length; i += 100) {
+      const chunk = ids.slice(i, i + 100);
+      const [{ error: e1 }, { error: e2 }] = await Promise.all([
+        supabase.from('screenshot_records').delete().in('id', chunk),
+        supabase.from('screenshots').delete().in('id', chunk),
+      ]);
+      if (e1) console.warn('screenshot_records bulk delete:', e1.message);
+      if (e2) console.warn('screenshots bulk delete:', e2.message);
     }
 
+    for (let i = 0; i < paths.length; i += 100) {
+      const chunk = paths.slice(i, i + 100);
+      await Promise.all([
+        supabase.from('screenshot_records').delete().in('storage_path', chunk),
+        supabase.from('screenshots').delete().in('storage_path', chunk),
+      ]);
+    }
+
+    const deleted = items.length;
     return {
       success: true,
       deleted,

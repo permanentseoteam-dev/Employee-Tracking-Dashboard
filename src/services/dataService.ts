@@ -525,27 +525,28 @@ export const dataService = {
         projs = projRes.data || [];
       }
 
-      const totalCount = emps.length || 2;
-      const activeCount = presence.filter((p: any) => p.status === 'active').length || 1;
-      const projIds = projs.map((p: any) => p.id) || ['proj-01'];
+      const totalCount = emps.length;
+      const activeCount = presence.filter((p: any) => p.status === 'active').length;
+      const projIds = projs.map((p: any) => p.id);
 
       // Merge dynamic metrics into teams
       const updatedTeams = customTeamsStore.map((team, idx) => {
-        const teamMemberCount = idx === 0 ? totalCount : Math.max(1, Math.floor(totalCount / 2));
+        const teamMemberCount = idx === 0 ? totalCount : (totalCount > 0 ? Math.floor(totalCount / 2) : 0);
         const teamActiveCount = idx === 0 ? activeCount : Math.min(teamMemberCount, activeCount);
         return {
           ...team,
           member_count: teamMemberCount,
           active_count: teamActiveCount,
-          attendance_rate: teamMemberCount > 0 ? Math.round((teamActiveCount / teamMemberCount) * 100) : 100,
+          attendance_rate: teamMemberCount > 0 ? Math.round((teamActiveCount / teamMemberCount) * 100) : 0,
           project_ids: projIds,
         };
       });
 
       if (role === 'admin') return updatedTeams;
       if (role === 'manager' && managerId) {
-        return updatedTeams.filter((t) => t.manager_id === managerId || t.manager_id === 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb');
+        return updatedTeams.filter((t) => t.manager_id === managerId);
       }
+      if (role === 'manager') return [];
       return updatedTeams;
     } catch (err) {
       console.error('getTeams error:', err);
@@ -1756,14 +1757,16 @@ export const dataService = {
         supabase.from('projects').select('id', { count: 'exact', head: true }),
       ]);
 
-      const totalEmployees = emps.count ?? 2;
+      const totalEmployees = emps.count ?? 0;
       const presList = presence.data || [];
-      const onlineEmployees = presList.filter((p: any) => p.status === 'active' || p.status === 'idle').length || 1;
+      const onlineEmployees = presList.filter((p: any) => p.status === 'active' || p.status === 'idle').length;
       const idleEmployees = presList.filter((p: any) => p.status === 'idle').length;
       const taskList = tasks.data || [];
-      const activeTasks = taskList.filter((t: any) => t.status === 'in_progress').length || 1;
-      const completedTasks = taskList.filter((t: any) => t.status === 'completed').length || 1;
-      const totalProjects = projs.count ?? 2;
+      const activeTasks = taskList.filter((t: any) => t.status === 'in_progress').length;
+      const completedTasks = taskList.filter((t: any) => t.status === 'completed').length;
+      const totalProjects = projs.count ?? 0;
+      const attendanceRate =
+        totalEmployees > 0 ? Math.round((onlineEmployees / totalEmployees) * 100) : 0;
 
       return {
         totalEmployees,
@@ -1773,19 +1776,19 @@ export const dataService = {
         activeTasks,
         completedTasks,
         totalProjects,
-        attendanceRate: 100,
+        attendanceRate,
       };
     } catch (err) {
       console.error('getAdminKpis error:', err);
       return {
-        totalEmployees: 2,
-        onlineEmployees: 1,
+        totalEmployees: 0,
+        onlineEmployees: 0,
         lateToday: 0,
         idleEmployees: 0,
-        activeTasks: 1,
-        completedTasks: 1,
-        totalProjects: 2,
-        attendanceRate: 100,
+        activeTasks: 0,
+        completedTasks: 0,
+        totalProjects: 0,
+        attendanceRate: 0,
       };
     }
   },
@@ -1816,17 +1819,19 @@ export const dataService = {
         !isAdminRecord(e.id, e.full_name, e.email)
       );
       const empIds = teamEmps.map((e: any) => e.id);
-      const totalEmployees = empIds.length > 0 ? empIds.length : 1;
+      const totalEmployees = empIds.length;
 
       const { data: presence } = await supabase.from('employee_presence').select('*');
       const teamPresence = presence?.filter((p: any) => empIds.includes(p.employee_id)) || [];
-      const online = teamPresence.filter((p: any) => p.status === 'active' || p.status === 'idle').length || 1;
+      const online = teamPresence.filter((p: any) => p.status === 'active' || p.status === 'idle').length;
       const idle = teamPresence.filter((p: any) => p.status === 'idle').length;
 
       const { data: tasks } = await supabase.from('tasks').select('status, assigned_to');
       const teamTasks = tasks?.filter((t: any) => empIds.includes(t.assigned_to)) || [];
-      const tasksInProgress = teamTasks.filter((t: any) => t.status === 'in_progress').length || 1;
-      const tasksCompleted = teamTasks.filter((t: any) => t.status === 'completed').length || 1;
+      const tasksInProgress = teamTasks.filter((t: any) => t.status === 'in_progress').length;
+      const tasksCompleted = teamTasks.filter((t: any) => t.status === 'completed').length;
+      const teamAttendanceRate =
+        totalEmployees > 0 ? Math.round((online / totalEmployees) * 100) : 0;
 
       return {
         totalEmployees,
@@ -1836,19 +1841,19 @@ export const dataService = {
         onBreak: 0,
         tasksInProgress,
         tasksCompleted,
-        teamAttendanceRate: 100,
+        teamAttendanceRate,
       };
     } catch (err) {
       console.error('getManagerKpis error:', err);
       return {
-        totalEmployees: 2,
-        online: 1,
+        totalEmployees: 0,
+        online: 0,
         late: 0,
         idle: 0,
         onBreak: 0,
-        tasksInProgress: 1,
-        tasksCompleted: 1,
-        teamAttendanceRate: 100,
+        tasksInProgress: 0,
+        tasksCompleted: 0,
+        teamAttendanceRate: 0,
       };
     }
   },

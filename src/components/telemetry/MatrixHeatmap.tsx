@@ -20,6 +20,7 @@ import {
   Play,
 } from 'lucide-react';
 import { dataService } from '../../services/dataService';
+import { useAuth } from '../../context/AuthContext';
 import type { BreakTelemetrySnapshot, BreakType } from '../../types/roles';
 
 export interface HeatmapMatrixDataset {
@@ -157,6 +158,7 @@ export const MatrixHeatmap: React.FC<MatrixHeatmapProps> = ({
   showBreakSchedule,
   role = 'admin',
 }) => {
+  const { user } = useAuth();
   const showBreaks = showBreakSchedule !== undefined ? showBreakSchedule : role !== 'admin';
   const [activeMode, setActiveMode] = useState<'hourly' | 'weekly'>(initialPreset);
   const [employeesList, setEmployeesList] = useState<string[]>([]);
@@ -185,7 +187,9 @@ export const MatrixHeatmap: React.FC<MatrixHeatmapProps> = ({
   const [liveMouseArray, setLiveMouseArray] = useState<number[] | null>(null);
 
   useEffect(() => {
-    dataService.getEmployees(role).then((emps) => {
+    const managerId = role === 'manager' ? user.id : undefined;
+    const employeeId = role === 'employee' ? user.id : undefined;
+    dataService.getEmployees(role, managerId, employeeId).then((emps) => {
       if (emps && emps.length > 0) {
         const validEmps = emps.filter((e) =>
           role === 'manager'

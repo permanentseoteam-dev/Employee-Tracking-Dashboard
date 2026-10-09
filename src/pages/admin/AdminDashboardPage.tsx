@@ -7,7 +7,6 @@ import {
   ArrowUpRight,
   Download,
   Check,
-  Phone,
   Mail,
   Play,
   Pause,
@@ -62,11 +61,11 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({ onNaviga
       console.error(e);
     }
     return [
-      { id: 1, title: 'Profile Setup & Access Provisioning', subtitle: 'Arsal (Operations & Engineering Lead)', done: true },
-      { id: 2, title: 'Rust Workstation Daemon Setup', subtitle: 'WIN-DESKTOP-QUVQI4B-ok Agent Linked', done: true },
-      { id: 3, title: 'Cloud Telemetry & Bucket Verification', subtitle: 'Supabase screenshots & recordings synced', done: true },
-      { id: 4, title: 'Break Schedule Calibration', subtitle: 'Coffee (11:00 AM) & Namaz (01:00 PM) configured', done: true },
-      { id: 5, title: 'Sprint Tasks & Performance Merits Setup', subtitle: 'Sprint quotas and star rules active', done: false },
+      { id: 1, title: 'Profile Setup & Access Provisioning', subtitle: 'Admin account and role access', done: false },
+      { id: 2, title: 'Workstation Agent Setup', subtitle: 'Link EmployeeAgent on a desktop', done: false },
+      { id: 3, title: 'Cloud Telemetry & Bucket Verification', subtitle: 'Confirm screenshots sync to Supabase', done: false },
+      { id: 4, title: 'Office Hours & Break Policy', subtitle: 'Configure capture window in Settings', done: false },
+      { id: 5, title: 'Sprint Tasks & Performance Merits Setup', subtitle: 'Create tasks and star rules', done: false },
     ];
   });
 
@@ -184,9 +183,16 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({ onNaviga
     );
   });
 
-  const totalHeadcount = kpis?.totalEmployees || (employees.length > 0 ? employees.length : 1);
-  const onlineCount = kpis?.onlineEmployees || (employees.filter((e) => e.status === 'active' || e.status === 'idle').length || 1);
-  const tasksCount = kpis?.activeTasks || 24;
+  const totalHeadcount = kpis?.totalEmployees ?? employees.length;
+  const onlineCount =
+    kpis?.onlineEmployees ??
+    employees.filter((e) => e.status === 'active' || e.status === 'idle').length;
+  const tasksCount = kpis?.activeTasks ?? 0;
+  const spotlightEmp =
+    employees.find((e) => e.status === 'active') || employees[0] || null;
+  const primaryDevice =
+    employees.find((e) => e.device_id && e.device_id !== '—')?.device_id ||
+    'No agent linked';
 
   // Real-time Fleet Telemetry Calculations
   const totalFleetCount = employees.length > 0 ? employees.length : 1;
@@ -488,10 +494,10 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({ onNaviga
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               <Server size={12} color="var(--color-secondary)" />
-              <span style={{ fontWeight: 700, color: 'var(--text-primary)' }}>WIN-DESKTOP-QUVQI4B-ok</span>
+              <span style={{ fontWeight: 700, color: 'var(--text-primary)' }}>{primaryDevice}</span>
             </div>
             <span className="status-pill active" style={{ fontSize: 9, padding: '1px 6px' }}>
-              Daemon v1.4
+              {primaryDevice === 'No agent linked' ? 'Offline' : 'Agent'}
             </span>
           </div>
 
@@ -581,14 +587,24 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({ onNaviga
         <div className="frosted-card" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between', position: 'relative', overflow: 'hidden' }}>
           <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', zIndex: 10 }}>
             <div>
-              <h2 style={{ fontSize: 16, fontWeight: 700, color: 'var(--text-primary)' }}>Arsal</h2>
-              <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Operations & Engineering Lead</span>
+              <h2 style={{ fontSize: 16, fontWeight: 700, color: 'var(--text-primary)' }}>
+                {spotlightEmp?.name || 'No employees yet'}
+              </h2>
+              <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                {spotlightEmp?.department || spotlightEmp?.team_name || 'Team spotlight'}
+              </span>
             </div>
             <div style={{ display: 'flex', gap: 4 }}>
-              <button type="button" className="btn-icon-circle" style={{ width: 28, height: 28 }} title="Call Manager">
-                <Phone size={13} />
-              </button>
-              <button type="button" className="btn-icon-circle" style={{ width: 28, height: 28 }} title="Email Manager">
+              <button
+                type="button"
+                className="btn-icon-circle"
+                style={{ width: 28, height: 28 }}
+                title={spotlightEmp?.email ? `Email ${spotlightEmp.email}` : 'No email'}
+                disabled={!spotlightEmp?.email}
+                onClick={() => {
+                  if (spotlightEmp?.email) window.open(`mailto:${spotlightEmp.email}`, '_blank');
+                }}
+              >
                 <Mail size={13} />
               </button>
             </div>
@@ -598,16 +614,21 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({ onNaviga
           <div style={{ position: 'relative', width: '100%', height: 180, display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0.75rem 0' }}>
             <div style={{ position: 'absolute', width: 140, height: 140, borderRadius: '50%', background: 'var(--color-secondary-container)', opacity: 0.4, filter: 'blur(20px)' }} />
             <div className="avatar-chip" style={{ width: 90, height: 90, fontSize: 28, zIndex: 10 }}>
-              AR
+              {(spotlightEmp?.name || '?').substring(0, 2).toUpperCase()}
             </div>
           </div>
 
           {/* Quick Activity Status Pill */}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'var(--surface-frosted-subdued)', padding: '6px 12px', borderRadius: 'var(--radius-pill)', fontSize: 11, zIndex: 10 }}>
             <span style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--text-secondary)' }}>
-              <span className="pulse-beacon" /> Active in Operations Room
+              <span className="pulse-beacon" /> {spotlightEmp?.status || 'offline'}
+              {spotlightEmp?.active_window && spotlightEmp.active_window !== '—'
+                ? ` · ${spotlightEmp.active_window}`
+                : ''}
             </span>
-            <span style={{ fontWeight: 700, color: 'var(--text-primary)' }}>Floor Lead</span>
+            <span style={{ fontWeight: 700, color: 'var(--text-primary)' }}>
+              {spotlightEmp?.device_name || spotlightEmp?.device_id || '—'}
+            </span>
           </div>
         </div>
 

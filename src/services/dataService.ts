@@ -20,8 +20,8 @@ import type {
   BreakType,
   BreakTelemetryHourlyState,
   BreakScheduleConfig,
-  DEFAULT_BREAK_SCHEDULE,
 } from '../types/roles';
+import { DEFAULT_BREAK_SCHEDULE } from '../types/roles';
 import type { AgentRuntimeConfig } from '../types';
 import { DEFAULT_AGENT_RUNTIME_CONFIG } from '../types';
 import { supabase, isSupabaseConfigured } from './supabaseClient';

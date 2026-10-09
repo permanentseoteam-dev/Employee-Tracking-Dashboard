@@ -12,9 +12,9 @@ async function check() {
   const { data: profs, error: profErr } = await supabase.from('profiles').select('*');
   console.log('--- PROFILES TABLE ---', profs, profErr);
 
-  const { data: pres } = await supabase.from('employee_presence').select('*').limit(5);
+  const { data: projs, error: pErr } = await supabase.from('projects').select('*, tasks(*)');
+  console.log('--- PROJECTS TABLE ---', JSON.stringify(projs, null, 2), pErr);
 
-  console.log('--- PRESENCE ---', JSON.stringify(pres, null, 2));
 
   const path = 'cccccccc-cccc-cccc-cccc-cccccccccccc/1791522392647_WIN-DESKTOP-QUVQI4B-ok.jpg';
   const { data: pubUrl } = supabase.storage.from('screenshots').getPublicUrl(path);

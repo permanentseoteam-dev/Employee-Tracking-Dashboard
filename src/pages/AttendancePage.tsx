@@ -4,6 +4,8 @@ import { CheckCircle2, Clock, RefreshCw, ArrowUpRight, ArrowDownLeft, ShieldChec
 import { useAuth } from '../context/AuthContext';
 import { dataService } from '../services/dataService';
 import { supabase, isSupabaseConfigured } from '../services/supabaseClient';
+import { useBreakSchedule } from '../hooks/useBreakSchedule';
+import { formatBreakRange } from '../utils/breakSchedule';
 import type { AgentStatusDto } from '../types';
 import type { AttendanceRecordItem } from '../types/roles';
 
@@ -13,6 +15,7 @@ interface AttendancePageProps {
 
 export const AttendancePage: React.FC<AttendancePageProps> = ({ status }) => {
   const { user } = useAuth();
+  const { schedule } = useBreakSchedule();
   const [attendance, setAttendance] = useState<AttendanceRecordItem[]>([]);
   const [isPunching, setIsPunching] = useState(false);
 
@@ -98,7 +101,9 @@ export const AttendancePage: React.FC<AttendancePageProps> = ({ status }) => {
             Attendance Chronology
           </h1>
           <p style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 4 }}>
-            Automated first-meaningful-activity detection &bull; Shift: 09:00 AM – 05:00 PM &bull; ☕ Coffee: 11:00–11:30 AM &bull; 🕌 Namaz: 01:00–02:00 PM
+            Automated first-meaningful-activity detection • Shift: 09:00 AM – 05:00 PM
+            {schedule.coffee.enabled ? ` • ☕ ${schedule.coffee.label}: ${formatBreakRange(schedule.coffee)}` : ''}
+            {schedule.zuhr.enabled ? ` • 🕌 ${schedule.zuhr.label}: ${formatBreakRange(schedule.zuhr)}` : ''}
           </p>
         </div>
 

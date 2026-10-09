@@ -19,6 +19,8 @@ import type {
   BreakTelemetrySnapshot,
   BreakType,
   BreakTelemetryHourlyState,
+  BreakScheduleConfig,
+  DEFAULT_BREAK_SCHEDULE,
 } from '../types/roles';
 import type { AgentRuntimeConfig } from '../types';
 import { DEFAULT_AGENT_RUNTIME_CONFIG } from '../types';
@@ -26,6 +28,12 @@ import { supabase, isSupabaseConfigured } from './supabaseClient';
 import { supabaseSync } from './supabaseService';
 import { generateWorkstationRecordingClip } from '../utils/screenRecordingGenerator';
 import { formatCaptureTime, isDummyMediaUrl, parseCaptureDate } from '../utils/datetime';
+import {
+  breakTimeSlot,
+  formatBreakRange,
+  mergeBreakSchedule,
+  normalizeBreakTime,
+} from '../utils/breakSchedule';
 
 
 export const ADMIN_USER_ID = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
@@ -115,6 +123,27 @@ let attendanceRulesStore: AttendanceRuleConfig = {
   grace_period_minutes: 15,
   late_threshold_minutes: 30,
 };
+
+let breakScheduleStore: BreakScheduleConfig = mergeBreakSchedule(DEFAULT_BREAK_SCHEDULE);
+const BREAK_SCHEDULE_LS_KEY = 'stitch_break_schedule_config';
+
+function loadBreakScheduleFromLocal(): BreakScheduleConfig | null {
+  try {
+    const raw = localStorage.getItem(BREAK_SCHEDULE_LS_KEY);
+    if (!raw) return null;
+    return mergeBreakSchedule(JSON.parse(raw));
+  } catch {
+    return null;
+  }
+}
+
+function persistBreakScheduleLocal(cfg: BreakScheduleConfig) {
+  try {
+    localStorage.setItem(BREAK_SCHEDULE_LS_KEY, JSON.stringify(cfg));
+  } catch {
+    /* ignore quota */
+  }
+}
 
 let localAuditLogs: AuditLogItem[] = [];
 const employeeStarsMap = new Map<string, number>();
@@ -2641,34 +2670,34 @@ export const dataService = {
     const employeeName = params.employeeName || 'Arsal';
     const breakType = params.breakType;
 
+    const schedule = await dataService.getBreakScheduleConfig();
     const timeSlots = ['09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00'];
-    let slotName: string = params.timeSlot || '11:00';
+    let slotName: string = params.timeSlot || breakTimeSlot(schedule.coffee);
     let slotIndex = timeSlots.indexOf(slotName);
 
     if (slotIndex < 0) {
       if (breakType === 'coffee') {
-        slotName = '11:00';
-        slotIndex = 2;
+        slotName = breakTimeSlot(schedule.coffee);
+        slotIndex = timeSlots.indexOf(slotName);
       } else if (breakType === 'namaz') {
-        slotName = '13:00';
-        slotIndex = 4;
+        slotName = breakTimeSlot(schedule.zuhr);
+        slotIndex = timeSlots.indexOf(slotName);
       } else {
         const curHour = new Date().getHours();
         slotName = `${curHour.toString().padStart(2, '0')}:00`;
         slotIndex = timeSlots.indexOf(slotName);
-        if (slotIndex < 0) {
-          slotName = '11:00';
-          slotIndex = 2;
-        }
+      }
+      if (slotIndex < 0) {
+        slotName = breakTimeSlot(schedule.coffee);
+        slotIndex = Math.max(0, timeSlots.indexOf(slotName));
       }
     }
 
-
     const breakTitle =
       breakType === 'coffee'
-        ? 'Coffee Break (11:00 – 11:30 AM)'
+        ? `${schedule.coffee.label} (${formatBreakRange(schedule.coffee)})`
         : breakType === 'namaz'
-        ? 'Zuhr Namaz & Lunch (01:00 – 02:00 PM)'
+        ? `${schedule.zuhr.label} (${formatBreakRange(schedule.zuhr)})`
         : 'Authorized Recess Window';
 
     // Use only real live telemetry provided by the caller — never invent keystroke/heatmap values
@@ -2967,6 +2996,100 @@ export const dataService = {
       window.removeEventListener('stitch:telemetry_break_event', handler);
       unsubscribeSupabase();
     };
+  },
+
+  /** Org-wide coffee & prayer break windows (admin editable). */
+  getBreakScheduleConfig: async (): Promise<BreakScheduleConfig> => {
+    const cached = loadBreakScheduleFromLocal();
+    if (cached) breakScheduleStore = cached;
+
+    if (isSupabaseConfigured()) {
+      try {
+        const { data, error } = await supabase
+          .from('break_schedule_config')
+          .select('*')
+          .eq('id', 1)
+          .maybeSingle();
+
+        if (!error && data) {
+          breakScheduleStore = mergeBreakSchedule({
+            coffee: {
+              enabled: data.coffee_enabled ?? true,
+              label: data.coffee_label || DEFAULT_BREAK_SCHEDULE.coffee.label,
+              start_time: normalizeBreakTime(data.coffee_start) || DEFAULT_BREAK_SCHEDULE.coffee.start_time,
+              end_time: normalizeBreakTime(data.coffee_end) || DEFAULT_BREAK_SCHEDULE.coffee.end_time,
+            },
+            zuhr: {
+              enabled: data.zuhr_enabled ?? true,
+              label: data.zuhr_label || DEFAULT_BREAK_SCHEDULE.zuhr.label,
+              start_time: normalizeBreakTime(data.zuhr_start) || DEFAULT_BREAK_SCHEDULE.zuhr.start_time,
+              end_time: normalizeBreakTime(data.zuhr_end) || DEFAULT_BREAK_SCHEDULE.zuhr.end_time,
+            },
+            asr: {
+              enabled: data.asr_enabled ?? true,
+              label: data.asr_label || DEFAULT_BREAK_SCHEDULE.asr.label,
+              start_time: normalizeBreakTime(data.asr_start) || DEFAULT_BREAK_SCHEDULE.asr.start_time,
+              end_time: normalizeBreakTime(data.asr_end) || DEFAULT_BREAK_SCHEDULE.asr.end_time,
+            },
+            updated_at: data.updated_at,
+          });
+          persistBreakScheduleLocal(breakScheduleStore);
+        }
+      } catch (e) {
+        console.warn('break_schedule_config read failed; using local/default:', e);
+      }
+    }
+
+    return mergeBreakSchedule(breakScheduleStore);
+  },
+
+  updateBreakScheduleConfig: async (
+    role: UserRole,
+    config: BreakScheduleConfig
+  ): Promise<BreakScheduleConfig> => {
+    if (role !== 'admin') {
+      throw new Error('403 Forbidden: Only Admin can configure break schedules');
+    }
+
+    const next = mergeBreakSchedule({ ...config, updated_at: new Date().toISOString() });
+    breakScheduleStore = next;
+    persistBreakScheduleLocal(next);
+
+    if (isSupabaseConfigured()) {
+      const payload = {
+        id: 1,
+        coffee_enabled: next.coffee.enabled,
+        coffee_label: next.coffee.label,
+        coffee_start: `${next.coffee.start_time}:00`,
+        coffee_end: `${next.coffee.end_time}:00`,
+        zuhr_enabled: next.zuhr.enabled,
+        zuhr_label: next.zuhr.label,
+        zuhr_start: `${next.zuhr.start_time}:00`,
+        zuhr_end: `${next.zuhr.end_time}:00`,
+        asr_enabled: next.asr.enabled,
+        asr_label: next.asr.label,
+        asr_start: `${next.asr.start_time}:00`,
+        asr_end: `${next.asr.end_time}:00`,
+        updated_at: next.updated_at,
+      };
+
+      const { error } = await supabase.from('break_schedule_config').upsert(payload, { onConflict: 'id' });
+      if (error) {
+        throw new Error(
+          error.message.includes('schema cache') || error.code === '42P01'
+            ? 'Run supabase/migrations/008_break_schedule_config.sql in the Supabase SQL editor first.'
+            : error.message
+        );
+      }
+    }
+
+    try {
+      window.dispatchEvent(new CustomEvent('stitch:break_schedule_updated'));
+    } catch {
+      /* non-browser */
+    }
+
+    return mergeBreakSchedule(breakScheduleStore);
   },
 
   /** Global office-hours policy for desktop agents (agent_runtime_config). */

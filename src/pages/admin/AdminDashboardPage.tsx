@@ -64,7 +64,7 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({ onNaviga
       { id: 1, title: 'Profile Setup & Access Provisioning', subtitle: 'Admin account and role access', done: false },
       { id: 2, title: 'Workstation Agent Setup', subtitle: 'Link EmployeeAgent on a desktop', done: false },
       { id: 3, title: 'Cloud Telemetry & Bucket Verification', subtitle: 'Confirm screenshots sync to Supabase', done: false },
-      { id: 4, title: 'Office Hours & Break Policy', subtitle: 'Configure capture window in Settings', done: false },
+      { id: 4, title: 'Office Hours & Break Policy', subtitle: 'Settings + Break Schedule (coffee & prayer)', done: false },
       { id: 5, title: 'Sprint Tasks & Performance Merits Setup', subtitle: 'Create tasks and star rules', done: false },
     ];
   });

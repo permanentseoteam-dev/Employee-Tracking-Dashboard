@@ -8,6 +8,7 @@ import {
   Camera,
   Flame,
   CalendarCheck,
+  Coffee,
   FolderKanban,
   DollarSign,
   Award,
@@ -59,6 +60,7 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({ currentRoute, onNavi
       title: 'Workforce',
       items: [
         { label: 'Attendance & Rules', route: '/admin/attendance', icon: <CalendarCheck size={16} /> },
+        { label: 'Break Schedule', route: '/admin/breaks', icon: <Coffee size={16} /> },
         { label: 'Projects & Folders', route: '/admin/projects', icon: <FolderKanban size={16} /> },
         { label: 'Payroll & Salaries', route: '/admin/finance', icon: <DollarSign size={16} /> },
         { label: 'Performance & Stars', route: '/admin/performance', icon: <Award size={16} /> },

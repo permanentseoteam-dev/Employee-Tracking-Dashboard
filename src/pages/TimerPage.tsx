@@ -15,6 +15,8 @@ import { useAuth } from '../context/AuthContext';
 import { supabaseSync } from '../services/supabaseService';
 import { dataService } from '../services/dataService';
 import { FocusSessionWidget } from '../components/timer/FocusSessionWidget';
+import { useBreakSchedule } from '../hooks/useBreakSchedule';
+import { breakTimeSlot, formatBreakChip, formatBreakRange } from '../utils/breakSchedule';
 
 interface TimerPageProps {
   activeTaskTitle: string | null;
@@ -26,6 +28,7 @@ export const TimerPage: React.FC<TimerPageProps> = ({
   onActiveTaskChange,
 }) => {
   const { user } = useAuth();
+  const { schedule } = useBreakSchedule();
   const [durationMinutes, setDurationMinutes] = useState(25);
   const [remainingSeconds, setRemainingSeconds] = useState(25 * 60);
   const [secondsElapsed, setSecondsElapsed] = useState(0);
@@ -153,7 +156,8 @@ export const TimerPage: React.FC<TimerPageProps> = ({
     setActiveBreak(type);
     setIsRunning(false);
     const breakType = type === 'general' ? 'coffee' : 'namaz';
-    const breakSlot = breakType === 'coffee' ? '11:00' : '13:00';
+    const breakSlot =
+      breakType === 'coffee' ? breakTimeSlot(schedule.coffee) : breakTimeSlot(schedule.zuhr);
 
     try {
       const snap = await dataService.saveBreakTelemetrySnapshot({
@@ -568,7 +572,10 @@ export const TimerPage: React.FC<TimerPageProps> = ({
           <div className="status-pill late" style={{ padding: '6px 16px', fontSize: 12 }}>
             <Coffee size={14} />
             <span>
-              {activeBreak === 'general' ? 'Coffee Break (11:00 – 11:30 AM)' : 'Namaz / Prayer (01:00 – 02:00 PM)'}: {formatTime(breakSeconds)}
+              {activeBreak === 'general'
+                ? `${schedule.coffee.label} (${formatBreakRange(schedule.coffee)})`
+                : `${schedule.zuhr.label} (${formatBreakRange(schedule.zuhr)})`}
+              : {formatTime(breakSeconds)}
             </span>
           </div>
         )}
@@ -630,24 +637,32 @@ export const TimerPage: React.FC<TimerPageProps> = ({
             </button>
           ) : (
             <>
-              <button
-                type="button"
-                className="btn-pill btn-pill-secondary"
-                onClick={() => handleBreak('general')}
-                title="Designated Coffee Break: 11:00 AM – 11:30 AM"
-              >
-                <Coffee size={15} />
-                <span>Coffee Break (11:00–11:30 AM)</span>
-              </button>
-              <button
-                type="button"
-                className="btn-pill btn-pill-secondary"
-                onClick={() => handleBreak('namaz')}
-                title="Designated Namaz Break: 01:00 PM – 02:00 PM"
-              >
-                <Moon size={15} />
-                <span>Namaz / Prayer (01:00–02:00 PM)</span>
-              </button>
+              {schedule.coffee.enabled && (
+                <button
+                  type="button"
+                  className="btn-pill btn-pill-secondary"
+                  onClick={() => handleBreak('general')}
+                  title={formatBreakChip(schedule.coffee)}
+                >
+                  <Coffee size={15} />
+                  <span>
+                    {schedule.coffee.label} ({formatBreakRange(schedule.coffee)})
+                  </span>
+                </button>
+              )}
+              {schedule.zuhr.enabled && (
+                <button
+                  type="button"
+                  className="btn-pill btn-pill-secondary"
+                  onClick={() => handleBreak('namaz')}
+                  title={formatBreakChip(schedule.zuhr)}
+                >
+                  <Moon size={15} />
+                  <span>
+                    {schedule.zuhr.label} ({formatBreakRange(schedule.zuhr)})
+                  </span>
+                </button>
+              )}
             </>
           )}
 

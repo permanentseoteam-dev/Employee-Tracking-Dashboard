@@ -242,6 +242,42 @@ export interface ConfidentialMessageItem {
 
 export type BreakType = 'coffee' | 'namaz' | 'general';
 
+/** Admin-editable coffee / prayer recess windows (org-wide). */
+export interface BreakWindowConfig {
+  enabled: boolean;
+  label: string;
+  start_time: string; // HH:mm
+  end_time: string; // HH:mm
+}
+
+export interface BreakScheduleConfig {
+  coffee: BreakWindowConfig;
+  zuhr: BreakWindowConfig;
+  asr: BreakWindowConfig;
+  updated_at?: string;
+}
+
+export const DEFAULT_BREAK_SCHEDULE: BreakScheduleConfig = {
+  coffee: {
+    enabled: true,
+    label: 'Coffee Break',
+    start_time: '11:00',
+    end_time: '11:30',
+  },
+  zuhr: {
+    enabled: true,
+    label: 'Zuhr Namaz & Lunch',
+    start_time: '13:00',
+    end_time: '14:00',
+  },
+  asr: {
+    enabled: true,
+    label: 'Asr Prayer',
+    start_time: '16:30',
+    end_time: '16:45',
+  },
+};
+
 export interface BreakTelemetryHourlyState {
   time_slot: string; // e.g. '11:00' or '13:00'
   slot_index: number;

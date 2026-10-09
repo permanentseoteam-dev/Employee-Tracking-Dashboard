@@ -19,6 +19,7 @@ import { AdminManagersPage } from './pages/admin/AdminManagersPage';
 import { AdminTeamsPage } from './pages/admin/AdminTeamsPage';
 import { AdminMonitoringPage } from './pages/admin/AdminMonitoringPage';
 import { AdminAttendancePage } from './pages/admin/AdminAttendancePage';
+import { AdminBreakSchedulePage } from './pages/admin/AdminBreakSchedulePage';
 import { AdminFinancePage } from './pages/admin/AdminFinancePage';
 import { AdminPerformancePage } from './pages/admin/AdminPerformancePage';
 import { AdminSettingsAuditPage } from './pages/admin/AdminSettingsAuditPage';
@@ -144,6 +145,9 @@ export const App: React.FC = () => {
           return <AdminMonitoringPage initialSubTab="recordings" />;
         case '/admin/attendance':
           return <AdminAttendancePage />;
+        case '/admin/breaks':
+        case '/admin/break-schedule':
+          return <AdminBreakSchedulePage />;
         case '/admin/projects':
         case '/admin/tasks':
           return <ProjectWorkspace role="admin" />;

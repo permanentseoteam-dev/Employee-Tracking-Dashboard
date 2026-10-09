@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Keyboard, MousePointer, ShieldCheck, CheckCircle2, Star, Trophy, Activity, Flame, Clock } from 'lucide-react';
+import { Keyboard, MousePointer, ShieldCheck, CheckCircle2, Star, Trophy, Activity, Flame } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { MatrixHeatmap } from '../components/telemetry/MatrixHeatmap';
 import { KeyboardActivityView } from '../components/telemetry/KeyboardActivityView';
+import { BreakScheduleBanner } from '../components/telemetry/BreakScheduleBanner';
 import type { DbStats } from '../types';
 
 interface PerformancePageProps {
@@ -89,82 +90,10 @@ export const PerformancePage: React.FC<PerformancePageProps> = ({ dbStats }) => 
 
       {activeTab === 'merits' && (
         <>
-          {/* Coffee & Namaz Break Schedule Banner */}
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              flexWrap: 'wrap',
-              gap: 10,
-              padding: '10px 16px',
-              borderRadius: 'var(--radius-card-sm)',
-              background: 'rgba(99, 102, 241, 0.08)',
-              border: '1px solid rgba(99, 102, 241, 0.22)',
-              fontSize: 12,
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 800, color: 'var(--color-primary)' }}>
-                <Clock size={14} />
-                <span>OFFICIAL RECESS & BREAK SCHEDULE:</span>
-              </div>
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 6,
-                  background: 'rgba(245, 158, 11, 0.14)',
-                  color: '#d97706',
-                  border: '1px solid rgba(245, 158, 11, 0.28)',
-                  padding: '3px 10px',
-                  borderRadius: 20,
-                  fontWeight: 700,
-                  fontSize: 11,
-                }}
-              >
-                <span>☕</span>
-                <span>Coffee Break: 11:00 AM – 11:30 AM</span>
-              </div>
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 6,
-                  background: 'rgba(16, 185, 129, 0.14)',
-                  color: '#059669',
-                  border: '1px solid rgba(16, 185, 129, 0.28)',
-                  padding: '3px 10px',
-                  borderRadius: 20,
-                  fontWeight: 700,
-                  fontSize: 11,
-                }}
-              >
-                <span>🕌</span>
-                <span>Zuhr Namaz & Lunch: 01:00 PM – 02:00 PM</span>
-              </div>
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 6,
-                  background: 'rgba(139, 92, 246, 0.14)',
-                  color: '#7c3aed',
-                  border: '1px solid rgba(139, 92, 246, 0.28)',
-                  padding: '3px 10px',
-                  borderRadius: 20,
-                  fontWeight: 700,
-                  fontSize: 11,
-                }}
-              >
-                <span>🕌</span>
-                <span>Asr Prayer: 04:30 PM – 04:45 PM</span>
-              </div>
-            </div>
-            <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-              Excused from telemetry minimums
-            </span>
-          </div>
+          <BreakScheduleBanner
+            title="OFFICIAL RECESS & BREAK SCHEDULE:"
+            footnote="Excused from telemetry minimums"
+          />
 
       {/* KPI Row */}
       <div className="grid-telemetry-row">

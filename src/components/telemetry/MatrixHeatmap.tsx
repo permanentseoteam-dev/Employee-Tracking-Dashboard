@@ -22,6 +22,9 @@ import {
 import { dataService } from '../../services/dataService';
 import { useAuth } from '../../context/AuthContext';
 import type { BreakTelemetrySnapshot, BreakType } from '../../types/roles';
+import { BreakScheduleBanner } from './BreakScheduleBanner';
+import { useBreakSchedule } from '../../hooks/useBreakSchedule';
+import { breakTimeSlot, formatBreakChip, formatBreakClock, formatBreakRange, minutesBetween } from '../../utils/breakSchedule';
 
 export interface HeatmapMatrixDataset {
   id: string;
@@ -159,6 +162,7 @@ export const MatrixHeatmap: React.FC<MatrixHeatmapProps> = ({
   role = 'admin',
 }) => {
   const { user } = useAuth();
+  const { schedule } = useBreakSchedule();
   const showBreaks = showBreakSchedule !== undefined ? showBreakSchedule : role !== 'admin';
   const [activeMode, setActiveMode] = useState<'hourly' | 'weekly'>(initialPreset);
   const [employeesList, setEmployeesList] = useState<string[]>([]);
@@ -255,7 +259,7 @@ export const MatrixHeatmap: React.FC<MatrixHeatmapProps> = ({
         breakType: type,
         employeeId: role === 'employee' ? user.id : undefined,
         employeeName: selectedEmployeeName || user.name || 'Employee',
-        timeSlot: type === 'coffee' ? '11:00' : '13:00',
+        timeSlot: type === 'coffee' ? breakTimeSlot(schedule.coffee) : breakTimeSlot(schedule.zuhr),
         keyboardData: [keysRes.hourlyKeysArray || zeroHourlyRow()],
         heatmapData: [mouseRes.hourlyIntensityArray || zeroHourlyRow()],
       });
@@ -267,10 +271,14 @@ export const MatrixHeatmap: React.FC<MatrixHeatmapProps> = ({
 
   const handleResumeBreak = async () => {
     try {
+      const breakSecs =
+        (breakSnapshot?.break_type === 'coffee'
+          ? minutesBetween(schedule.coffee.start_time, schedule.coffee.end_time)
+          : minutesBetween(schedule.zuhr.start_time, schedule.zuhr.end_time)) * 60;
       const resumed = await dataService.resumeBreakTelemetry({
         employeeId: role === 'employee' ? user.id : undefined,
         employeeName: selectedEmployeeName || user.name || 'Employee',
-        breakSeconds: 1800,
+        breakSeconds: breakSecs || 1800,
       });
       if (resumed) setBreakSnapshot(resumed);
     } catch (e) {
@@ -425,84 +433,7 @@ export const MatrixHeatmap: React.FC<MatrixHeatmapProps> = ({
         </div>
       </div>
 
-      {/* Coffee & Namaz Break Schedule Banner (Manager & Employee Roles Only - Excluded on Admin) */}
-      {showBreaks && activeMode === 'hourly' && (
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            flexWrap: 'wrap',
-            gap: 10,
-            padding: '10px 16px',
-            borderRadius: 'var(--radius-card-sm)',
-            background: 'rgba(99, 102, 241, 0.08)',
-            border: '1px solid rgba(99, 102, 241, 0.22)',
-            fontSize: 12,
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 800, color: 'var(--color-primary)' }}>
-              <Clock size={14} />
-              <span>OFFICIAL RECESS & BREAK WINDOWS:</span>
-            </div>
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 6,
-                background: 'rgba(245, 158, 11, 0.14)',
-                color: '#d97706',
-                border: '1px solid rgba(245, 158, 11, 0.28)',
-                padding: '3px 10px',
-                borderRadius: 20,
-                fontWeight: 700,
-                fontSize: 11,
-              }}
-            >
-              <span>☕</span>
-              <span>Coffee Break: 11:00 AM – 11:30 AM</span>
-            </div>
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 6,
-                background: 'rgba(16, 185, 129, 0.14)',
-                color: '#059669',
-                border: '1px solid rgba(16, 185, 129, 0.28)',
-                padding: '3px 10px',
-                borderRadius: 20,
-                fontWeight: 700,
-                fontSize: 11,
-              }}
-            >
-              <span>🕌</span>
-              <span>Zuhr Namaz & Lunch: 01:00 PM – 02:00 PM</span>
-            </div>
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 6,
-                background: 'rgba(139, 92, 246, 0.14)',
-                color: '#7c3aed',
-                border: '1px solid rgba(139, 92, 246, 0.28)',
-                padding: '3px 10px',
-                borderRadius: 20,
-                fontWeight: 700,
-                fontSize: 11,
-              }}
-            >
-              <span>🕌</span>
-              <span>Asr Prayer: 04:30 PM – 04:45 PM</span>
-            </div>
-          </div>
-          <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-            Authorized recess &bull; Zero penalty on activity scoring
-          </span>
-        </div>
-      )}
+      {showBreaks && activeMode === 'hourly' && <BreakScheduleBanner />}
 
       {/* Break State & Supabase Continuation Controls (Employee & Manager Roles Only) */}
       {showBreaks && activeMode === 'hourly' && (
@@ -568,26 +499,34 @@ export const MatrixHeatmap: React.FC<MatrixHeatmapProps> = ({
               </button>
             ) : (
               <>
-                <button
-                  type="button"
-                  className="btn-pill btn-pill-secondary"
-                  style={{ padding: '5px 12px', fontSize: 11 }}
-                  onClick={() => handleTriggerBreak('coffee')}
-                  title="Save mouse heatmap state to Supabase for 11:00 AM Coffee Break"
-                >
-                  <Coffee size={13} />
-                  <span>Coffee Break (11:00 AM)</span>
-                </button>
-                <button
-                  type="button"
-                  className="btn-pill btn-pill-secondary"
-                  style={{ padding: '5px 12px', fontSize: 11 }}
-                  onClick={() => handleTriggerBreak('namaz')}
-                  title="Save mouse heatmap state to Supabase for 01:00 PM Zuhr Namaz"
-                >
-                  <Moon size={13} />
-                  <span>Namaz Break (01:00 PM)</span>
-                </button>
+                {schedule.coffee.enabled && (
+                  <button
+                    type="button"
+                    className="btn-pill btn-pill-secondary"
+                    style={{ padding: '5px 12px', fontSize: 11 }}
+                    onClick={() => handleTriggerBreak('coffee')}
+                    title={`Save mouse heatmap state for ${formatBreakChip(schedule.coffee)}`}
+                  >
+                    <Coffee size={13} />
+                    <span>
+                      {schedule.coffee.label} ({formatBreakClock(schedule.coffee.start_time)})
+                    </span>
+                  </button>
+                )}
+                {schedule.zuhr.enabled && (
+                  <button
+                    type="button"
+                    className="btn-pill btn-pill-secondary"
+                    style={{ padding: '5px 12px', fontSize: 11 }}
+                    onClick={() => handleTriggerBreak('namaz')}
+                    title={`Save mouse heatmap state for ${formatBreakChip(schedule.zuhr)}`}
+                  >
+                    <Moon size={13} />
+                    <span>
+                      {schedule.zuhr.label} ({formatBreakClock(schedule.zuhr.start_time)})
+                    </span>
+                  </button>
+                )}
               </>
             )}
           </div>
@@ -727,8 +666,16 @@ export const MatrixHeatmap: React.FC<MatrixHeatmapProps> = ({
               <div style={{ width: 105 }} /> {/* Spacer for Y label alignment */}
               <div style={{ display: 'flex' }}>
                 {currentDataset.xLabels.map((colLabel) => {
-                  const isCoffeeSlot = showBreaks && activeMode === 'hourly' && colLabel === '11:00';
-                  const isNamazSlot = showBreaks && activeMode === 'hourly' && colLabel === '13:00';
+                  const isCoffeeSlot =
+                    showBreaks &&
+                    activeMode === 'hourly' &&
+                    schedule.coffee.enabled &&
+                    colLabel === breakTimeSlot(schedule.coffee);
+                  const isNamazSlot =
+                    showBreaks &&
+                    activeMode === 'hourly' &&
+                    schedule.zuhr.enabled &&
+                    colLabel === breakTimeSlot(schedule.zuhr);
 
                   return (
                     <div
@@ -748,9 +695,9 @@ export const MatrixHeatmap: React.FC<MatrixHeatmapProps> = ({
                       }}
                       title={
                         isCoffeeSlot
-                          ? '11:00 AM – 11:30 AM: Official Coffee Break'
+                          ? `${formatBreakRange(schedule.coffee)}: ${schedule.coffee.label}`
                           : isNamazSlot
-                          ? '01:00 PM – 02:00 PM: Official Zuhr Namaz & Lunch Break'
+                          ? `${formatBreakRange(schedule.zuhr)}: ${schedule.zuhr.label}`
                           : colLabel
                       }
                     >
@@ -982,7 +929,9 @@ export const MatrixHeatmap: React.FC<MatrixHeatmapProps> = ({
                   </div>
                 </div>
 
-                {showBreaks && selectedCell.colLabel === '11:00' && (
+                {showBreaks &&
+                  schedule.coffee.enabled &&
+                  selectedCell.colLabel === breakTimeSlot(schedule.coffee) && (
                   <div
                     style={{
                       display: 'flex',
@@ -997,7 +946,9 @@ export const MatrixHeatmap: React.FC<MatrixHeatmapProps> = ({
                   >
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#d97706', fontWeight: 700 }}>
                       <span style={{ fontSize: 18 }}>☕</span>
-                      <span>Official Coffee Break (11:00 AM – 11:30 AM) &bull; Supabase Telemetry Sync</span>
+                      <span>
+                        {schedule.coffee.label} ({formatBreakRange(schedule.coffee)}) • Supabase Telemetry Sync
+                      </span>
                     </div>
                     <div style={{ fontSize: 11, color: 'var(--text-muted)', lineHeight: 1.4 }}>
                       Workstation inactivity during this interval is an authorized recess and strictly excused from performance scoring.
@@ -1018,13 +969,13 @@ export const MatrixHeatmap: React.FC<MatrixHeatmapProps> = ({
                       <div>
                         <span style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Pre-Break State:</span>
                         <div style={{ fontWeight: 800, color: 'var(--text-primary)' }}>
-                          {breakSnapshot?.hourly_state?.pre_break_heatmap_pct || 46.5}% Intensity (Saved)
+                          {breakSnapshot?.hourly_state?.pre_break_heatmap_pct ?? 0}% Intensity (Saved)
                         </div>
                       </div>
                       <div>
                         <span style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Resumed Activity:</span>
                         <div style={{ fontWeight: 800, color: '#10b981' }}>
-                          +{breakSnapshot?.hourly_state?.post_break_heatmap_pct || 42.8}% Added on Resume
+                          +{breakSnapshot?.hourly_state?.post_break_heatmap_pct ?? 0}% Added on Resume
                         </div>
                       </div>
                       <div>
@@ -1043,7 +994,9 @@ export const MatrixHeatmap: React.FC<MatrixHeatmapProps> = ({
                   </div>
                 )}
 
-                {showBreaks && selectedCell.colLabel === '13:00' && (
+                {showBreaks &&
+                  schedule.zuhr.enabled &&
+                  selectedCell.colLabel === breakTimeSlot(schedule.zuhr) && (
                   <div
                     style={{
                       display: 'flex',
@@ -1058,7 +1011,9 @@ export const MatrixHeatmap: React.FC<MatrixHeatmapProps> = ({
                   >
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#059669', fontWeight: 700 }}>
                       <span style={{ fontSize: 18 }}>🕌</span>
-                      <span>Official Zuhr Namaz & Lunch Break (01:00 PM – 02:00 PM)</span>
+                      <span>
+                        {schedule.zuhr.label} ({formatBreakRange(schedule.zuhr)})
+                      </span>
                     </div>
                     <div style={{ fontSize: 11, color: 'var(--text-muted)', lineHeight: 1.4 }}>
                       Designated prayer and lunch recess. Telemetry is saved in Supabase storage and continues on top of pre-break state when resumed.

@@ -17,6 +17,16 @@ import {
 import { dataService } from '../../services/dataService';
 import { useAuth } from '../../context/AuthContext';
 import type { BreakTelemetrySnapshot, BreakType } from '../../types/roles';
+import { BreakScheduleBanner } from './BreakScheduleBanner';
+import { useBreakSchedule } from '../../hooks/useBreakSchedule';
+import {
+  breakTimeSlot,
+  formatBreakChip,
+  formatBreakClock,
+  formatBreakRange,
+  formatDurationTotal,
+  minutesBetween,
+} from '../../utils/breakSchedule';
 
 interface KeyboardActivityViewProps {
   selectedEmployeeName?: string;
@@ -81,6 +91,7 @@ export const KeyboardActivityView: React.FC<KeyboardActivityViewProps> = ({
   role = 'admin',
 }) => {
   const { user } = useAuth();
+  const { schedule } = useBreakSchedule();
   const showBreaks = showBreakSchedule !== undefined ? showBreakSchedule : role !== 'admin';
   const [employeesList, setEmployeesList] = useState<string[]>([]);
   const [hoveredCell, setHoveredCell] = useState<{
@@ -172,7 +183,7 @@ export const KeyboardActivityView: React.FC<KeyboardActivityViewProps> = ({
         breakType: type,
         employeeId: role === 'employee' ? user.id : undefined,
         employeeName: selectedEmployeeName || user.name || 'Employee',
-        timeSlot: type === 'coffee' ? '11:00' : '13:00',
+        timeSlot: type === 'coffee' ? breakTimeSlot(schedule.coffee) : breakTimeSlot(schedule.zuhr),
         keyboardData: [keysRes.hourlyKeysArray || zeroRow()],
       });
       setBreakSnapshot(snap);
@@ -183,10 +194,14 @@ export const KeyboardActivityView: React.FC<KeyboardActivityViewProps> = ({
 
   const handleResumeBreak = async () => {
     try {
+      const breakSecs =
+        (breakSnapshot?.break_type === 'coffee'
+          ? minutesBetween(schedule.coffee.start_time, schedule.coffee.end_time)
+          : minutesBetween(schedule.zuhr.start_time, schedule.zuhr.end_time)) * 60;
       const resumed = await dataService.resumeBreakTelemetry({
         employeeId: role === 'employee' ? user.id : undefined,
         employeeName: selectedEmployeeName || user.name || 'Employee',
-        breakSeconds: 1800,
+        breakSeconds: breakSecs || 1800,
       });
       if (resumed) setBreakSnapshot(resumed);
     } catch (e) {
@@ -376,10 +391,20 @@ export const KeyboardActivityView: React.FC<KeyboardActivityViewProps> = ({
               </div>
             </div>
             <div style={{ fontSize: 24, fontWeight: 800, color: 'var(--text-primary)', letterSpacing: '-0.02em' }}>
-              1h 30m <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-muted)' }}>total</span>
+              {formatDurationTotal(schedule)}{' '}
+              <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-muted)' }}>total</span>
             </div>
             <span style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2, display: 'block' }}>
-              ☕ 11:00 AM (30m) &bull; 🕌 01:00 PM (60m)
+              {[
+                schedule.coffee.enabled
+                  ? `☕ ${formatBreakClock(schedule.coffee.start_time)} (${minutesBetween(schedule.coffee.start_time, schedule.coffee.end_time)}m)`
+                  : null,
+                schedule.zuhr.enabled
+                  ? `🕌 ${formatBreakClock(schedule.zuhr.start_time)} (${minutesBetween(schedule.zuhr.start_time, schedule.zuhr.end_time)}m)`
+                  : null,
+              ]
+                .filter(Boolean)
+                .join(' • ') || 'No breaks enabled'}
             </span>
           </div>
         )}
@@ -427,83 +452,8 @@ export const KeyboardActivityView: React.FC<KeyboardActivityViewProps> = ({
           </div>
         </div>
 
-        {/* Coffee & Namaz Break Schedule Banner (Manager & Employee Only) */}
         {showBreaks && (
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              flexWrap: 'wrap',
-              gap: 10,
-              padding: '10px 16px',
-              borderRadius: 'var(--radius-card-sm)',
-              background: 'rgba(99, 102, 241, 0.08)',
-              border: '1px solid rgba(99, 102, 241, 0.22)',
-              fontSize: 12,
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 800, color: 'var(--color-primary)' }}>
-                <Clock size={14} />
-                <span>OFFICIAL RECESS & BREAK WINDOWS:</span>
-              </div>
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 6,
-                  background: 'rgba(245, 158, 11, 0.14)',
-                  color: '#d97706',
-                  border: '1px solid rgba(245, 158, 11, 0.28)',
-                  padding: '3px 10px',
-                  borderRadius: 20,
-                  fontWeight: 700,
-                  fontSize: 11,
-                }}
-              >
-                <span>☕</span>
-                <span>Coffee Break: 11:00 AM – 11:30 AM</span>
-              </div>
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 6,
-                  background: 'rgba(16, 185, 129, 0.14)',
-                  color: '#059669',
-                  border: '1px solid rgba(16, 185, 129, 0.28)',
-                  padding: '3px 10px',
-                  borderRadius: 20,
-                  fontWeight: 700,
-                  fontSize: 11,
-                }}
-              >
-                <span>🕌</span>
-                <span>Zuhr Namaz & Lunch: 01:00 PM – 02:00 PM</span>
-              </div>
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 6,
-                  background: 'rgba(139, 92, 246, 0.14)',
-                  color: '#7c3aed',
-                  border: '1px solid rgba(139, 92, 246, 0.28)',
-                  padding: '3px 10px',
-                  borderRadius: 20,
-                  fontWeight: 700,
-                  fontSize: 11,
-                }}
-              >
-                <span>🕌</span>
-                <span>Asr Prayer: 04:30 PM – 04:45 PM</span>
-              </div>
-            </div>
-            <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-              Excused from typing minimums
-            </span>
-          </div>
+          <BreakScheduleBanner footnote="Excused from typing minimums" />
         )}
 
         {/* Break State & Supabase Continuation Controls (Employee & Manager Roles Only) */}
@@ -570,26 +520,34 @@ export const KeyboardActivityView: React.FC<KeyboardActivityViewProps> = ({
                 </button>
               ) : (
                 <>
-                  <button
-                    type="button"
-                    className="btn-pill btn-pill-secondary"
-                    style={{ padding: '5px 12px', fontSize: 11 }}
-                    onClick={() => handleTriggerBreak('coffee')}
-                    title="Save keyboard state to Supabase for 11:00 AM Coffee Break"
-                  >
-                    <Coffee size={13} />
-                    <span>Coffee Break (11:00 AM)</span>
-                  </button>
-                  <button
-                    type="button"
-                    className="btn-pill btn-pill-secondary"
-                    style={{ padding: '5px 12px', fontSize: 11 }}
-                    onClick={() => handleTriggerBreak('namaz')}
-                    title="Save keyboard state to Supabase for 01:00 PM Zuhr Namaz"
-                  >
-                    <Moon size={13} />
-                    <span>Namaz Break (01:00 PM)</span>
-                  </button>
+                  {schedule.coffee.enabled && (
+                    <button
+                      type="button"
+                      className="btn-pill btn-pill-secondary"
+                      style={{ padding: '5px 12px', fontSize: 11 }}
+                      onClick={() => handleTriggerBreak('coffee')}
+                      title={`Save keyboard state for ${formatBreakChip(schedule.coffee)}`}
+                    >
+                      <Coffee size={13} />
+                      <span>
+                        {schedule.coffee.label} ({formatBreakClock(schedule.coffee.start_time)})
+                      </span>
+                    </button>
+                  )}
+                  {schedule.zuhr.enabled && (
+                    <button
+                      type="button"
+                      className="btn-pill btn-pill-secondary"
+                      style={{ padding: '5px 12px', fontSize: 11 }}
+                      onClick={() => handleTriggerBreak('namaz')}
+                      title={`Save keyboard state for ${formatBreakChip(schedule.zuhr)}`}
+                    >
+                      <Moon size={13} />
+                      <span>
+                        {schedule.zuhr.label} ({formatBreakClock(schedule.zuhr.start_time)})
+                      </span>
+                    </button>
+                  )}
                 </>
               )}
             </div>
@@ -630,8 +588,10 @@ export const KeyboardActivityView: React.FC<KeyboardActivityViewProps> = ({
                 EMPLOYEE
               </div>
               {TIME_SLOTS.map((slot) => {
-                const isCoffeeSlot = showBreaks && slot === '11:00';
-                const isNamazSlot = showBreaks && slot === '13:00';
+                const coffeeSlot = breakTimeSlot(schedule.coffee);
+                const zuhrSlot = breakTimeSlot(schedule.zuhr);
+                const isCoffeeSlot = showBreaks && schedule.coffee.enabled && slot === coffeeSlot;
+                const isNamazSlot = showBreaks && schedule.zuhr.enabled && slot === zuhrSlot;
 
                 return (
                   <div
@@ -649,9 +609,9 @@ export const KeyboardActivityView: React.FC<KeyboardActivityViewProps> = ({
                     }}
                     title={
                       isCoffeeSlot
-                        ? '11:00 AM – 11:30 AM: Official Coffee Break'
+                        ? `${formatBreakRange(schedule.coffee)}: ${schedule.coffee.label}`
                         : isNamazSlot
-                        ? '01:00 PM – 02:00 PM: Official Zuhr Namaz & Lunch Break'
+                        ? `${formatBreakRange(schedule.zuhr)}: ${schedule.zuhr.label}`
                         : slot
                     }
                   >
@@ -981,7 +941,7 @@ export const KeyboardActivityView: React.FC<KeyboardActivityViewProps> = ({
                 </div>
               </div>
 
-              {showBreaks && selectedCell.timeSlot === '11:00' && (
+              {showBreaks && schedule.coffee.enabled && selectedCell.timeSlot === breakTimeSlot(schedule.coffee) && (
                 <div
                   style={{
                     display: 'flex',
@@ -996,7 +956,9 @@ export const KeyboardActivityView: React.FC<KeyboardActivityViewProps> = ({
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#d97706', fontWeight: 700 }}>
                     <span style={{ fontSize: 18 }}>☕</span>
-                    <span>Official Coffee Break (11:00 AM – 11:30 AM) &bull; Supabase Keystrokes Sync</span>
+                    <span>
+                      {schedule.coffee.label} ({formatBreakRange(schedule.coffee)}) • Supabase Keystrokes Sync
+                    </span>
                   </div>
                   <div style={{ fontSize: 11, color: 'var(--text-muted)', lineHeight: 1.4 }}>
                     Keystroke volume during this recess is excused from minimum activity expectations. Snapshot preserves typing count in Supabase and resumes without reset.
@@ -1042,7 +1004,7 @@ export const KeyboardActivityView: React.FC<KeyboardActivityViewProps> = ({
                 </div>
               )}
 
-              {showBreaks && selectedCell.timeSlot === '13:00' && (
+              {showBreaks && schedule.zuhr.enabled && selectedCell.timeSlot === breakTimeSlot(schedule.zuhr) && (
                 <div
                   style={{
                     display: 'flex',
@@ -1057,7 +1019,9 @@ export const KeyboardActivityView: React.FC<KeyboardActivityViewProps> = ({
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#059669', fontWeight: 700 }}>
                     <span style={{ fontSize: 18 }}>🕌</span>
-                    <span>Official Zuhr Namaz & Lunch Break (01:00 PM – 02:00 PM)</span>
+                    <span>
+                      {schedule.zuhr.label} ({formatBreakRange(schedule.zuhr)})
+                    </span>
                   </div>
                   <div style={{ fontSize: 11, color: 'var(--text-muted)', lineHeight: 1.4 }}>
                     Designated prayer and meal recess. Keystroke pause is fully authorized with state persisted in Supabase bucket & table.

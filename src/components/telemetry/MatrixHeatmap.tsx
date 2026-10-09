@@ -210,6 +210,7 @@ export const MatrixHeatmap: React.FC<MatrixHeatmapProps> = ({
 
   const [breakSnapshot, setBreakSnapshot] = useState<BreakTelemetrySnapshot | null>(null);
   const [syncFeedback, setSyncFeedback] = useState<string | null>(null);
+  const [liveMouseArray, setLiveMouseArray] = useState<number[] | null>(null);
 
   useEffect(() => {
     dataService.getEmployees('admin').then((emps) => {
@@ -226,6 +227,16 @@ export const MatrixHeatmap: React.FC<MatrixHeatmapProps> = ({
       if (snap) setBreakSnapshot(snap);
     });
 
+    const loadLiveMouse = () => {
+      dataService.getLiveMouseTelemetry().then((res) => {
+        if (res && (res.totalMoves > 0 || res.totalClicks > 0)) {
+          setLiveMouseArray(res.hourlyIntensityArray);
+        }
+      });
+    };
+    loadLiveMouse();
+    const liveMouseTimer = setInterval(loadLiveMouse, 5000);
+
     const unsubscribe = dataService.subscribeToBreakTelemetry((snap, action) => {
       setBreakSnapshot(snap);
       if (action === 'saved') {
@@ -241,8 +252,12 @@ export const MatrixHeatmap: React.FC<MatrixHeatmapProps> = ({
       }
     });
 
-    return () => unsubscribe();
+    return () => {
+      unsubscribe();
+      clearInterval(liveMouseTimer);
+    };
   }, []);
+
 
   const handleTriggerBreak = async (type: BreakType) => {
     try {
@@ -332,7 +347,25 @@ export const MatrixHeatmap: React.FC<MatrixHeatmapProps> = ({
     }
   }
 
+  // Merge live mouse intensity telemetry from desktop agent
+  if (liveMouseArray && activeMode === 'hourly') {
+    filteredData = filteredData.map((row, rIdx) => {
+      const empLabel = (filteredEmployees[rIdx] || '').toLowerCase();
+      if (
+        empLabel.includes('arsal') ||
+        (selectedEmployeeName && empLabel.includes(selectedEmployeeName.toLowerCase()))
+      ) {
+        return row.map((val, cIdx) => {
+          const added = liveMouseArray[cIdx] || 0;
+          return Math.min(100, val + (added > 0 ? added * 0.4 : 0));
+        });
+      }
+      return row;
+    });
+  }
+
   const currentDataset: HeatmapMatrixDataset = {
+
     ...baseDataset,
     yLabels: filteredEmployees,
     data: filteredData,

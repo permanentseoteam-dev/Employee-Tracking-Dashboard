@@ -120,6 +120,7 @@ export const KeyboardActivityView: React.FC<KeyboardActivityViewProps> = ({
 
   const [breakSnapshot, setBreakSnapshot] = useState<BreakTelemetrySnapshot | null>(null);
   const [syncFeedback, setSyncFeedback] = useState<string | null>(null);
+  const [liveKeysArray, setLiveKeysArray] = useState<number[] | null>(null);
 
   useEffect(() => {
     dataService.getEmployees('admin').then((emps) => {
@@ -136,6 +137,16 @@ export const KeyboardActivityView: React.FC<KeyboardActivityViewProps> = ({
       if (snap) setBreakSnapshot(snap);
     });
 
+    const loadLiveKeys = () => {
+      dataService.getLiveKeystrokeTelemetry().then((res) => {
+        if (res && res.totalKeys > 0) {
+          setLiveKeysArray(res.hourlyKeysArray);
+        }
+      });
+    };
+    loadLiveKeys();
+    const liveKeysTimer = setInterval(loadLiveKeys, 5000);
+
     const unsubscribe = dataService.subscribeToBreakTelemetry((snap, action) => {
       setBreakSnapshot(snap);
       if (action === 'saved') {
@@ -151,8 +162,12 @@ export const KeyboardActivityView: React.FC<KeyboardActivityViewProps> = ({
       }
     });
 
-    return () => unsubscribe();
+    return () => {
+      unsubscribe();
+      clearInterval(liveKeysTimer);
+    };
   }, []);
+
 
   const handleTriggerBreak = async (type: BreakType) => {
     try {
@@ -237,8 +252,22 @@ export const KeyboardActivityView: React.FC<KeyboardActivityViewProps> = ({
     }
   }
 
+  // Merge live desktop agent keypress telemetry onto active target employee
+  if (liveKeysArray) {
+    activeMatrixData = activeMatrixData.map((row, rIdx) => {
+      const empLabel = (activeEmployees[rIdx] || '').toLowerCase();
+      if (
+        empLabel.includes('arsal') ||
+        (selectedEmployeeName && empLabel.includes(selectedEmployeeName.toLowerCase()))
+      ) {
+        return row.map((val, cIdx) => val + (liveKeysArray[cIdx] || 0));
+      }
+      return row;
+    });
+  }
 
   // Calculate totals
+
   const totalKeysOverall = activeMatrixData.flat().reduce((a, b) => a + b, 0);
   const avgKeysPerHour = Math.round(totalKeysOverall / (activeMatrixData.length * TIME_SLOTS.length));
 

@@ -18,6 +18,8 @@ import {
   Eye,
   Star,
   FolderKanban,
+  Plus,
+  Trash2,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { dataService } from '../../services/dataService';
@@ -47,6 +49,81 @@ export const ManagerDashboardPage: React.FC<ManagerDashboardPageProps> = ({ onNa
   const [timerSeconds, setTimerSeconds] = useState(0);
   const [isFocusSessionOpen, setIsFocusSessionOpen] = useState(false);
   const [focusTargetMinutes, setFocusTargetMinutes] = useState(25);
+
+  // Persistent Team Milestones Checklist
+  const [milestones, setMilestones] = useState<
+    Array<{ id: number | string; title: string; desc: string; done: boolean }>
+  >(() => {
+    try {
+      const saved = localStorage.getItem(`stitch_manager_milestones_${user.id}`) || localStorage.getItem('stitch_manager_milestones');
+      if (saved) return JSON.parse(saved);
+    } catch (e) {
+      console.error(e);
+    }
+    return [
+      { id: 1, title: 'Team Daily Standup & Check-in', desc: 'Sync on sprint goals & workstation status', done: true },
+      { id: 2, title: 'Rust Workstation Daemon Heartbeats', desc: 'WIN-DESKTOP-QUVQI4B-ok & telemetry stream active', done: true },
+      { id: 3, title: 'Official Recess & Break Windows', desc: 'Coffee (11:00 AM) & Namaz (01:00 PM) calibrated', done: true },
+      { id: 4, title: 'Sprint Task Review & Code Deliveries', desc: 'Inspect active branch pull requests and code review', done: false },
+      { id: 5, title: 'Sprint Merits & Stars Allocation', desc: 'Allocate merit points and evaluate daily velocity', done: false },
+    ];
+  });
+
+  const [isAddingMilestone, setIsAddingMilestone] = useState(false);
+  const [newMilestoneTitle, setNewMilestoneTitle] = useState('');
+  const [newMilestoneDesc, setNewMilestoneDesc] = useState('');
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(`stitch_manager_milestones_${user.id}`, JSON.stringify(milestones));
+      localStorage.setItem('stitch_manager_milestones', JSON.stringify(milestones));
+    } catch (e) {
+      console.error(e);
+    }
+  }, [milestones, user.id]);
+
+  const toggleMilestone = (id: number | string) => {
+    setMilestones((prev) => {
+      const next = prev.map((item) => (item.id === id ? { ...item, done: !item.done } : item));
+      const target = next.find((item) => item.id === id);
+      dataService.logAction(
+        user.name,
+        'manager',
+        'UPDATE_MILESTONE',
+        target?.title || 'Milestone',
+        `Marked as ${target?.done ? 'Completed' : 'Pending'}`
+      );
+      return next;
+    });
+  };
+
+  const handleAddMilestone = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newMilestoneTitle.trim()) return;
+    const newItem = {
+      id: Date.now(),
+      title: newMilestoneTitle.trim(),
+      desc: newMilestoneDesc.trim() || 'Sprint Team Objective',
+      done: false,
+    };
+    setMilestones((prev) => [...prev, newItem]);
+    dataService.logAction(user.name, 'manager', 'ADD_MILESTONE', newItem.title, 'Created team milestone');
+    setNewMilestoneTitle('');
+    setNewMilestoneDesc('');
+    setIsAddingMilestone(false);
+  };
+
+  const handleDeleteMilestone = (id: number | string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setMilestones((prev) => {
+      const filtered = prev.filter((item) => item.id !== id);
+      dataService.logAction(user.name, 'manager', 'DELETE_MILESTONE', String(id), 'Removed team milestone');
+      return filtered;
+    });
+  };
+
+  const completedMilestonesCount = milestones.filter((m) => m.done).length;
+  const milestonesCompletionPct = milestones.length > 0 ? Math.round((completedMilestonesCount / milestones.length) * 100) : 100;
 
   const loadData = async () => {
     try {
@@ -345,30 +422,57 @@ export const ManagerDashboardPage: React.FC<ManagerDashboardPageProps> = ({ onNa
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8, margin: 'auto 0' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'var(--text-muted)' }}>
-              <span>70% Delivered</span>
-              <span>20% In Review</span>
-              <span>10% Todo</span>
+              <span>{milestonesCompletionPct}% Delivered</span>
+              <span>{100 - milestonesCompletionPct}% Active</span>
+              <span>Sprint 4</span>
             </div>
             <div style={{ width: '100%', height: 28, borderRadius: 'var(--radius-pill)', background: 'var(--surface-border-subtle)', padding: 3, display: 'flex', gap: 4, overflow: 'hidden' }}>
-              <div style={{ width: '70%', height: '100%', borderRadius: 'var(--radius-pill)', background: 'var(--color-secondary-container)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <span style={{ fontSize: 10, fontWeight: 800, color: 'var(--color-on-secondary-container)' }}>70%</span>
+              <div
+                style={{
+                  width: `${Math.max(15, milestonesCompletionPct)}%`,
+                  height: '100%',
+                  borderRadius: 'var(--radius-pill)',
+                  background: 'var(--color-secondary-container, #c5e836)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  transition: 'width 0.4s ease',
+                }}
+              >
+                <span style={{ fontSize: 10, fontWeight: 800, color: 'var(--color-on-secondary-container, #1a2e05)' }}>
+                  {milestonesCompletionPct}%
+                </span>
               </div>
-              <div style={{ width: '20%', height: '100%', borderRadius: 'var(--radius-pill)', background: 'var(--color-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <span style={{ fontSize: 10, fontWeight: 800, color: 'var(--color-on-primary)' }}>20%</span>
-              </div>
-              <div style={{ width: '10%', height: '100%', borderRadius: 'var(--radius-pill)', background: 'var(--surface-frosted-subdued)' }} />
+              {milestonesCompletionPct < 100 && (
+                <div
+                  style={{
+                    width: `${Math.max(15, 100 - milestonesCompletionPct)}%`,
+                    height: '100%',
+                    borderRadius: 'var(--radius-pill)',
+                    background: 'var(--color-primary, #4f46e5)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    transition: 'width 0.4s ease',
+                  }}
+                >
+                  <span style={{ fontSize: 10, fontWeight: 800, color: 'var(--color-on-primary, #ffffff)' }}>
+                    {100 - milestonesCompletionPct}%
+                  </span>
+                </div>
+              )}
             </div>
           </div>
 
           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, fontWeight: 600, color: 'var(--text-muted)' }}>
             <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-              <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--color-secondary)' }} /> Completed
+              <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--color-secondary)' }} /> Delivered ({completedMilestonesCount})
             </span>
             <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-              <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--color-primary)' }} /> In Progress
+              <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--color-primary)' }} /> Remaining ({milestones.length - completedMilestonesCount})
             </span>
             <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-              <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--text-muted)' }} /> Backlog
+              <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--text-muted)' }} /> Total ({milestones.length})
             </span>
           </div>
         </div>
@@ -514,58 +618,182 @@ export const ManagerDashboardPage: React.FC<ManagerDashboardPageProps> = ({ onNa
         </div>
 
         {/* Right: Team Milestones */}
-        <div className="frosted-card" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
+        <div className="frosted-card" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between', gap: '0.75rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <h3 style={{ fontSize: 16, fontWeight: 700, color: 'var(--text-primary)' }}>Milestones</h3>
-              <span className="status-pill active" style={{ fontSize: 10 }}>Sprint 4</span>
+              <CheckCircle2 size={16} color="var(--color-secondary)" />
+              <h3 style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>Milestones</h3>
+              <span className="status-pill active" style={{ fontSize: 10, padding: '1px 7px' }}>
+                {completedMilestonesCount}/{milestones.length} ({milestonesCompletionPct}%)
+              </span>
             </div>
-            <CheckCircle2 size={18} color="var(--text-muted)" />
+            <button
+              type="button"
+              className="btn-pill btn-pill-secondary"
+              style={{ padding: '3px 9px', fontSize: 11, display: 'flex', alignItems: 'center', gap: 4 }}
+              onClick={() => setIsAddingMilestone(!isAddingMilestone)}
+              title="Add a new sprint milestone"
+            >
+              <Plus size={13} />
+              <span>{isAddingMilestone ? 'Close' : 'Add Milestone'}</span>
+            </button>
           </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, margin: 'auto 0' }}>
-            {[
-              { title: 'Attendance Check-in', desc: 'All members checked in on time', done: true },
-              { title: 'Rust Agent Heartbeat', desc: 'Background daemons reporting', done: true },
-              { title: 'Sprint Task Review', desc: 'Code reviews & PR deliveries', done: false },
-            ].map((item, idx) => (
+          {/* Dynamic Progress Bar */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <div style={{ width: '100%', height: 6, borderRadius: 'var(--radius-pill)', background: 'var(--surface-border-subtle)', overflow: 'hidden' }}>
               <div
-                key={idx}
+                style={{
+                  width: `${milestonesCompletionPct}%`,
+                  height: '100%',
+                  background: milestonesCompletionPct === 100 ? 'var(--status-success, #10b981)' : 'var(--color-secondary, #c5e836)',
+                  borderRadius: 'var(--radius-pill)',
+                  transition: 'width 0.3s ease',
+                }}
+              />
+            </div>
+          </div>
+
+          {/* Inline Add Milestone Form */}
+          {isAddingMilestone && (
+            <form
+              onSubmit={handleAddMilestone}
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 6,
+                padding: '8px 10px',
+                borderRadius: 'var(--radius-card-sm)',
+                background: 'var(--surface-frosted-subdued)',
+                border: '1px solid var(--surface-border-subtle)',
+              }}
+            >
+              <input
+                type="text"
+                placeholder="Milestone title (e.g., Code Review & PR Merges)..."
+                value={newMilestoneTitle}
+                onChange={(e) => setNewMilestoneTitle(e.target.value)}
+                autoFocus
+                style={{
+                  background: 'transparent',
+                  border: '1px solid var(--surface-border-subtle)',
+                  borderRadius: 6,
+                  padding: '6px 8px',
+                  fontSize: 12,
+                  color: 'var(--text-primary)',
+                  outline: 'none',
+                }}
+              />
+              <input
+                type="text"
+                placeholder="Description or target (e.g., Core Backend Sprint 4)..."
+                value={newMilestoneDesc}
+                onChange={(e) => setNewMilestoneDesc(e.target.value)}
+                style={{
+                  background: 'transparent',
+                  border: '1px solid var(--surface-border-subtle)',
+                  borderRadius: 6,
+                  padding: '6px 8px',
+                  fontSize: 11,
+                  color: 'var(--text-muted)',
+                  outline: 'none',
+                }}
+              />
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6, marginTop: 2 }}>
+                <button
+                  type="button"
+                  className="btn-pill btn-pill-secondary"
+                  style={{ padding: '3px 8px', fontSize: 11 }}
+                  onClick={() => setIsAddingMilestone(false)}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="btn-pill btn-pill-primary"
+                  style={{ padding: '3px 10px', fontSize: 11 }}
+                >
+                  Save Milestone
+                </button>
+              </div>
+            </form>
+          )}
+
+          {/* Milestone List Items */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 260, overflowY: 'auto', paddingRight: 2 }}>
+            {milestones.map((item) => (
+              <div
+                key={item.id}
+                onClick={() => toggleMilestone(item.id)}
                 style={{
                   display: 'flex',
                   alignItems: 'center',
-                  gap: 10,
-                  padding: '8px 12px',
+                  justifyContent: 'space-between',
+                  padding: '7px 10px',
                   borderRadius: 'var(--radius-card-sm)',
                   background: item.done ? 'var(--surface-frosted-subdued)' : 'transparent',
                   border: '1px solid var(--surface-border-subtle)',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s ease',
                 }}
               >
-                <div
-                  style={{
-                    width: 20,
-                    height: 20,
-                    borderRadius: '50%',
-                    background: item.done ? 'var(--color-primary)' : 'transparent',
-                    border: item.done ? 'none' : '1px solid var(--text-muted)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    color: 'var(--color-on-primary)',
-                  }}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, overflow: 'hidden' }}>
+                  <div
+                    style={{
+                      width: 18,
+                      height: 18,
+                      minWidth: 18,
+                      borderRadius: '50%',
+                      background: item.done ? 'var(--color-primary)' : 'transparent',
+                      border: item.done ? 'none' : '1.5px solid var(--text-muted)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      color: 'var(--color-on-primary)',
+                      transition: 'all 0.15s ease',
+                    }}
+                  >
+                    {item.done && <Check size={11} strokeWidth={3} />}
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+                    <span
+                      style={{
+                        fontSize: 12,
+                        fontWeight: 600,
+                        color: 'var(--text-primary)',
+                        textDecoration: item.done ? 'line-through' : 'none',
+                        opacity: item.done ? 0.65 : 1,
+                        whiteSpace: 'nowrap',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                      }}
+                    >
+                      {item.title}
+                    </span>
+                    <span style={{ fontSize: 10, color: 'var(--text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {item.desc}
+                    </span>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  className="btn-icon-circle"
+                  style={{ width: 22, height: 22, minWidth: 22, opacity: 0.5, border: 'none', background: 'transparent' }}
+                  onClick={(e) => handleDeleteMilestone(item.id, e)}
+                  title="Delete milestone"
                 >
-                  {item.done && <Check size={12} />}
-                </div>
-                <div style={{ display: 'flex', flexDirection: 'column' }}>
-                  <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)' }}>{item.title}</span>
-                  <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>{item.desc}</span>
-                </div>
+                  <Trash2 size={12} color="var(--text-muted)" />
+                </button>
               </div>
             ))}
           </div>
 
-          <div style={{ fontSize: 11, color: 'var(--text-muted)', textAlign: 'center', marginTop: '0.75rem' }}>
-            Team operating with optimal velocity
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 10, color: 'var(--text-muted)', marginTop: 4 }}>
+            <span>Auto-synced with team sprint backlog</span>
+            <span style={{ fontWeight: 700, color: milestonesCompletionPct === 100 ? 'var(--status-success)' : 'var(--color-secondary)' }}>
+              {milestonesCompletionPct === 100 ? '100% Delivered' : `${100 - milestonesCompletionPct}% Remaining`}
+            </span>
           </div>
         </div>
       </div>

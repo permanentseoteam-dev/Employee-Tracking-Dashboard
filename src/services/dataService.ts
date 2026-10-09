@@ -42,6 +42,7 @@ import { supabase, isSupabaseConfigured } from './supabaseClient';
 import { supabaseSync } from './supabaseService';
 import { generateWorkstationRecordingClip } from '../utils/screenRecordingGenerator';
 import { formatCaptureTime, isDummyMediaUrl, parseCaptureDate } from '../utils/datetime';
+import { formatDisplayName, normalizeDisplayNamePref } from '../utils/displayName';
 import {
   breakTimeSlot,
   formatBreakRange,
@@ -331,7 +332,7 @@ let customTeamsStore: TeamRecord[] = [
     name: 'Core Backend Team',
     department: 'Engineering',
     manager_id: 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
-    manager_name: 'Arsal',
+    manager_name: 'Manager',
     member_count: 1,
     active_count: 1,
     attendance_rate: 100,
@@ -342,7 +343,7 @@ let customTeamsStore: TeamRecord[] = [
     name: 'UI & Web Architecture',
     department: 'Frontend',
     manager_id: 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
-    manager_name: 'Arsal',
+    manager_name: 'Manager',
     member_count: 1,
     active_count: 1,
     attendance_rate: 100,
@@ -353,7 +354,7 @@ let customTeamsStore: TeamRecord[] = [
     name: 'Mobile & Cloud Infrastructure',
     department: 'Mobile',
     manager_id: 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
-    manager_name: 'Arsal',
+    manager_name: 'Manager',
     member_count: 1,
     active_count: 1,
     attendance_rate: 100,
@@ -487,7 +488,7 @@ export const dataService = {
         supabase.from('screenshot_records').select('*').order('captured_at', { ascending: false }).limit(50),
         supabase.from('screenshots').select('*').order('captured_at', { ascending: false }).limit(50),
         supabase.from('tasks').select('*').eq('status', 'in_progress'),
-        supabase.from('users').select('id, full_name, email').eq('role', 'manager'),
+        supabase.from('users').select('id, full_name, email, display_name_pref').eq('role', 'manager'),
         supabase.from('employee_star_balances').select('employee_id, stars'),
       ]);
 
@@ -606,13 +607,21 @@ export const dataService = {
 
         return {
           id: e.id,
-          name: e.full_name || e.email || 'Unknown employee',
+          name: formatDisplayName(
+            e.full_name || e.email,
+            normalizeDisplayNamePref(e.display_name_pref),
+            'Employee'
+          ),
           email: e.email || '',
           department: e.department || 'Unassigned',
           team_id: e.team_id || '',
           team_name: e.department ? `${e.department} Team` : 'Unassigned',
           manager_id: e.manager_id || '',
-          manager_name: mgr?.full_name || 'Unassigned',
+          manager_name: formatDisplayName(
+            mgr?.full_name,
+            normalizeDisplayNamePref(mgr?.display_name_pref),
+            'Unassigned'
+          ),
           status,
           attendance_status: status === 'offline' ? 'absent' : 'on_time',
           first_activity: firstActivity,
@@ -864,7 +873,7 @@ export const dataService = {
       name: teamData.name,
       department: teamData.department,
       manager_id: teamData.manager_id,
-      manager_name: teamData.manager_name || 'Arsal (Manager)',
+      manager_name: teamData.manager_name || 'Manager',
       member_count: 1,
       active_count: 1,
       attendance_rate: 100,
@@ -1374,7 +1383,7 @@ export const dataService = {
       // If no blob provided, generate snapshot from canvas
       if (!blobToUpload) {
         const generated = await generateWorkstationRecordingClip(
-          employeeId === 'cccccccc-cccc-cccc-cccc-cccccccccccc' ? 'Arsal' : 'Employee',
+          'Employee',
           employeeId,
           activeWindow,
           1
@@ -2305,7 +2314,7 @@ export const dataService = {
           project_id: t.project_id || '44444444-4444-4444-4444-444444444444',
           project_name: t.projects?.name || 'Desktop Agent v2',
           employee_id: t.assigned_to || 'cccccccc-cccc-cccc-cccc-cccccccccccc',
-          employee_name: t.employees?.full_name || 'Arsal',
+          employee_name: t.employees?.full_name || 'Employee',
           manager_id: t.projects?.manager_id || managerId || 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
           priority: (t.priority as any) || 'medium',
           status,
@@ -2580,7 +2589,7 @@ export const dataService = {
         return {
           id: ev.id,
           timestamp: localTimestamp,
-          actor_name: ev.metadata?.actor || 'Arsal (Agent)',
+          actor_name: ev.metadata?.actor || 'Agent',
           actor_role: (ev.metadata?.role as any) || 'employee',
           action: (ev.event_type || 'heartbeat').toUpperCase(),
           target: ev.metadata?.target || ev.device_id || 'Workstation',
@@ -3387,7 +3396,7 @@ export const dataService = {
     deviceId?: string;
   }): Promise<BreakTelemetrySnapshot> => {
     const employeeId = params.employeeId || 'cccccccc-cccc-cccc-cccc-cccccccccccc';
-    const employeeName = params.employeeName || 'Arsal';
+    const employeeName = params.employeeName || 'Employee';
     const breakType = params.breakType;
 
     const schedule = await dataService.getBreakScheduleConfig();
@@ -3517,7 +3526,7 @@ export const dataService = {
     additionalHeatmapPct?: number;
   }): Promise<BreakTelemetrySnapshot | null> => {
     const employeeId = params.employeeId || 'cccccccc-cccc-cccc-cccc-cccccccccccc';
-    const employeeName = params.employeeName || 'Arsal';
+    const employeeName = params.employeeName || 'Employee';
 
     // Retrieve active snapshot
     let snapshot: BreakTelemetrySnapshot | null = null;

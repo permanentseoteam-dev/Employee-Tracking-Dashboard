@@ -2,8 +2,9 @@ import React, { createContext, useContext, useEffect, useRef, useState } from 'r
 import type { User, Session } from '@supabase/supabase-js';
 import { supabase } from '../services/supabaseClient';
 import { supabaseAuth } from '../services/supabaseService';
-import type { UserProfile, UserRole } from '../types/roles';
+import type { DisplayNamePref, UserProfile, UserRole } from '../types/roles';
 import { roleFromPath, rolePathPrefix } from '../types/roles';
+import { formatDisplayName, normalizeDisplayNamePref } from '../utils/displayName';
 
 /** Per-role local edits key — keeps admin/manager/PM/employee profiles separate. */
 function demoProfileKey(role: UserRole, id: string) {
@@ -15,60 +16,71 @@ function withDemoProfileEdits(base: UserProfile): UserProfile {
     const raw = localStorage.getItem(demoProfileKey(base.role, base.id));
     if (!raw) return base;
     const saved = JSON.parse(raw);
+    const pref = normalizeDisplayNamePref(saved.display_name_pref || base.display_name_pref);
+    const fullName = saved.name || base.full_name || base.name;
     return {
       ...base,
-      name: saved.name || base.name,
+      full_name: fullName,
+      name: formatDisplayName(fullName, pref, base.name),
       email: saved.email || base.email,
       department: saved.department || base.department,
       team_name: saved.team_name || base.team_name,
       phone: saved.phone || base.phone,
       avatar: saved.avatar || base.avatar,
+      display_name_pref: pref,
     };
   } catch {
     return base;
   }
 }
 
-/** Demo-only profiles used when Supabase auth is not signed in. */
+/** Fallback profiles only when Supabase is not configured (dev). */
 const DEFAULT_PROFILES: Record<UserRole, UserProfile> = {
   admin: {
     id: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
-    name: 'Arsal (Admin)',
-    email: 'arsal.admin@company.com',
+    name: 'Admin',
+    full_name: 'Admin User',
+    email: 'admin@company.com',
     role: 'admin',
-    avatar: 'AR',
+    avatar: 'AD',
     department: 'Management',
+    display_name_pref: 'first',
   },
   manager: {
     id: 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
-    name: 'Arsal (Manager)',
-    email: 'arsal.manager@company.com',
+    name: 'Manager',
+    full_name: 'Manager User',
+    email: 'manager@company.com',
     role: 'manager',
-    avatar: 'AR',
+    avatar: 'MG',
     department: 'Engineering',
     team_id: 'team-backend',
     team_name: 'Core Backend Team',
+    display_name_pref: 'first',
   },
   project_manager: {
     // Dedicated id — must exist in public.users (projects.manager_id FK).
-    // Do not reuse dddddddd (Michael Chen employee seed).
     id: 'eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee',
-    name: 'Arsal (Project Manager)',
+    name: 'Project',
+    full_name: 'Project Manager',
     email: 'project.manager@company.com',
     role: 'project_manager',
     avatar: 'PM',
     department: 'Delivery',
+    display_name_pref: 'first',
   },
   employee: {
     id: 'cccccccc-cccc-cccc-cccc-cccccccccccc',
-    name: 'Arsal',
-    email: 'arsal@company.com',
+    name: 'Employee',
+    full_name: 'Employee User',
+    email: 'employee@company.com',
     role: 'employee',
-    avatar: 'AR',
+    avatar: 'EM',
     department: 'Engineering',
     team_id: 'team-backend',
     team_name: 'Core Backend Team',
     assigned_manager_id: 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
+    display_name_pref: 'first',
   },
 };
 
@@ -98,6 +110,7 @@ interface AuthContextType {
     avatar?: string;
     avatarFile?: File | null;
     newPassword?: string;
+    display_name_pref?: DisplayNamePref;
   }) => Promise<void>;
 }
 
@@ -157,20 +170,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const p = await supabaseAuth.getProfile(sUser.id);
       if (p) {
         const uRole = p.role as UserRole;
+        const pref = normalizeDisplayNamePref((p as { display_name_pref?: string }).display_name_pref);
+        const fullName = p.full_name || sUser.email?.split('@')[0] || 'User';
         profileRoleRef.current = uRole;
         setRole(uRole);
         setUser({
           id: p.id,
-          name: p.full_name || sUser.email?.split('@')[0] || 'User',
+          name: formatDisplayName(fullName, pref, 'User'),
+          full_name: fullName,
           email: p.email || sUser.email || '',
           role: uRole,
           avatar:
             p.avatar_url ||
-            (p.full_name || sUser.email || 'U').substring(0, 2).toUpperCase(),
+            formatDisplayName(fullName, 'first', 'U').substring(0, 2).toUpperCase(),
           department: p.department || 'General',
           team_id: p.team_id,
           team_name: p.team_name || undefined,
           phone: p.phone || undefined,
+          display_name_pref: pref,
         });
         const safeRoute = clampRouteToRole(getRouteFromHash(), uRole);
         setCurrentRoute(safeRoute);
@@ -374,20 +391,27 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     avatar?: string;
     avatarFile?: File | null;
     newPassword?: string;
+    display_name_pref?: DisplayNamePref;
   }) => {
     const current = userRef.current;
-    const nextName = (patch.name ?? current.name).trim();
+    // Edit form "Full name" maps to full_name; UI `name` is derived from preference.
+    const nextFullName = (patch.name ?? current.full_name ?? current.name).trim();
+    const nextName = nextFullName;
     const nextEmail = (patch.email ?? current.email).trim();
     const nextDept = (patch.department ?? current.department).trim();
     const nextTeam =
       patch.team_name !== undefined ? patch.team_name.trim() : current.team_name || '';
     const nextPhone = patch.phone !== undefined ? patch.phone.trim() : current.phone || '';
+    const nextPref = normalizeDisplayNamePref(
+      patch.display_name_pref ?? current.display_name_pref ?? 'first'
+    );
+    const nextDisplay = formatDisplayName(nextFullName, nextPref, 'User');
     let nextAvatar =
       patch.avatar !== undefined
-        ? patch.avatar.trim() || nextName.substring(0, 2).toUpperCase()
+        ? patch.avatar.trim() || nextDisplay.substring(0, 2).toUpperCase()
         : current.avatar;
 
-    if (!nextName) throw new Error('Name is required');
+    if (!nextFullName) throw new Error('Name is required');
     if (!nextEmail || !nextEmail.includes('@')) throw new Error('A valid email is required');
 
     const uid = current.id;
@@ -416,13 +440,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await supabaseAuth.upsertProfile({
         id: uid,
         email: nextEmail,
-        full_name: nextName,
+        full_name: nextFullName,
         role: current.role,
         department: nextDept || 'General',
         team_name: nextTeam || null,
         phone: nextPhone || null,
         avatar_url: avatarUrl,
         team_id: current.team_id || null,
+        display_name_pref: nextPref,
       });
       if (patch.newPassword) {
         await supabaseAuth.updatePassword(patch.newPassword);
@@ -431,12 +456,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const updated: UserProfile = {
       ...current,
-      name: nextName,
+      name: nextDisplay,
+      full_name: nextFullName,
       email: nextEmail,
       department: nextDept || 'General',
       team_name: nextTeam || undefined,
       phone: nextPhone || undefined,
       avatar: nextAvatar,
+      display_name_pref: nextPref,
     };
     setUser(updated);
     userRef.current = updated;
@@ -445,12 +472,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       localStorage.setItem(
         demoProfileKey(updated.role, updated.id),
         JSON.stringify({
-          name: updated.name,
+          name: updated.full_name,
           email: updated.email,
           department: updated.department,
           team_name: updated.team_name,
           phone: updated.phone,
           avatar: updated.avatar,
+          display_name_pref: updated.display_name_pref,
         })
       );
     } catch {
@@ -464,6 +492,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         avatar: nextAvatar || prev.avatar,
         team_name: nextTeam || prev.team_name,
         phone: nextPhone || prev.phone,
+        display_name_pref: nextPref,
+        full_name: nextFullName,
+        name: formatDisplayName(nextFullName, nextPref, prev.name),
       }));
     }
   };

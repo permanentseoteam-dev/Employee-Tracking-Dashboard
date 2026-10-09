@@ -39,9 +39,15 @@ export interface ProjectMemberAssignment {
   project_manager_id?: string;
 }
 
+/** first = given name (default), last = family name, full = entire full_name */
+export type DisplayNamePref = 'first' | 'last' | 'full';
+
 export interface UserProfile {
   id: string;
+  /** Name shown in UI (honours display_name_pref). */
   name: string;
+  /** Legal / full name stored in profiles.full_name */
+  full_name?: string;
   email: string;
   role: UserRole;
   avatar: string;
@@ -50,6 +56,8 @@ export interface UserProfile {
   team_name?: string;
   phone?: string;
   assigned_manager_id?: string;
+  /** Which part of full_name to show in greetings / chrome. */
+  display_name_pref?: DisplayNamePref;
 }
 
 export interface EmployeeRecord {

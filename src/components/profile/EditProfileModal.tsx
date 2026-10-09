@@ -14,7 +14,8 @@ import {
 } from 'lucide-react';
 import { Modal } from '../common/Modal';
 import { useAuth } from '../../context/AuthContext';
-import type { UserRole } from '../../types/roles';
+import type { DisplayNamePref, UserRole } from '../../types/roles';
+import { formatDisplayName, normalizeDisplayNamePref, parseNameParts } from '../../utils/displayName';
 
 function isAvatarUrl(avatarStr?: string) {
   if (!avatarStr) return false;
@@ -41,6 +42,7 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({ open, onClos
   const fileRef = useRef<HTMLInputElement>(null);
 
   const [name, setName] = useState('');
+  const [displayPref, setDisplayPref] = useState<DisplayNamePref>('first');
   const [email, setEmail] = useState('');
   const [department, setDepartment] = useState('');
   const [team, setTeam] = useState('');
@@ -54,7 +56,8 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({ open, onClos
 
   useEffect(() => {
     if (!open) return;
-    setName(user.name || '');
+    setName(user.full_name || user.name || '');
+    setDisplayPref(normalizeDisplayNamePref(user.display_name_pref));
     setEmail(user.email || '');
     setDepartment(user.department || '');
     setTeam(user.team_name || '');
@@ -65,6 +68,9 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({ open, onClos
     setPassword2('');
     setMessage(null);
   }, [open, user]);
+
+  const parts = parseNameParts(name);
+  const preview = formatDisplayName(name, displayPref, 'Employee');
 
   const onPickFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -113,6 +119,7 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({ open, onClos
         avatar,
         avatarFile,
         newPassword: password || undefined,
+        display_name_pref: displayPref,
       });
       setMessage({
         type: 'ok',
@@ -224,8 +231,48 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({ open, onClos
               onChange={(e) => setName(e.target.value)}
               required
               autoFocus
+              placeholder="First Last"
             />
           </div>
+        </div>
+
+        <div className="stitch-form-group">
+          <label className="stitch-label">Show in app as</label>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+            {(
+              [
+                { id: 'first', label: parts.first ? `First (${parts.first})` : 'First name' },
+                { id: 'last', label: parts.last ? `Last (${parts.last})` : 'Last name' },
+                { id: 'full', label: parts.full ? `Full (${parts.full})` : 'Full name' },
+              ] as const
+            ).map((opt) => {
+              const selected = displayPref === opt.id;
+              return (
+                <button
+                  key={opt.id}
+                  type="button"
+                  onClick={() => setDisplayPref(opt.id)}
+                  style={{
+                    padding: '6px 12px',
+                    borderRadius: 'var(--radius-pill)',
+                    border: selected
+                      ? '1px solid var(--color-primary)'
+                      : '1px solid var(--surface-border-subtle)',
+                    background: selected ? 'var(--color-primary)' : 'var(--surface-frosted-subdued)',
+                    color: selected ? 'var(--color-on-primary)' : 'var(--text-secondary)',
+                    fontSize: 12,
+                    fontWeight: selected ? 700 : 500,
+                    cursor: 'pointer',
+                  }}
+                >
+                  {opt.label}
+                </button>
+              );
+            })}
+          </div>
+          <p style={{ margin: '6px 0 0', fontSize: 11, color: 'var(--text-muted)' }}>
+            Preview: <strong style={{ color: 'var(--text-primary)' }}>{preview}</strong>
+          </p>
         </div>
 
         <div className="stitch-form-group">

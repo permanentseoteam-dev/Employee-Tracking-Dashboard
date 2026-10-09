@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { RefreshCw, Award, Star, Plus, Minus, X, Flame, Sliders, Keyboard } from 'lucide-react';
+import { RefreshCw, Award, Star, Plus, Minus, X, Flame, Sliders, Keyboard, Lock, ShieldAlert } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { dataService, isAdminRecord } from '../../services/dataService';
 import { MatrixHeatmap } from '../../components/telemetry/MatrixHeatmap';
@@ -25,13 +25,64 @@ export const ManagerPerformancePage: React.FC = () => {
   const [exactInput, setExactInput] = useState<number>(20);
   const [balanceReason, setBalanceReason] = useState('Team performance target alignment');
 
+  const isManagerSelf = (emp: { id?: string; name?: string; email?: string } | null | undefined): boolean => {
+    if (!emp) return false;
+    const empId = emp.id?.toLowerCase() || '';
+    const empName = emp.name?.toLowerCase() || '';
+    const empEmail = emp.email?.toLowerCase() || '';
+    const curUserId = user?.id?.toLowerCase() || '';
+    const curUserName = user?.name?.toLowerCase() || '';
+    const curUserEmail = user?.email?.toLowerCase() || '';
+
+    return (
+      (curUserId !== '' && empId === curUserId) ||
+      empId === 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb' ||
+      (curUserEmail !== '' && empEmail === curUserEmail) ||
+      empEmail === 'arsal.manager@company.com' ||
+      empEmail === 'alex.v@company.com' ||
+      empName.includes('(manager)') ||
+      (curUserName !== '' && empName === curUserName && curUserName.includes('manager'))
+    );
+  };
+
   const loadData = async () => {
     try {
       const list = await dataService.getEmployees('manager', user.id);
       const cleanList = list.filter((e) => !isAdminRecord(e.id, e.name, e.email));
-      setEmployees(cleanList);
-      if (cleanList.length > 0 && !awardEmpId) {
-        setAwardEmpId(cleanList[0].id);
+
+      // Ensure manager's self-record is represented in the performance roster so they can view their own metrics & standing,
+      // while enforcing strict read-only lock against self-editing
+      const managerSelfRecord: EmployeeRecord = {
+        id: user.id || 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
+        name: user.name || 'Arsal (Manager)',
+        email: user.email || 'arsal.manager@company.com',
+        department: user.department || 'Management',
+        team_id: user.team_id || 'team-backend',
+        team_name: user.team_name || 'Core Backend Team',
+        manager_id: '00000000-0000-0000-0000-000000000001',
+        manager_name: 'Super Admin',
+        status: 'active',
+        attendance_status: 'on_time',
+        first_activity: '09:00 AM',
+        active_seconds: 27000,
+        idle_seconds: 1440,
+        last_screenshot: '',
+        current_task: 'Engineering Management & Sprint Reviews',
+        stars: dataService.getEmployeeStars(user.id || 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb'),
+        device_id: 'WIN-MGR-STATION',
+        device_name: 'Manager Desktop Station',
+        os_version: 'Windows 11 Pro x86_64',
+        joined_at: '2026-01-01',
+      };
+
+      const hasSelf = cleanList.some((e) => isManagerSelf(e));
+      const combined = hasSelf ? cleanList : [managerSelfRecord, ...cleanList];
+      setEmployees(combined);
+
+      // Default modal selection to the first non-manager subordinate
+      const eligible = combined.filter((e) => !isManagerSelf(e));
+      if (eligible.length > 0 && (!awardEmpId || isManagerSelf({ id: awardEmpId }))) {
+        setAwardEmpId(eligible[0].id);
       }
     } catch (err) {
       console.error(err);
@@ -43,8 +94,17 @@ export const ManagerPerformancePage: React.FC = () => {
   }, [user.id]);
 
   const handleOpenStarModal = (mode: 'allocate' | 'deallocate', empId?: string) => {
+    if (empId && isManagerSelf({ id: empId })) {
+      alert('Managers cannot allocate or edit stars for their own account.');
+      return;
+    }
     setStarModalMode(mode);
-    if (empId) setAwardEmpId(empId);
+    const eligible = employees.filter((e) => !isManagerSelf(e));
+    if (empId) {
+      setAwardEmpId(empId);
+    } else if (eligible.length > 0) {
+      setAwardEmpId(eligible[0].id);
+    }
     setAwardDelta(mode === 'allocate' ? 2 : 1);
     setAwardReason(
       mode === 'allocate'
@@ -58,10 +118,15 @@ export const ManagerPerformancePage: React.FC = () => {
     e.preventDefault();
     if (!awardEmpId) return;
 
+    if (isManagerSelf({ id: awardEmpId })) {
+      alert('403 Forbidden: Managers cannot edit or award stars to themselves.');
+      return;
+    }
+
     const delta = starModalMode === 'allocate' ? Math.abs(awardDelta) : -Math.abs(awardDelta);
 
     try {
-      await dataService.awardEmployeeStars('manager', awardEmpId, delta, awardReason, user.name);
+      await dataService.awardEmployeeStars('manager', awardEmpId, delta, awardReason, user.name, user.id);
       setIsStarModalOpen(false);
       loadData();
     } catch (err: any) {
@@ -70,13 +135,19 @@ export const ManagerPerformancePage: React.FC = () => {
   };
 
   const handleQuickStar = async (emp: EmployeeRecord, delta: number) => {
+    if (isManagerSelf(emp)) {
+      alert('403 Forbidden: Managers cannot edit or allocate stars to themselves.');
+      return;
+    }
+
     try {
       await dataService.awardEmployeeStars(
         'manager',
         emp.id,
         delta,
         delta > 0 ? 'Team star allocation' : 'Team star deduction',
-        user.name
+        user.name,
+        user.id
       );
       loadData();
     } catch (err: any) {
@@ -85,6 +156,10 @@ export const ManagerPerformancePage: React.FC = () => {
   };
 
   const handleOpenEditBalance = (emp: EmployeeRecord) => {
+    if (isManagerSelf(emp)) {
+      alert('403 Forbidden: Managers cannot modify their own star balance.');
+      return;
+    }
     setBalanceEmp(emp);
     setExactInput(emp.stars ?? 20);
     setBalanceReason('Team performance target alignment');
@@ -95,8 +170,13 @@ export const ManagerPerformancePage: React.FC = () => {
     e.preventDefault();
     if (!balanceEmp) return;
 
+    if (isManagerSelf(balanceEmp)) {
+      alert('403 Forbidden: Managers cannot modify their own star balance.');
+      return;
+    }
+
     try {
-      await dataService.setEmployeeStars('manager', balanceEmp.id, exactInput, balanceReason, user.name);
+      await dataService.setEmployeeStars('manager', balanceEmp.id, exactInput, balanceReason, user.name, user.id);
       setIsEditBalanceOpen(false);
       loadData();
     } catch (err: any) {
@@ -190,6 +270,27 @@ export const ManagerPerformancePage: React.FC = () => {
             </div>
           </div>
 
+          {/* Governance Notice */}
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 10,
+              padding: '10px 14px',
+              borderRadius: 8,
+              background: 'rgba(59, 130, 246, 0.08)',
+              border: '1px solid rgba(59, 130, 246, 0.2)',
+              fontSize: 12,
+              color: 'var(--text-secondary)',
+            }}
+          >
+            <ShieldAlert size={16} color="#3b82f6" style={{ flexShrink: 0 }} />
+            <div>
+              <strong style={{ color: 'var(--text-primary)' }}>Manager Governance Policy:</strong>{' '}
+              Managers are prohibited from modifying their own performance metrics and star allocations. You may award or adjust stars for assigned team members, while manager ratings are governed strictly by Super Admin.
+            </div>
+          </div>
+
           <p style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.5, margin: 0 }}>
             Metrics combine attendance punctuality, task completions, and merit star balance. You can allocate or deduct stars directly per employee.
           </p>
@@ -208,72 +309,122 @@ export const ManagerPerformancePage: React.FC = () => {
                 </tr>
               </thead>
               <tbody>
-                {employees.map((emp) => (
-                  <tr key={emp.id}>
-                    <td>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <div className="avatar-chip" style={{ width: 28, height: 28, fontSize: 10 }}>
-                          {emp.name.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase()}
+                {employees.map((emp) => {
+                  const isSelf = isManagerSelf(emp);
+                  return (
+                    <tr key={emp.id} style={isSelf ? { background: 'rgba(59, 130, 246, 0.03)' } : undefined}>
+                      <td>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <div className="avatar-chip" style={{ width: 28, height: 28, fontSize: 10 }}>
+                            {emp.name.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase()}
+                          </div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{emp.name}</span>
+                            {isSelf && (
+                              <span
+                                style={{
+                                  fontSize: 10,
+                                  fontWeight: 700,
+                                  background: 'rgba(59, 130, 246, 0.15)',
+                                  color: '#3b82f6',
+                                  padding: '2px 6px',
+                                  borderRadius: 4,
+                                  textTransform: 'uppercase',
+                                  letterSpacing: '0.04em',
+                                }}
+                              >
+                                You (Manager)
+                              </span>
+                            )}
+                          </div>
                         </div>
-                        <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{emp.name}</span>
-                      </div>
-                    </td>
-                    <td>
-                      <span
-                        className={`status-pill ${
-                          emp.attendance_status === 'on_time'
-                            ? 'active'
-                            : 'late'
-                        }`}
-                      >
-                        {(emp?.attendance_status || 'on_time').replace('_', ' ')}
-                      </span>
-                    </td>
-                    <td style={{ fontWeight: 700, color: 'var(--text-primary)' }}>
-                      {(((emp?.active_seconds || 0) / 3600)).toFixed(1)} hrs
-                    </td>
-                    <td style={{ color: (emp?.idle_seconds || 0) > 3600 ? 'var(--status-warning)' : 'var(--text-muted)' }}>
-                      {(((emp?.idle_seconds || 0) / 3600)).toFixed(1)} hrs
-                    </td>
-                    <td style={{ fontWeight: 800, color: '#f59e0b', fontSize: 15 }}>
-                      ⭐ {emp?.stars ?? 0}
-                    </td>
-                    <td style={{ maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--text-secondary)' }}>
-                      {emp.current_task || 'Desktop Workstation Tracking'}
-                    </td>
-                    <td style={{ textAlign: 'right' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 4 }}>
-                        <button
-                          type="button"
-                          className="btn-icon-circle"
-                          style={{ width: 28, height: 28, background: 'rgba(16, 185, 129, 0.15)', color: '#10b981', border: 'none' }}
-                          title="Quick allocate +1 star"
-                          onClick={() => handleQuickStar(emp, 1)}
+                      </td>
+                      <td>
+                        <span
+                          className={`status-pill ${
+                            emp.attendance_status === 'on_time'
+                              ? 'active'
+                              : 'late'
+                          }`}
                         >
-                          <Plus size={13} strokeWidth={3} />
-                        </button>
-                        <button
-                          type="button"
-                          className="btn-icon-circle"
-                          style={{ width: 28, height: 28, background: 'rgba(239, 68, 68, 0.15)', color: '#ef4444', border: 'none' }}
-                          title="Quick deallocate -1 star"
-                          onClick={() => handleQuickStar(emp, -1)}
-                        >
-                          <Minus size={13} strokeWidth={3} />
-                        </button>
-                        <button
-                          type="button"
-                          className="btn-icon-circle"
-                          style={{ width: 28, height: 28 }}
-                          title="Set exact star balance"
-                          onClick={() => handleOpenEditBalance(emp)}
-                        >
-                          <Sliders size={13} />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                          {(emp?.attendance_status || 'on_time').replace('_', ' ')}
+                        </span>
+                      </td>
+                      <td style={{ fontWeight: 700, color: 'var(--text-primary)' }}>
+                        {(((emp?.active_seconds || 0) / 3600)).toFixed(1)} hrs
+                      </td>
+                      <td style={{ color: (emp?.idle_seconds || 0) > 3600 ? 'var(--status-warning)' : 'var(--text-muted)' }}>
+                        {(((emp?.idle_seconds || 0) / 3600)).toFixed(1)} hrs
+                      </td>
+                      <td style={{ fontWeight: 800, color: '#f59e0b', fontSize: 15 }}>
+                        ⭐ {emp?.stars ?? 0}
+                        {isSelf && (
+                          <span title="Locked: Managed by Super Admin" style={{ display: 'inline-flex', marginLeft: 6, verticalAlign: 'middle' }}>
+                            <Lock size={12} color="var(--text-muted)" />
+                          </span>
+                        )}
+                      </td>
+                      <td style={{ maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--text-secondary)' }}>
+                        {emp.current_task || 'Desktop Workstation Tracking'}
+                      </td>
+                      <td style={{ textAlign: 'right' }}>
+                        {isSelf ? (
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}>
+                            <span
+                              className="status-pill read-only"
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: 4,
+                                background: 'rgba(148, 163, 184, 0.12)',
+                                color: 'var(--text-muted)',
+                                border: '1px solid var(--surface-border-subtle)',
+                                padding: '4px 10px',
+                                borderRadius: 6,
+                                fontSize: 11,
+                                fontWeight: 700,
+                              }}
+                              title="Self-editing locked: Managers cannot edit their own performance or stars."
+                            >
+                              <Lock size={12} />
+                              <span>Self (Read-Only)</span>
+                            </span>
+                          </div>
+                        ) : (
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 4 }}>
+                            <button
+                              type="button"
+                              className="btn-icon-circle"
+                              style={{ width: 28, height: 28, background: 'rgba(16, 185, 129, 0.15)', color: '#10b981', border: 'none' }}
+                              title="Quick allocate +1 star"
+                              onClick={() => handleQuickStar(emp, 1)}
+                            >
+                              <Plus size={13} strokeWidth={3} />
+                            </button>
+                            <button
+                              type="button"
+                              className="btn-icon-circle"
+                              style={{ width: 28, height: 28, background: 'rgba(239, 68, 68, 0.15)', color: '#ef4444', border: 'none' }}
+                              title="Quick deallocate -1 star"
+                              onClick={() => handleQuickStar(emp, -1)}
+                            >
+                              <Minus size={13} strokeWidth={3} />
+                            </button>
+                            <button
+                              type="button"
+                              className="btn-icon-circle"
+                              style={{ width: 28, height: 28 }}
+                              title="Set exact star balance"
+                              onClick={() => handleOpenEditBalance(emp)}
+                            >
+                              <Sliders size={13} />
+                            </button>
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
                 {employees.length === 0 && (
                   <tr>
                     <td colSpan={7} style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>
@@ -364,11 +515,13 @@ export const ManagerPerformancePage: React.FC = () => {
                   value={awardEmpId}
                   onChange={(e) => setAwardEmpId(e.target.value)}
                 >
-                  {employees.map((emp) => (
-                    <option key={emp.id} value={emp.id}>
-                      {emp.name} &bull; Current: ⭐ {emp.stars}
-                    </option>
-                  ))}
+                  {employees
+                    .filter((emp) => !isManagerSelf(emp))
+                    .map((emp) => (
+                      <option key={emp.id} value={emp.id}>
+                        {emp.name} &bull; Current: ⭐ {emp.stars}
+                      </option>
+                    ))}
                 </select>
               </div>
 

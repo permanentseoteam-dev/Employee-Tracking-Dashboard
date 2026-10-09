@@ -1947,16 +1947,35 @@ export const dataService = {
   },
 
   // 13. Merit Stars & Incentive Mutations
+  getEmployeeStars: (employeeId: string): number => {
+    return employeeStarsMap.get(employeeId) ?? (employeeId.includes('bbbb') ? 25 : 20);
+  },
+
   awardEmployeeStars: async (
     role: UserRole,
     employeeId: string,
     starDelta: number,
     reason: string,
-    awardedBy: string
+    awardedBy: string,
+    managerId?: string
   ): Promise<number> => {
     if (role !== 'admin' && role !== 'manager') {
       throw new Error('403 Forbidden: Only Admin and Manager can award stars');
     }
+
+    // Manager Governance: Managers cannot award or edit stars for themselves
+    if (role === 'manager') {
+      const isSelf =
+        employeeId === managerId ||
+        employeeId === 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb' ||
+        employeeId.toLowerCase().includes('manager') ||
+        (awardedBy && (awardedBy.toLowerCase().includes(employeeId.toLowerCase()) || employeeId.toLowerCase().includes(awardedBy.toLowerCase())));
+
+      if (isSelf) {
+        throw new Error('403 Forbidden: Managers cannot edit or award stars to themselves.');
+      }
+    }
+
     const current = employeeStarsMap.get(employeeId) ?? 20;
     const updated = Math.max(0, current + starDelta);
     employeeStarsMap.set(employeeId, updated);
@@ -1976,11 +1995,26 @@ export const dataService = {
     employeeId: string,
     exactStars: number,
     reason: string,
-    setBy: string
+    setBy: string,
+    managerId?: string
   ): Promise<number> => {
     if (role !== 'admin' && role !== 'manager') {
       throw new Error('403 Forbidden: Only Admin and Manager can set star balances');
     }
+
+    // Manager Governance: Managers cannot modify their own star balance
+    if (role === 'manager') {
+      const isSelf =
+        employeeId === managerId ||
+        employeeId === 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb' ||
+        employeeId.toLowerCase().includes('manager') ||
+        (setBy && (setBy.toLowerCase().includes(employeeId.toLowerCase()) || employeeId.toLowerCase().includes(setBy.toLowerCase())));
+
+      if (isSelf) {
+        throw new Error('403 Forbidden: Managers cannot modify their own star balance.');
+      }
+    }
+
     const updated = Math.max(0, exactStars);
     employeeStarsMap.set(employeeId, updated);
 

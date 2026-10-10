@@ -594,7 +594,7 @@ export const supabaseSync = {
       startedAt,
       durationSeconds = 10,
       recordedBy = 'Admin',
-      activeWindow = 'Visual Studio Code',
+      activeWindow = '',
       employeeName = 'Employee',
       department = 'Engineering',
     } = params;

@@ -19,7 +19,7 @@ export interface GeneratedScreenMedia {
 export async function generateWorkstationRecordingClip(
   employeeName: string,
   employeeId: string,
-  activeWindow: string = 'Visual Studio Code',
+  activeWindow: string = '',
   durationSeconds: number = 10
 ): Promise<GeneratedScreenMedia> {
   const width = 1280;

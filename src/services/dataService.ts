@@ -636,10 +636,11 @@ export const dataService = {
         // 4. Latest Event (Real Active Window Title)
         const empEvents = eventRows.filter((ev: any) => isMatchingEmp(ev.employee_id));
         const latestEvent = empEvents[0];
+        // Only real foreground window titles from agent telemetry — never task names or placeholders
         const activeWindow =
           latestEvent?.metadata?.window ||
           latestEvent?.metadata?.window_title ||
-          activeTask?.title ||
+          latestEvent?.metadata?.active_window ||
           '';
 
         // 5. Latest Screenshot
@@ -1526,7 +1527,7 @@ export const dataService = {
     activeWindow?: string
   ): Promise<{ success: boolean; message: string; recordId: string; recording: ScreenRecordingItem }> => {
     const resolvedName = employeeName || 'Unknown employee';
-    const resolvedWindow = activeWindow || 'Workstation';
+    const resolvedWindow = (activeWindow && activeWindow !== '—') ? activeWindow : '';
 
     if (!isSupabaseConfigured()) {
       return {
@@ -1681,7 +1682,7 @@ export const dataService = {
     employeeId: string,
     deviceId: string = 'WIN-CLIENT',
     imageBlob?: Blob,
-    activeWindow: string = 'Visual Studio Code'
+    activeWindow: string = ''
   ): Promise<{ success: boolean; storagePath?: string; publicUrl?: string; error?: string }> => {
     if (!isSupabaseConfigured()) {
       return { success: false, error: 'Supabase is not configured' };

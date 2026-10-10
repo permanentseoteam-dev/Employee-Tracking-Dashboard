@@ -572,12 +572,14 @@ export const AdminMonitoringPage: React.FC<AdminMonitoringPageProps> = ({ initia
                       </span>
                     </div>
 
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <Monitor size={14} color="#38bdf8" />
-                      <span style={{ fontSize: 12, fontWeight: 700, color: '#ffffff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {emp.active_window || 'Visual Studio Code'}
-                      </span>
-                    </div>
+                    {emp.active_window && emp.active_window !== '—' ? (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <Monitor size={14} color="#38bdf8" />
+                        <span style={{ fontSize: 12, fontWeight: 700, color: '#ffffff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {emp.active_window}
+                        </span>
+                      </div>
+                    ) : null}
                   </div>
                 </div>
 
@@ -1430,7 +1432,12 @@ export const AdminMonitoringPage: React.FC<AdminMonitoringPageProps> = ({ initia
                     }}
                   >
                     <Monitor size={14} color="#38bdf8" />
-                    <span>Active Window: {selectedLiveEmployee.active_window || 'Desktop Workspace'}</span>
+                    <span>
+                      Active Window:{' '}
+                      {selectedLiveEmployee.active_window && selectedLiveEmployee.active_window !== '—'
+                        ? selectedLiveEmployee.active_window
+                        : 'Unavailable'}
+                    </span>
                   </div>
 
                   <div

@@ -1059,11 +1059,15 @@ export const dataService = {
     try {
       const [recordsRes, legacyRes, empRes] = await Promise.all([
         supabase.from('screenshot_records').select('*').order('captured_at', { ascending: false }).limit(60),
+        // `screenshots` has width/height — prefer these rows when deduping by storage_path
         supabase.from('screenshots').select('*').order('captured_at', { ascending: false }).limit(60),
-        supabase.from('employees').select('id, user_id, full_name, manager_id, department'),
+        supabase
+          .from('employees')
+          .select('id, user_id, full_name, manager_id, department, display_name_pref'),
       ]);
 
-      const scRows = [...(recordsRes.data || []), ...(legacyRes.data || [])];
+      // Prefer `screenshots` first so dimension metadata wins when paths collide.
+      const scRows = [...(legacyRes.data || []), ...(recordsRes.data || [])];
       if (scRows.length === 0) return [];
 
       const empList = (empRes.data || []).filter((e: any) => !isExcludedEmployeeRecord(e));
@@ -1084,12 +1088,13 @@ export const dataService = {
         seenPaths.add(s.storage_path);
 
         const emp = empList.find(
-          (e: any) =>
-            e.id === s.employee_id ||
-            e.user_id === s.employee_id ||
-            (e.id === '304c14cc-995b-424e-a30f-a8e8418591cc' && s.employee_id === 'cccccccc-cccc-cccc-cccc-cccccccccccc')
+          (e: any) => e.id === s.employee_id || e.user_id === s.employee_id
         );
-        const empName = emp?.full_name || (s.employee_id === 'cccccccc-cccc-cccc-cccc-cccccccccccc' ? 'Arsal' : 'Unknown employee');
+        const empName = formatDisplayName(
+          emp?.full_name,
+          normalizeDisplayNamePref(emp?.display_name_pref),
+          'Employee'
+        );
 
         if (filterEmployeeId && filterEmployeeId !== 'all') {
           const matches =
@@ -1141,7 +1146,12 @@ export const dataService = {
           high_res_url: pubUrl?.publicUrl || '',
           file_size_bytes: Number(s.file_size_bytes) || 0,
           activity_type: 'active',
-          window_title: s.window_title || `Workstation capture (${s.width || '?'}x${s.height || '?'})`,
+          window_title:
+            s.window_title ||
+            s.active_window ||
+            (s.width && s.height
+              ? `Workstation capture (${s.width}×${s.height})`
+              : 'Workstation capture'),
         });
       }
 

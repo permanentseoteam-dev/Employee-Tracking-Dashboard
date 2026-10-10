@@ -1004,12 +1004,29 @@ export const ManagerMonitoringPage: React.FC<ManagerMonitoringPageProps> = ({ in
                         src={sc.thumbnail_url || sc.high_res_url}
                         alt={sc.window_title}
                         style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                        onError={(e) => {
+                          const el = e.currentTarget;
+                          el.style.display = 'none';
+                          const fallback = el.nextElementSibling as HTMLElement | null;
+                          if (fallback) fallback.style.display = 'flex';
+                        }}
                       />
-                    ) : (
-                      <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>
-                        <Camera size={32} />
-                      </div>
-                    )}
+                    ) : null}
+                    <div
+                      style={{
+                        height: '100%',
+                        display: sc.thumbnail_url || sc.high_res_url ? 'none' : 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        color: 'var(--text-muted)',
+                        fontSize: 12,
+                        gap: 8,
+                        flexDirection: 'column',
+                      }}
+                    >
+                      <Camera size={28} />
+                      <span>Capture unavailable</span>
+                    </div>
                     <div style={{ position: 'absolute', top: 10, right: 10 }} className="status-pill active">
                       {sc.activity_type || 'Active'}
                     </div>

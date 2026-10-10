@@ -107,8 +107,9 @@ impl ScreenCaptureService {
                 DeleteObject(hbitmap);
                 DeleteDC(hdc_mem);
                 ReleaseDC(std::ptr::null_mut(), hdc_screen);
-                tracing::warn!("BitBlt screen copy returned 0 (display locked or non-interactive session). Using workstation fallback frame.");
-                return Self::generate_workstation_frame(width, height, self.quality);
+                return Err(AgentError::General(
+                    "BitBlt failed — cannot capture interactive desktop (locked/secure session?)".into(),
+                ));
             }
 
             // Extract pixel buffer
@@ -139,8 +140,7 @@ impl ScreenCaptureService {
             ReleaseDC(hwnd_desktop, hdc_screen);
 
             if lines == 0 {
-                tracing::warn!("GetDIBits returned 0. Using workstation fallback frame.");
-                return Self::generate_workstation_frame(width, height, self.quality);
+                return Err(AgentError::General("GetDIBits failed".into()));
             }
 
             // Convert BGRA (Windows standard) to RGB

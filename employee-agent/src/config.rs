@@ -45,7 +45,10 @@ impl AgentConfig {
 
         let employee_id = env::var("EMPLOYEE_ID")
             .or_else(|_| env::var("AGENT_EMPLOYEE_ID"))
-            .unwrap_or_else(|_| "304c14cc-995b-424e-a30f-a8e8418591cc".to_string());
+            .map_err(|_| {
+                "Missing EMPLOYEE_ID — configure agent.env after employee sign-in (do not use a shared default)"
+                    .to_string()
+            })?;
 
         let device_id_override = env::var("DEVICE_ID").ok();
 
@@ -99,6 +102,7 @@ mod tests {
     fn test_config_fallback() {
         env::set_var("SUPABASE_URL", "https://example.supabase.co");
         env::set_var("SUPABASE_ANON_KEY", "dummy-key");
+        env::set_var("EMPLOYEE_ID", "11111111-1111-1111-1111-111111111111");
         let cfg = AgentConfig::load().expect("Config should load");
         assert_eq!(cfg.supabase_url, "https://example.supabase.co");
         assert_eq!(cfg.screenshot_interval_secs, 60);

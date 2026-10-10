@@ -17,30 +17,80 @@ pub struct InputActivitySnapshot {
     pub mouse_clicks: u32,
 }
 
+use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::Arc;
+
 pub struct WindowsInputTracker {
     idle_threshold_seconds: u64,
-    #[cfg(windows)]
-    prev_key_down: [bool; 256],
-    #[cfg(windows)]
-    prev_mouse_buttons: [bool; 3],
-    #[cfg(windows)]
-    prev_cursor: Option<(i32, i32)>,
-    #[cfg(windows)]
-    primed: bool,
+    accumulated_keys: Arc<AtomicU32>,
+    accumulated_clicks: Arc<AtomicU32>,
+    accumulated_moves: Arc<AtomicU32>,
 }
 
 impl WindowsInputTracker {
     pub fn new(idle_threshold_seconds: u64) -> Self {
+        let accumulated_keys = Arc::new(AtomicU32::new(0));
+        let accumulated_clicks = Arc::new(AtomicU32::new(0));
+        let accumulated_moves = Arc::new(AtomicU32::new(0));
+
+        #[cfg(windows)]
+        {
+            let keys_clone = accumulated_keys.clone();
+            let clicks_clone = accumulated_clicks.clone();
+            let moves_clone = accumulated_moves.clone();
+
+            let _ = std::thread::Builder::new()
+                .name("input-sampler".into())
+                .spawn(move || {
+                    let mut prev_keys = [false; 256];
+                    let mut prev_mouse = [false; 3];
+                    let mut prev_pos: Option<(i32, i32)> = None;
+                    let mut primed = false;
+
+                    loop {
+                        // Sample virtual keys 0x08..=0xFE at 20ms intervals (50Hz)
+                        for vk in 0x08u32..=0xFEu32 {
+                            let down = unsafe { GetAsyncKeyState(vk as i32) } as u16 & 0x8000 != 0;
+                            let was_down = prev_keys[vk as usize];
+                            if primed && down && !was_down {
+                                keys_clone.fetch_add(1, Ordering::Relaxed);
+                            }
+                            prev_keys[vk as usize] = down;
+                        }
+
+                        // Sample mouse buttons: LBUTTON, RBUTTON, MBUTTON
+                        const MOUSE_VKS: [i32; 3] = [0x01, 0x02, 0x04];
+                        for (i, vk) in MOUSE_VKS.iter().enumerate() {
+                            let down = unsafe { GetAsyncKeyState(*vk) } as u16 & 0x8000 != 0;
+                            let was_down = prev_mouse[i];
+                            if primed && down && !was_down {
+                                clicks_clone.fetch_add(1, Ordering::Relaxed);
+                            }
+                            prev_mouse[i] = down;
+                        }
+
+                        // Sample cursor position deltas
+                        let mut pt = POINT { x: 0, y: 0 };
+                        if unsafe { GetCursorPos(&mut pt) } != 0 {
+                            if let Some((px, py)) = prev_pos {
+                                if primed && (pt.x != px || pt.y != py) {
+                                    moves_clone.fetch_add(1, Ordering::Relaxed);
+                                }
+                            }
+                            prev_pos = Some((pt.x, pt.y));
+                        }
+
+                        primed = true;
+                        std::thread::sleep(std::time::Duration::from_millis(20));
+                    }
+                });
+        }
+
         Self {
             idle_threshold_seconds,
-            #[cfg(windows)]
-            prev_key_down: [false; 256],
-            #[cfg(windows)]
-            prev_mouse_buttons: [false; 3],
-            #[cfg(windows)]
-            prev_cursor: None,
-            #[cfg(windows)]
-            primed: false,
+            accumulated_keys,
+            accumulated_clicks,
+            accumulated_moves,
         }
     }
 
@@ -49,7 +99,9 @@ impl WindowsInputTracker {
         let idle_duration_seconds = Self::get_idle_seconds_native();
         let is_user_idle = idle_duration_seconds >= self.idle_threshold_seconds;
         let active_window_title = Self::get_foreground_window_title();
-        let (key_presses, mouse_moves, mouse_clicks) = self.sample_input_deltas();
+        let key_presses = self.accumulated_keys.swap(0, Ordering::Relaxed);
+        let mouse_moves = self.accumulated_moves.swap(0, Ordering::Relaxed);
+        let mouse_clicks = self.accumulated_clicks.swap(0, Ordering::Relaxed);
 
         InputActivitySnapshot {
             idle_duration_seconds,
@@ -71,45 +123,6 @@ impl WindowsInputTracker {
             mouse_moves: 0,
             mouse_clicks: 0,
         }
-    }
-
-    #[cfg(windows)]
-    fn sample_input_deltas(&mut self) -> (u32, u32, u32) {
-        let mut key_presses = 0u32;
-        let mut mouse_clicks = 0u32;
-        let mut mouse_moves = 0u32;
-
-        for vk in 0x08u32..=0xFEu32 {
-            let down = unsafe { GetAsyncKeyState(vk as i32) } as u16 & 0x8000 != 0;
-            let was_down = self.prev_key_down[vk as usize];
-            if self.primed && down && !was_down {
-                key_presses = key_presses.saturating_add(1);
-            }
-            self.prev_key_down[vk as usize] = down;
-        }
-
-        const MOUSE_VKS: [i32; 3] = [0x01, 0x02, 0x04];
-        for (i, vk) in MOUSE_VKS.iter().enumerate() {
-            let down = unsafe { GetAsyncKeyState(*vk) } as u16 & 0x8000 != 0;
-            let was_down = self.prev_mouse_buttons[i];
-            if self.primed && down && !was_down {
-                mouse_clicks = mouse_clicks.saturating_add(1);
-            }
-            self.prev_mouse_buttons[i] = down;
-        }
-
-        let mut point = POINT { x: 0, y: 0 };
-        if unsafe { GetCursorPos(&mut point) } != 0 {
-            if let Some((px, py)) = self.prev_cursor {
-                if self.primed && (point.x != px || point.y != py) {
-                    mouse_moves = 1;
-                }
-            }
-            self.prev_cursor = Some((point.x, point.y));
-        }
-
-        self.primed = true;
-        (key_presses, mouse_moves, mouse_clicks)
     }
 
     #[cfg(windows)]

@@ -166,8 +166,22 @@ export const ManagerMonitoringPage: React.FC<ManagerMonitoringPageProps> = ({ in
     }
     isDeletingScreenshotsRef.current = true;
     setIsDeletingScreenshots(true);
-    setScreenshots((prev) => prev.filter((s) => s.id !== sc.id));
-    if (selectedScreenshot?.id === sc.id) setSelectedScreenshot(null);
+    const targetBase = sc.file_path ? sc.file_path.split('/').pop() : '';
+    setScreenshots((prev) =>
+      prev.filter((s) => {
+        if (s.id === sc.id) return false;
+        if (sc.file_path && s.file_path === sc.file_path) return false;
+        if (targetBase && s.file_path && s.file_path.endsWith(targetBase)) return false;
+        return true;
+      })
+    );
+    if (
+      selectedScreenshot?.id === sc.id ||
+      (sc.file_path && selectedScreenshot?.file_path === sc.file_path) ||
+      (targetBase && selectedScreenshot?.file_path?.endsWith(targetBase))
+    ) {
+      setSelectedScreenshot(null);
+    }
     try {
       const res = await dataService.deleteScreenshot(sc);
       setScreenshotActionMessage(res.message);
@@ -1365,13 +1379,28 @@ export const ManagerMonitoringPage: React.FC<ManagerMonitoringPageProps> = ({ in
                     Capture timestamp: {formatCaptureDateTime(selectedScreenshot.captured_at)} &bull; {selectedScreenshot.window_title}
                   </span>
                 </div>
-                <button
-                  type="button"
-                  className="btn-icon-circle"
-                  onClick={() => setSelectedScreenshot(null)}
-                >
-                  <X size={16} />
-                </button>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <button
+                    type="button"
+                    className="btn-pill btn-pill-secondary"
+                    style={{ fontSize: 12, padding: '5px 10px', background: 'rgba(239,68,68,0.15)', color: '#ef4444', borderColor: 'rgba(239,68,68,0.3)' }}
+                    title="Delete screenshot permanently"
+                    onClick={() => {
+                      const sc = selectedScreenshot;
+                      void handleDeleteScreenshot(sc);
+                    }}
+                  >
+                    <Trash2 size={13} />
+                    <span>Delete</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-icon-circle"
+                    onClick={() => setSelectedScreenshot(null)}
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
               </div>
 
               <div style={{ borderRadius: 'var(--radius-card-sm)', overflow: 'hidden', border: '1px solid var(--surface-border)', maxHeight: '72vh', background: '#090d16' }}>

@@ -1,4 +1,4 @@
-import { supabase, isSupabaseConfigured } from './supabaseClient';
+import { supabase, isSupabaseConfigured, purgeStoredAuthTokens } from './supabaseClient';
 import type { User, Session } from '@supabase/supabase-js';
 import type { BreakTelemetrySnapshot, UserRole } from '../types/roles';
 
@@ -177,21 +177,102 @@ export const supabaseAuth = {
   },
 
   signOut: async () => {
-    if (!isSupabaseConfigured()) return;
-    const { error } = await supabase.auth.signOut();
-    if (error) throw error;
+    try {
+      if (isSupabaseConfigured()) {
+        await supabase.auth.signOut({ scope: 'local' });
+      }
+    } catch (e) {
+      console.warn('SignOut error, purging local storage:', e);
+    } finally {
+      purgeStoredAuthTokens();
+    }
   },
 
   getSession: async (): Promise<Session | null> => {
     if (!isSupabaseConfigured()) return null;
-    const { data } = await supabase.auth.getSession();
-    return data.session;
+    try {
+      const { data, error } = await supabase.auth.getSession();
+      if (error) {
+        const msg = (error.message || '').toLowerCase();
+        if (
+          msg.includes('refresh token') ||
+          msg.includes('refresh_token') ||
+          msg.includes('invalid_grant') ||
+          (error as unknown as { status?: number }).status === 400
+        ) {
+          console.warn('[Supabase Auth] Expired/invalid refresh token in getSession. Purging stale auth storage...');
+          purgeStoredAuthTokens();
+          try {
+            await supabase.auth.signOut({ scope: 'local' });
+          } catch {
+            // ignore
+          }
+          return null;
+        }
+      }
+      return data?.session ?? null;
+    } catch (err: unknown) {
+      const errorObj = err as { message?: string; status?: number };
+      const msg = (errorObj?.message || '').toLowerCase();
+      if (
+        msg.includes('refresh token') ||
+        msg.includes('refresh_token') ||
+        msg.includes('invalid_grant') ||
+        errorObj?.status === 400
+      ) {
+        console.warn('[Supabase Auth] getSession exception. Purging storage.');
+        purgeStoredAuthTokens();
+        try {
+          await supabase.auth.signOut({ scope: 'local' });
+        } catch {
+          // ignore
+        }
+      }
+      return null;
+    }
   },
 
   getUser: async (): Promise<User | null> => {
     if (!isSupabaseConfigured()) return null;
-    const { data } = await supabase.auth.getUser();
-    return data.user;
+    try {
+      const { data, error } = await supabase.auth.getUser();
+      if (error) {
+        const msg = (error.message || '').toLowerCase();
+        if (
+          msg.includes('refresh token') ||
+          msg.includes('refresh_token') ||
+          msg.includes('invalid_grant') ||
+          (error as unknown as { status?: number }).status === 400
+        ) {
+          console.warn('[Supabase Auth] Expired/invalid token in getUser. Purging auth tokens...');
+          purgeStoredAuthTokens();
+          try {
+            await supabase.auth.signOut({ scope: 'local' });
+          } catch {
+            // ignore
+          }
+          return null;
+        }
+      }
+      return data?.user ?? null;
+    } catch (err: unknown) {
+      const errorObj = err as { message?: string; status?: number };
+      const msg = (errorObj?.message || '').toLowerCase();
+      if (
+        msg.includes('refresh token') ||
+        msg.includes('refresh_token') ||
+        msg.includes('invalid_grant') ||
+        errorObj?.status === 400
+      ) {
+        purgeStoredAuthTokens();
+        try {
+          await supabase.auth.signOut({ scope: 'local' });
+        } catch {
+          // ignore
+        }
+      }
+      return null;
+    }
   },
 
   getProfile: async (userId: string): Promise<UserProfile | null> => {

@@ -90,6 +90,11 @@ export const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({ role, manage
     try {
       const fList = await dataService.getProjectFolders(projId, role);
       setFolders(fList);
+      if (fList.length > 0) {
+        setTargetFolderId((prev) => (prev && fList.some((f) => f.id === prev) ? prev : fList[0].id));
+      } else {
+        setTargetFolderId('');
+      }
     } catch (err) {
       console.error('Failed to load folders:', err);
     }
@@ -196,10 +201,14 @@ export const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({ role, manage
   // Embed File
   const handleEmbedFile = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedProject || !targetFolderId || !embedFileName.trim()) return;
+    const effectiveFolderId = targetFolderId || folders[0]?.id;
+    if (!selectedProject || !effectiveFolderId || !embedFileName.trim()) {
+      alert('Please select a destination folder and choose a file to upload.');
+      return;
+    }
 
     try {
-      await dataService.embedFileInFolder(selectedProject.id, targetFolderId, {
+      await dataService.embedFileInFolder(selectedProject.id, effectiveFolderId, {
         name: embedFileName.trim(),
         size: embedFileSize || 1024,
         size_formatted: embedFileSizeFormatted || '1 KB',
@@ -1158,6 +1167,9 @@ export const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({ role, manage
                         {f.name} ({f.files?.length || 0} files)
                       </option>
                     ))}
+                    {folders.length === 0 && (
+                      <option value="" disabled>No folders created yet</option>
+                    )}
                   </select>
                 </div>
 

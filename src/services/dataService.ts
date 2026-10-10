@@ -1018,7 +1018,7 @@ export const dataService = {
       const [recordsRes, legacyRes, empRes] = await Promise.all([
         supabase.from('screenshot_records').select('*').order('captured_at', { ascending: false }).limit(60),
         supabase.from('screenshots').select('*').order('captured_at', { ascending: false }).limit(60),
-        supabase.from('employees').select('id, full_name, manager_id, department'),
+        supabase.from('employees').select('id, user_id, full_name, manager_id, department'),
       ]);
 
       const scRows = [...(recordsRes.data || []), ...(legacyRes.data || [])];
@@ -1032,11 +1032,17 @@ export const dataService = {
         if (!s.storage_path || seenPaths.has(s.storage_path)) continue;
         seenPaths.add(s.storage_path);
 
-        const emp = empList.find((e: any) => e.id === s.employee_id);
+        const emp = empList.find((e: any) => e.id === s.employee_id || e.user_id === s.employee_id);
         const empName = emp?.full_name || 'Unknown employee';
 
-        if (filterEmployeeId && filterEmployeeId !== 'all' && s.employee_id !== filterEmployeeId) {
-          continue;
+        if (filterEmployeeId && filterEmployeeId !== 'all') {
+          const matches =
+            s.employee_id === filterEmployeeId ||
+            (emp && (emp.id === filterEmployeeId || emp.user_id === filterEmployeeId)) ||
+            empName.toLowerCase().includes(filterEmployeeId.toLowerCase());
+          if (!matches) {
+            continue;
+          }
         }
 
         // Globally filter out any synthetic agent records or admin screenshots
@@ -1296,7 +1302,12 @@ export const dataService = {
       );
     }
     if (employeeId && employeeId !== 'all') {
-      list = list.filter((r) => r.employee_id === employeeId);
+      const needle = employeeId.toLowerCase();
+      list = list.filter((r) => {
+        if (r.employee_id === employeeId) return true;
+        const name = (r.employee_name || '').toLowerCase();
+        return name.includes(needle);
+      });
     }
 
     // Never surface sample/dummy clips

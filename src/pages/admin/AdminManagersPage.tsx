@@ -24,8 +24,12 @@ export const AdminManagersPage: React.FC = () => {
       ]);
       setManagers(mgrList);
       setTeams(teamList);
-      if (mgrList.length > 0 && !selectedMgrId) setSelectedMgrId(mgrList[0].id);
-      if (teamList.length > 0 && !selectedTeamName) setSelectedTeamName(teamList[0].name);
+      if (mgrList.length > 0 && (!selectedMgrId || !mgrList.some((m) => m.id === selectedMgrId))) {
+        setSelectedMgrId(mgrList[0].id);
+      }
+      if (teamList.length > 0 && (!selectedTeamName || !teamList.some((t) => t.name === selectedTeamName))) {
+        setSelectedTeamName(teamList[0].name);
+      }
     } catch (err) {
       console.error(err);
     }
@@ -39,7 +43,10 @@ export const AdminManagersPage: React.FC = () => {
 
   const handleAssignScope = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedMgrId || !selectedTeamName) return;
+    if (!selectedMgrId || !selectedTeamName) {
+      alert('Please select both a valid manager and an operational team.');
+      return;
+    }
 
     try {
       await dataService.assignManagerScope('admin', selectedMgrId, selectedTeamName);
@@ -221,9 +228,12 @@ export const AdminManagersPage: React.FC = () => {
                 >
                   {managers.map((m) => (
                     <option key={m.id} value={m.id}>
-                      {m.name} ({m.department})
+                      {m.name} ({m.department || 'Management'})
                     </option>
                   ))}
+                  {managers.length === 0 && (
+                    <option value="" disabled>No registered managers found</option>
+                  )}
                 </select>
               </div>
 
@@ -236,9 +246,12 @@ export const AdminManagersPage: React.FC = () => {
                 >
                   {teams.map((t) => (
                     <option key={t.id} value={t.name}>
-                      {t.name} ({t.department})
+                      {t.name} ({t.department || 'Operations'})
                     </option>
                   ))}
+                  {teams.length === 0 && (
+                    <option value="" disabled>No operational teams found</option>
+                  )}
                 </select>
               </div>
 

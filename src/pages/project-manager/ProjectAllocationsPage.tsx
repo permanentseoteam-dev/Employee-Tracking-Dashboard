@@ -331,6 +331,9 @@ export const ProjectAllocationsPage: React.FC = () => {
                       {buildResourcePath(f.id, treeItems)}
                     </option>
                   ))}
+                  {!folders.length && (
+                    <option value="" disabled>No folders in project</option>
+                  )}
                 </select>
                 {!folders.length && (
                   <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
@@ -374,6 +377,9 @@ export const ProjectAllocationsPage: React.FC = () => {
                     {buildResourcePath(f.id, treeItems)} ({f.item_type})
                   </option>
                 ))}
+                {!files.length && (
+                  <option value="" disabled>No files in project</option>
+                )}
               </select>
               {!files.length && (
                 <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>

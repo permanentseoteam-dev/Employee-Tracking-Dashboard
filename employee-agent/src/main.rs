@@ -284,6 +284,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .send_heartbeat(&employee_id, &device_info.device_identifier, true)
         .await;
     let _ = std::fs::remove_file(status_file::stop_path());
+    let _ = std::fs::remove_file(status_file::agent_dir().join("agent.lock"));
     println!("👋 [Agent stopped] Employee Agent terminated gracefully.");
     Ok(())
 }
@@ -332,34 +333,37 @@ async fn perform_screenshot_cycle(
 }
 
 fn acquire_single_instance_mutex() -> Result<(), String> {
-    // Cross-version lock file (avoids windows-sys CreateMutex feature gaps)
     let lock_path = status_file::agent_dir().join("agent.lock");
     let _ = std::fs::create_dir_all(status_file::agent_dir());
+    let current_pid = std::process::id();
+
     if lock_path.exists() {
-        // Stale lock if no process is alive — supervisor/tasklist name check is authoritative
-        // when another instance holds the lock and is running, refuse to start.
-        #[cfg(windows)]
-        {
-            let running = std::process::Command::new("tasklist")
-                .args(["/FI", "IMAGENAME eq employee-agent.exe", "/NH"])
-                .output()
-                .ok()
-                .map(|o| {
-                    String::from_utf8_lossy(&o.stdout)
-                        .to_lowercase()
-                        .contains("employee-agent.exe")
-                })
-                .unwrap_or(false);
-            if running {
-                return Err(
-                    "Another employee-agent instance is already running (single-instance lock)."
-                        .into(),
-                );
+        if let Ok(content) = std::fs::read_to_string(&lock_path) {
+            if let Ok(prev_pid) = content.trim().parse::<u32>() {
+                if prev_pid != current_pid {
+                    #[cfg(windows)]
+                    {
+                        let is_alive = std::process::Command::new("tasklist")
+                            .args(["/FI", &format!("PID eq {}", prev_pid), "/NH"])
+                            .output()
+                            .ok()
+                            .map(|o| {
+                                let out = String::from_utf8_lossy(&o.stdout).to_lowercase();
+                                out.contains("employee-agent.exe")
+                            })
+                            .unwrap_or(false);
+                        if is_alive {
+                            return Err(format!(
+                                "Another employee-agent instance (PID {}) is already running.",
+                                prev_pid
+                            ));
+                        }
+                    }
+                }
             }
         }
     }
-    let pid = std::process::id().to_string();
-    std::fs::write(&lock_path, pid.as_bytes())
+    std::fs::write(&lock_path, current_pid.to_string().as_bytes())
         .map_err(|e| format!("Failed to write agent lock: {e}"))?;
     Ok(())
 }

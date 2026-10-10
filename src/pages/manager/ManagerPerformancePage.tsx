@@ -516,6 +516,9 @@ export const ManagerPerformancePage: React.FC = () => {
                         {emp.name} &bull; Current: ⭐ {emp.stars}
                       </option>
                     ))}
+                  {employees.filter((emp) => !isManagerSelf(emp)).length === 0 && (
+                    <option value="" disabled>No team members found</option>
+                  )}
                 </select>
               </div>
 

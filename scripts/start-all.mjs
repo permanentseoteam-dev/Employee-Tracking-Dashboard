@@ -5,15 +5,27 @@ console.log('====================================================');
 console.log('🚀 Starting Localhost Dashboard & Employee Monitoring Agent');
 console.log('====================================================');
 
+import fs from 'fs';
+import path from 'path';
+
+// Clean up any stale agent lock file from previous aborted runs
+try {
+  const localAppData = process.env.LOCALAPPDATA || '.';
+  const lockFile = path.join(localAppData, 'EmployeeTracking', 'agent', 'agent.lock');
+  if (fs.existsSync(lockFile)) {
+    fs.unlinkSync(lockFile);
+  }
+} catch {}
+
 // 1. Launch Vite dev server (Dashboard UI on http://localhost:1420)
-const vite = spawn('npx', ['vite'], {
+const vite = spawn('npx vite', [], {
   stdio: 'inherit',
   shell: true,
   cwd: process.cwd(),
 });
 
 // 2. Launch Rust Native Employee Agent (Background screenshot & telemetry capture)
-const agent = spawn('cargo', ['run', '--manifest-path', 'employee-agent/Cargo.toml'], {
+const agent = spawn('cargo run --manifest-path employee-agent/Cargo.toml', [], {
   stdio: 'inherit',
   shell: true,
   cwd: process.cwd(),

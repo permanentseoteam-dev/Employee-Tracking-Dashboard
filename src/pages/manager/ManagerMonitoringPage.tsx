@@ -174,7 +174,9 @@ export const ManagerMonitoringPage: React.FC<ManagerMonitoringPageProps> = ({ in
     );
   };
 
-  const selectedEmpRecord = teamEmployees.find((e) => e.id === filterEmployeeId || e.name === filterEmployeeId);
+  const selectedEmpRecord = teamEmployees.find(
+    (e) => e.id === filterEmployeeId || e.user_id === filterEmployeeId || e.name === filterEmployeeId
+  );
   const activeFilterEmployeeName = filterEmployeeId === 'all'
     ? undefined
     : (selectedEmpRecord ? selectedEmpRecord.name : filterEmployeeId);
@@ -184,7 +186,9 @@ export const ManagerMonitoringPage: React.FC<ManagerMonitoringPageProps> = ({ in
     .filter((e) =>
       filterEmployeeId === 'all'
         ? true
-        : e.id === filterEmployeeId || e.name.toLowerCase() === filterEmployeeId.toLowerCase()
+        : e.id === filterEmployeeId ||
+          e.user_id === filterEmployeeId ||
+          e.name.toLowerCase() === filterEmployeeId.toLowerCase()
     );
 
   const filteredScreenshots = screenshots
@@ -193,6 +197,11 @@ export const ManagerMonitoringPage: React.FC<ManagerMonitoringPageProps> = ({ in
       if (filterEmployeeId === 'all') return true;
       return (
         s.employee_id === filterEmployeeId ||
+        (selectedEmpRecord && (
+          s.employee_id === selectedEmpRecord.user_id ||
+          s.employee_id === selectedEmpRecord.id ||
+          (s.employee_name && s.employee_name.toLowerCase().includes(selectedEmpRecord.name.toLowerCase()))
+        )) ||
         (s.employee_name && s.employee_name.toLowerCase().includes(filterEmployeeId.toLowerCase()))
       );
     });
@@ -233,7 +242,13 @@ export const ManagerMonitoringPage: React.FC<ManagerMonitoringPageProps> = ({ in
     .filter((r) => {
       const matchesEmp = filterEmployeeId === 'all'
         ? true
-        : r.employee_id === filterEmployeeId || r.employee_name.toLowerCase().includes(filterEmployeeId.toLowerCase());
+        : r.employee_id === filterEmployeeId ||
+          (selectedEmpRecord && (
+            r.employee_id === selectedEmpRecord.user_id ||
+            r.employee_id === selectedEmpRecord.id ||
+            (r.employee_name && r.employee_name.toLowerCase().includes(selectedEmpRecord.name.toLowerCase()))
+          )) ||
+          (r.employee_name && r.employee_name.toLowerCase().includes(filterEmployeeId.toLowerCase()));
       const matchesSearch = recordingSearch === ''
         ? true
         : r.employee_name.toLowerCase().includes(recordingSearch.toLowerCase()) ||

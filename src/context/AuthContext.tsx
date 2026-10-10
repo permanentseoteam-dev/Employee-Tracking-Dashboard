@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
 import type { User, Session } from '@supabase/supabase-js';
-import { supabase } from '../services/supabaseClient';
+import { supabase, purgeStoredAuthTokens } from '../services/supabaseClient';
 import { supabaseAuth } from '../services/supabaseService';
 import type { DisplayNamePref, UserProfile, UserRole } from '../types/roles';
 import { roleFromPath, rolePathPrefix } from '../types/roles';
@@ -186,34 +186,80 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return;
     }
 
-    supabaseAuth.getSession().then((sess) => {
-      setSession(sess);
-      sessionRef.current = sess;
-      setSupabaseUser(sess?.user ?? null);
-      if (sess?.user) {
-        syncSupabaseProfile(sess.user).finally(() => setIsLoading(false));
-      } else {
-        setIsLoading(false);
+    const resetAuthStateToUnauthenticated = () => {
+      setSession(null);
+      sessionRef.current = null;
+      setSupabaseUser(null);
+      profileRoleRef.current = null;
+      setUser(EMPTY_PROFILE);
+      userRef.current = EMPTY_PROFILE;
+      setIsLoading(false);
+    };
+
+    // Listen for custom auth purge event fired when 400 invalid refresh token is purged
+    const onAuthPurged = () => {
+      resetAuthStateToUnauthenticated();
+    };
+
+    // Catch and prevent unhandled promise rejections on dead refresh tokens
+    const handleUnhandledRejection = (event: PromiseRejectionEvent) => {
+      const reason = event.reason;
+      const message = String(reason?.message || reason || '').toLowerCase();
+      if (
+        message.includes('invalid refresh token') ||
+        message.includes('refresh token not found') ||
+        message.includes('refresh_token_not_found')
+      ) {
+        console.warn('Stale auth refresh rejection intercepted. Resetting session...');
+        event.preventDefault();
+        purgeStoredAuthTokens();
+        resetAuthStateToUnauthenticated();
       }
-    });
+    };
+
+    window.addEventListener('supabase:auth-purged', onAuthPurged);
+    window.addEventListener('unhandledrejection', handleUnhandledRejection);
+
+    supabaseAuth
+      .getSession()
+      .then((sess) => {
+        setSession(sess);
+        sessionRef.current = sess;
+        setSupabaseUser(sess?.user ?? null);
+        if (sess?.user) {
+          syncSupabaseProfile(sess.user).finally(() => setIsLoading(false));
+        } else {
+          setIsLoading(false);
+        }
+      })
+      .catch((err) => {
+        console.warn('Initial session check caught error:', err);
+        purgeStoredAuthTokens();
+        resetAuthStateToUnauthenticated();
+      });
 
     const { data: authListener } = supabase.auth.onAuthStateChange(
-      async (_event, currentSession) => {
+      async (event, currentSession) => {
+        if (event === 'SIGNED_OUT' || !currentSession) {
+          resetAuthStateToUnauthenticated();
+          return;
+        }
+
         setSession(currentSession);
         sessionRef.current = currentSession;
-        setSupabaseUser(currentSession?.user ?? null);
-        if (currentSession?.user) {
+        setSupabaseUser(currentSession.user ?? null);
+        if (currentSession.user) {
           await syncSupabaseProfile(currentSession.user);
         } else {
-          profileRoleRef.current = null;
-          setUser(EMPTY_PROFILE);
-          userRef.current = EMPTY_PROFILE;
+          resetAuthStateToUnauthenticated();
         }
         setIsLoading(false);
       }
     );
 
     return () => {
+      window.removeEventListener('supabase:auth-purged', onAuthPurged);
+      window.removeEventListener('unhandledrejection', handleUnhandledRejection);
       authListener.subscription.unsubscribe();
     };
   }, [isConfigured]);
@@ -251,6 +297,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const signIn = async (email: string, password: string) => {
+    // Purge any stale tokens before signing in to guarantee a clean slate
+    purgeStoredAuthTokens();
     const { user: authedUser, session: newSession } = await supabaseAuth.signIn(email, password);
     setSupabaseUser(authedUser);
     setSession(newSession);
@@ -297,6 +345,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (isConfigured) {
         await supabaseAuth.signOut();
       }
+    } catch (e) {
+      console.warn('SignOut error:', e);
+    } finally {
+      purgeStoredAuthTokens();
       setSupabaseUser(null);
       setSession(null);
       sessionRef.current = null;
@@ -305,7 +357,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       userRef.current = EMPTY_PROFILE;
       setRole('employee');
       window.location.hash = '';
-    } finally {
       setIsLoading(false);
     }
   };

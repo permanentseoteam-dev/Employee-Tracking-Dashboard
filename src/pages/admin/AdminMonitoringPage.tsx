@@ -211,7 +211,9 @@ export const AdminMonitoringPage: React.FC<AdminMonitoringPageProps> = ({ initia
     );
   };
 
-  const selectedEmpRecord = employees.find((e) => e.id === selectedEmployeeId || e.name === selectedEmployeeId);
+  const selectedEmpRecord = employees.find(
+    (e) => e.id === selectedEmployeeId || e.user_id === selectedEmployeeId || e.name === selectedEmployeeId
+  );
   const activeFilterEmployeeName = selectedEmployeeId === 'all'
     ? undefined
     : (selectedEmpRecord ? selectedEmpRecord.name : selectedEmployeeId);
@@ -219,13 +221,21 @@ export const AdminMonitoringPage: React.FC<AdminMonitoringPageProps> = ({ initia
   const filteredEmployees = employees.filter((e) =>
     selectedEmployeeId === 'all'
       ? true
-      : e.id === selectedEmployeeId || e.name.toLowerCase() === selectedEmployeeId.toLowerCase()
+      : e.id === selectedEmployeeId ||
+        e.user_id === selectedEmployeeId ||
+        e.name.toLowerCase() === selectedEmployeeId.toLowerCase()
   );
 
   const filteredRecordings = recordings.filter((r) => {
     const matchesEmp = selectedEmployeeId === 'all'
       ? true
-      : r.employee_id === selectedEmployeeId || r.employee_name.toLowerCase().includes(selectedEmployeeId.toLowerCase());
+      : r.employee_id === selectedEmployeeId ||
+        (selectedEmpRecord && (
+          r.employee_id === selectedEmpRecord.user_id ||
+          r.employee_id === selectedEmpRecord.id ||
+          (r.employee_name && r.employee_name.toLowerCase() === selectedEmpRecord.name.toLowerCase())
+        )) ||
+        (r.employee_name && r.employee_name.toLowerCase().includes(selectedEmployeeId.toLowerCase()));
     const matchesSearch = recordingSearch === ''
       ? true
       : r.employee_name.toLowerCase().includes(recordingSearch.toLowerCase()) ||
@@ -239,6 +249,7 @@ export const AdminMonitoringPage: React.FC<AdminMonitoringPageProps> = ({ initia
       : employees.filter(
           (e) =>
             e.id === selectedEmployeeId ||
+            e.user_id === selectedEmployeeId ||
             e.name.toLowerCase() === selectedEmployeeId.toLowerCase()
         );
   const totalActiveCount = scopedEmployees.filter((e) => e.status === 'active' || e.status === 'idle' || e.status === 'on_break').length;

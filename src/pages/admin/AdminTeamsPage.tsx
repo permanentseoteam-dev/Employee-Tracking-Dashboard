@@ -413,13 +413,20 @@ export const AdminTeamsPage: React.FC = () => {
                   value={teamDept}
                   onChange={(e) => setTeamDept(e.target.value)}
                 >
-                  <option value="Engineering">Engineering</option>
-                  <option value="Frontend">Frontend</option>
-                  <option value="Mobile">Mobile</option>
-                  <option value="Security">Security & Compliance</option>
-                  <option value="Product">Product & Design</option>
-                  <option value="QA">Quality Assurance</option>
-                  <option value="Operations">Operations</option>
+                  {Array.from(new Set([
+                    teamDept,
+                    'Engineering',
+                    'Frontend',
+                    'Mobile',
+                    'Security',
+                    'Product',
+                    'QA',
+                    'Operations',
+                    'Management',
+                    'Employee'
+                  ].filter(Boolean))).map((d) => (
+                    <option key={d} value={d}>{d}</option>
+                  ))}
                 </select>
               </div>
 
@@ -496,13 +503,20 @@ export const AdminTeamsPage: React.FC = () => {
                   value={editDept}
                   onChange={(e) => setEditDept(e.target.value)}
                 >
-                  <option value="Engineering">Engineering</option>
-                  <option value="Frontend">Frontend</option>
-                  <option value="Mobile">Mobile</option>
-                  <option value="Security">Security & Compliance</option>
-                  <option value="Product">Product & Design</option>
-                  <option value="QA">Quality Assurance</option>
-                  <option value="Operations">Operations</option>
+                  {Array.from(new Set([
+                    editDept,
+                    'Engineering',
+                    'Frontend',
+                    'Mobile',
+                    'Security',
+                    'Product',
+                    'QA',
+                    'Operations',
+                    'Management',
+                    'Employee'
+                  ].filter(Boolean))).map((d) => (
+                    <option key={d} value={d}>{d}</option>
+                  ))}
                 </select>
               </div>
 

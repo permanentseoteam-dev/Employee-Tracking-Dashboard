@@ -77,8 +77,10 @@ export const AdminFinancePage: React.FC = () => {
       s.department.toLowerCase().includes(searchQuery.toLowerCase()) ||
       s.bank_account_mask.includes(searchQuery);
 
-    const matchesStatus = statusFilter === 'all' || s.payment_status === statusFilter;
-    const matchesDept = deptFilter === 'all' || s.department === deptFilter;
+    const matchesStatus =
+      statusFilter === 'all' || (s.payment_status || '').toLowerCase() === statusFilter.toLowerCase();
+    const matchesDept =
+      deptFilter === 'all' || (s.department || '').trim().toLowerCase() === deptFilter.trim().toLowerCase();
 
     return matchesSearch && matchesStatus && matchesDept;
   });

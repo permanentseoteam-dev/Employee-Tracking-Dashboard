@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
+import { purgeStoredAuthTokens } from '../services/supabaseClient';
 import { UserRole } from '../types/roles';
 import {
   Lock,
@@ -71,6 +72,9 @@ export const LoginPage: React.FC = () => {
         );
       } else if (lower.includes('invalid login') || lower.includes('invalid credentials')) {
         setError('Invalid email or password. Please verify your credentials.');
+      } else if (lower.includes('refresh token') || lower.includes('refresh_token') || lower.includes('invalid_grant')) {
+        purgeStoredAuthTokens();
+        setError('Previous session was expired or invalid. Stored session data has been purged. Please sign in now.');
       } else {
         setError(raw);
       }

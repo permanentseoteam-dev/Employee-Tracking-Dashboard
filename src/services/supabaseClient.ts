@@ -12,6 +12,90 @@ export const isSupabaseConfigured = (): boolean => {
   );
 };
 
+/**
+ * Remove all Supabase auth session keys from localStorage and sessionStorage.
+ * This guarantees that dead or revoked refresh tokens cannot cause recurring 400 POST /token errors.
+ */
+export const purgeStoredAuthTokens = (): void => {
+  if (typeof window === 'undefined') return;
+
+  const storageTargets = [window.localStorage, window.sessionStorage];
+  const keysToRemove: { storage: Storage; key: string }[] = [];
+
+  storageTargets.forEach((storage) => {
+    if (!storage) return;
+    try {
+      for (let i = 0; i < storage.length; i++) {
+        const key = storage.key(i);
+        if (
+          key &&
+          (key.startsWith('sb-') ||
+            key.includes('auth-token') ||
+            key.includes('supabase.auth') ||
+            key.includes('refresh_token'))
+        ) {
+          keysToRemove.push({ storage, key });
+        }
+      }
+    } catch {
+      // Ignore cross-origin / security errors
+    }
+  });
+
+  keysToRemove.forEach(({ storage, key }) => {
+    try {
+      storage.removeItem(key);
+    } catch {
+      // Ignore
+    }
+  });
+
+  try {
+    window.dispatchEvent(new CustomEvent('supabase:auth-purged'));
+  } catch {
+    // Ignore
+  }
+};
+
+/**
+ * Custom fetch wrapper that intercepts 400 Bad Request responses on /auth/v1/token.
+ * When Supabase responds with "Invalid Refresh Token: Refresh Token Not Found" or "invalid_grant",
+ * this automatically purges the dead token from browser storage so the client stops retrying.
+ */
+const authSafeFetch: typeof fetch = async (input, init) => {
+  const response = await fetch(input, init);
+
+  if (response.status === 400) {
+    const urlStr =
+      typeof input === 'string'
+        ? input
+        : input instanceof Request
+        ? input.url
+        : String(input);
+
+    if (urlStr.includes('/auth/v1/token')) {
+      try {
+        const clone = response.clone();
+        const text = await clone.text();
+        if (
+          text.includes('Invalid Refresh Token') ||
+          text.includes('refresh_token_not_found') ||
+          text.includes('invalid_grant')
+        ) {
+          console.warn(
+            '[Supabase Client] Invalid refresh token rejected by server (400). Purging stale auth storage to prevent retry loops.'
+          );
+          purgeStoredAuthTokens();
+        }
+      } catch {
+        // Ignore response clone errors
+      }
+    }
+  }
+
+  return response;
+};
+
 // Create a singleton Supabase client instance
 export const supabase = createClient(
   supabaseUrl || 'https://placeholder.supabase.co',
@@ -22,5 +106,9 @@ export const supabase = createClient(
       autoRefreshToken: true,
       detectSessionInUrl: true,
     },
+    global: {
+      fetch: authSafeFetch,
+    },
   }
 );
+

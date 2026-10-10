@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { Plus, Search, Smartphone, X, Users, UserCheck } from 'lucide-react';
 import { dataService } from '../../services/dataService';
@@ -16,7 +16,7 @@ export const AdminEmployeesPage: React.FC = () => {
   const [newEmpName, setNewEmpName] = useState('');
   const [newEmpEmail, setNewEmpEmail] = useState('');
   const [newEmpDept, setNewEmpDept] = useState('Engineering');
-  const [newEmpManagerId, setNewEmpManagerId] = useState('mgr-001');
+  const [newEmpManagerId, setNewEmpManagerId] = useState('');
 
   const loadData = async () => {
     try {
@@ -50,10 +50,20 @@ export const AdminEmployeesPage: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    if (managers.length > 0 && (!newEmpManagerId || newEmpManagerId === 'mgr-001')) {
+    if (managers.length > 0 && (!newEmpManagerId || !managers.some((m) => m.id === newEmpManagerId))) {
       setNewEmpManagerId(managers[0].id);
     }
-  }, [managers]);
+  }, [managers, newEmpManagerId]);
+
+  const availableDepts = useMemo(() => {
+    const set = new Set<string>();
+    employees.forEach((e) => {
+      if (e?.department && e.department.trim()) set.add(e.department.trim());
+    });
+    // Add default core options if not present
+    ['Engineering', 'Frontend', 'Mobile', 'Employee', 'Operations'].forEach((d) => set.add(d));
+    return Array.from(set).sort();
+  }, [employees]);
 
   const handleAddEmployee = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -98,7 +108,9 @@ export const AdminEmployeesPage: React.FC = () => {
       name.toLowerCase().includes(search) ||
       email.toLowerCase().includes(search) ||
       team.toLowerCase().includes(search);
-    const matchesDept = selectedDept === 'all' || e?.department === selectedDept;
+    const matchesDept =
+      selectedDept === 'all' ||
+      (e?.department || '').trim().toLowerCase() === selectedDept.trim().toLowerCase();
     return matchesSearch && matchesDept;
   });
 
@@ -159,9 +171,11 @@ export const AdminEmployeesPage: React.FC = () => {
               onChange={(e) => setSelectedDept(e.target.value)}
             >
               <option value="all">All Departments</option>
-              <option value="Engineering">Engineering</option>
-              <option value="Frontend">Frontend</option>
-              <option value="Mobile">Mobile</option>
+              {availableDepts.map((dept) => (
+                <option key={dept} value={dept}>
+                  {dept}
+                </option>
+              ))}
             </select>
           </div>
         </div>
@@ -284,9 +298,11 @@ export const AdminEmployeesPage: React.FC = () => {
                   value={newEmpDept}
                   onChange={(e) => setNewEmpDept(e.target.value)}
                 >
-                  <option value="Engineering">Engineering</option>
-                  <option value="Frontend">Frontend</option>
-                  <option value="Mobile">Mobile</option>
+                  {availableDepts.map((d) => (
+                    <option key={d} value={d}>
+                      {d}
+                    </option>
+                  ))}
                 </select>
               </div>
 
@@ -299,9 +315,12 @@ export const AdminEmployeesPage: React.FC = () => {
                 >
                   {managers.map((m) => (
                     <option key={m.id} value={m.id}>
-                      {m.name} ({m.department})
+                      {m.name} ({m.department || 'Management'})
                     </option>
                   ))}
+                  {managers.length === 0 && (
+                    <option value="" disabled>No registered managers found</option>
+                  )}
                 </select>
               </div>
 

@@ -68,7 +68,11 @@ export const AdminPerformancePage: React.FC = () => {
   // 2. Open Star Allocate / Deallocate Modal
   const handleOpenStarModal = (mode: 'allocate' | 'deallocate', empId?: string) => {
     setStarModalMode(mode);
-    if (empId) setSelectedEmpId(empId);
+    if (empId) {
+      setSelectedEmpId(empId);
+    } else if (employees.length > 0 && (!selectedEmpId || !employees.some((e) => e.id === selectedEmpId))) {
+      setSelectedEmpId(employees[0].id);
+    }
     setStarAmount(mode === 'allocate' ? 3 : 2);
     setStarReason(
       mode === 'allocate'
@@ -532,9 +536,12 @@ export const AdminPerformancePage: React.FC = () => {
                 >
                   {employees.map((emp) => (
                     <option key={emp.id} value={emp.id}>
-                      {emp.name} ({emp.team_name}) &bull; Current: ⭐ {emp.stars}
+                      {emp.name} ({emp.team_name || 'General'}) &bull; Current: ⭐ {emp.stars}
                     </option>
                   ))}
+                  {employees.length === 0 && (
+                    <option value="" disabled>No employees registered</option>
+                  )}
                 </select>
               </div>
 

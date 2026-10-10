@@ -200,19 +200,19 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({ onNaviga
     'No agent linked';
 
   // Real-time Fleet Telemetry Calculations
-  const totalFleetCount = employees.length > 0 ? employees.length : 1;
-  const activeFleetCount = employees.filter((e) => e.status === 'active').length || (employees.length > 0 ? 1 : 1);
+  const totalFleetCount = employees.length > 0 ? employees.length : 0;
+  const activeFleetCount = employees.filter((e) => e.status === 'active').length;
   const idleFleetCount = employees.filter((e) => e.status === 'idle' || e.status === 'on_break').length;
   const offlineFleetCount = Math.max(0, employees.length - activeFleetCount - idleFleetCount);
 
-  const activeFleetPct = Math.round((activeFleetCount / totalFleetCount) * 100);
-  const idleFleetPct = Math.round((idleFleetCount / totalFleetCount) * 100);
+  const activeFleetPct = totalFleetCount > 0 ? Math.round((activeFleetCount / totalFleetCount) * 100) : 0;
+  const idleFleetPct = totalFleetCount > 0 ? Math.round((idleFleetCount / totalFleetCount) * 100) : 0;
   const offlineFleetPct = Math.max(0, 100 - activeFleetPct - idleFleetPct);
 
   // Onsite vs Remote
-  const onsiteStaffCount = employees.filter((e) => !e.department?.toLowerCase().includes('remote')).length || employees.length || 1;
+  const onsiteStaffCount = employees.filter((e) => !e.department?.toLowerCase().includes('remote')).length;
   const remoteStaffCount = Math.max(0, employees.length - onsiteStaffCount);
-  const onsiteStaffPct = Math.round((onsiteStaffCount / totalFleetCount) * 100);
+  const onsiteStaffPct = totalFleetCount > 0 ? Math.round((onsiteStaffCount / totalFleetCount) * 100) : 0;
   const remoteStaffPct = Math.max(0, 100 - onsiteStaffPct);
 
   const completedOnboardingCount = checklist.filter((c) => c.done).length;
@@ -739,7 +739,7 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({ onNaviga
                         </td>
                         <td style={{ color: 'var(--text-muted)' }}>{emp.department || 'Engineering'}</td>
                         <td style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
-                          {Math.floor((emp.active_seconds || 14400) / 3600)}h {Math.floor(((emp.active_seconds || 14400) % 3600) / 60)}m
+                          {Math.floor((emp.active_seconds || 0) / 3600)}h {Math.floor(((emp.active_seconds || 0) % 3600) / 60)}m
                         </td>
                         <td>
                           <span className={`status-pill ${emp.status === 'active' ? 'active' : emp.status === 'idle' ? 'idle' : 'offline'}`}>

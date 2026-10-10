@@ -211,6 +211,7 @@ export const AdminSettingsAuditPage: React.FC<AdminSettingsAuditPageProps> = ({ 
     try {
       const saved = await dataService.updateAgentRuntimeConfig('admin', officeHours);
       setOfficeHours(saved);
+      window.dispatchEvent(new CustomEvent('stitch:office_hours_updated'));
       dataService.logAction(
         'Super Admin',
         'admin',

@@ -5,6 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import { dataService } from '../services/dataService';
 import { supabase, isSupabaseConfigured } from '../services/supabaseClient';
 import { useBreakSchedule } from '../hooks/useBreakSchedule';
+import { useOfficeHours } from '../hooks/useOfficeHours';
 import { formatBreakRange } from '../utils/breakSchedule';
 import type { AgentStatusDto } from '../types';
 import type { AttendanceRecordItem } from '../types/roles';
@@ -18,13 +19,32 @@ interface AttendancePageProps {
 export const AttendancePage: React.FC<AttendancePageProps> = ({ status }) => {
   const { user } = useAuth();
   const { schedule } = useBreakSchedule();
+  const {
+    isWithinOfficeHours,
+    workStartFormatted,
+    workEndFormatted,
+    workDaysSummary,
+  } = useOfficeHours();
   const [attendance, setAttendance] = useState<AttendanceRecordItem[]>([]);
+  const [history, setHistory] = useState<Array<{
+    id: string;
+    date: string;
+    clock_in: string;
+    clock_out: string;
+    active_hours: number;
+    idle_hours: number;
+    status: 'on_time' | 'late' | 'absent' | 'leave';
+  }>>([]);
   const [isPunching, setIsPunching] = useState(false);
 
   const loadData = async () => {
     try {
-      const list = await dataService.getAttendance('employee', undefined, user.id);
+      const [list, hist] = await Promise.all([
+        dataService.getAttendance('employee', undefined, user.id),
+        dataService.getAttendanceHistory(user.id),
+      ]);
       setAttendance(list);
+      setHistory(hist);
     } catch (err) {
       console.error('Failed to load employee attendance:', err);
     }
@@ -44,8 +64,12 @@ export const AttendancePage: React.FC<AttendancePageProps> = ({ status }) => {
 
   const record = attendance[0];
   const isPresent = record ? record.status === 'on_time' || record.status === 'late' : status.is_online;
-  const firstActivity = record ? record.first_activity_at : status.last_sync_time ? new Date(status.last_sync_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '09:00 AM';
-  const trackedHours = record ? record.active_hours : 5.5;
+  const firstActivity = record && record.first_activity_at !== '--'
+    ? record.first_activity_at
+    : status.last_sync_time && status.is_online
+      ? new Date(status.last_sync_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      : '--';
+  const trackedHours = record ? record.active_hours : 0;
 
   const handleManualPunch = async () => {
     setIsPunching(true);
@@ -105,7 +129,7 @@ export const AttendancePage: React.FC<AttendancePageProps> = ({ status }) => {
             Attendance Chronology
           </h1>
           <p style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 4 }}>
-            Automated first-meaningful-activity detection • Shift: 09:00 AM – 05:00 PM
+            Automated first-meaningful-activity detection • Shift: {workStartFormatted} – {workEndFormatted} ({workDaysSummary})
             {schedule.coffee.enabled ? ` • ☕ ${schedule.coffee.label}: ${formatBreakRange(schedule.coffee)}` : ''}
             {schedule.zuhr.enabled ? ` • 🕌 ${schedule.zuhr.label}: ${formatBreakRange(schedule.zuhr)}` : ''}
           </p>
@@ -130,13 +154,42 @@ export const AttendancePage: React.FC<AttendancePageProps> = ({ status }) => {
         <div className="frosted-card">
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
             <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-muted)' }}>Shift Status</span>
-            <CheckCircle2 size={16} color={isPresent ? 'var(--status-success)' : 'var(--status-warning)'} />
+            <CheckCircle2
+              size={16}
+              color={
+                isPresent && isWithinOfficeHours
+                  ? 'var(--status-success)'
+                  : isPresent
+                  ? 'var(--color-primary)'
+                  : isWithinOfficeHours
+                  ? 'var(--status-warning)'
+                  : 'var(--text-muted)'
+              }
+            />
           </div>
-          <div className="stat-numeric-md" style={{ color: isPresent ? 'var(--status-success)' : 'var(--status-warning)' }}>
-            {isPresent ? 'Present & Verified' : 'Pending Check-in'}
+          <div
+            className="stat-numeric-md"
+            style={{
+              color:
+                isPresent && isWithinOfficeHours
+                  ? 'var(--status-success)'
+                  : isPresent
+                  ? 'var(--color-primary)'
+                  : isWithinOfficeHours
+                  ? 'var(--status-warning)'
+                  : 'var(--text-muted)',
+            }}
+          >
+            {isPresent
+              ? isWithinOfficeHours
+                ? 'Present & On Duty'
+                : 'Active (Outside Office Hours)'
+              : isWithinOfficeHours
+              ? 'Pending Check-in'
+              : 'Off Duty (Shift Ended)'}
           </div>
           <span style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>
-            Detected by native Windows agent
+            Shift window: {workStartFormatted} – {workEndFormatted} ({workDaysSummary})
           </span>
         </div>
 
@@ -167,9 +220,9 @@ export const AttendancePage: React.FC<AttendancePageProps> = ({ status }) => {
             <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-muted)' }}>Punctuality Score</span>
             <ShieldCheck size={16} color="var(--status-success)" />
           </div>
-          <div className="stat-numeric-md">100%</div>
+          <div className="stat-numeric-md">{record?.status === 'late' ? '85%' : '100%'}</div>
           <span style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>
-            0 unexcused absences
+            {record?.status === 'late' ? '1 late arrival recorded' : '0 unexcused absences'}
           </span>
         </div>
       </div>
@@ -199,48 +252,67 @@ export const AttendancePage: React.FC<AttendancePageProps> = ({ status }) => {
               </tr>
             </thead>
             <tbody>
-              <tr>
-                <td>
-                  <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
-                    {new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                  </span>
-                </td>
-                <td>
-                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontWeight: 600, color: 'var(--status-success)' }}>
-                    <ArrowDownLeft size={13} /> {firstActivity}
-                  </span>
-                </td>
-                <td>
-                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontWeight: 600, color: 'var(--text-muted)' }}>
-                    <ArrowUpRight size={13} /> 05:00 PM
-                  </span>
-                </td>
-                <td style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{trackedHours} hrs</td>
-                <td style={{ color: 'var(--text-muted)' }}>0.4 hrs</td>
-                <td>
-                  <span className="status-pill active">On-Time</span>
-                </td>
-              </tr>
-              <tr>
-                <td>
-                  <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>Yesterday</span>
-                </td>
-                <td>
-                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontWeight: 600, color: 'var(--status-success)' }}>
-                    <ArrowDownLeft size={13} /> 08:58 AM
-                  </span>
-                </td>
-                <td>
-                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontWeight: 600, color: 'var(--text-muted)' }}>
-                    <ArrowUpRight size={13} /> 05:05 PM
-                  </span>
-                </td>
-                <td style={{ fontWeight: 600, color: 'var(--text-primary)' }}>8.1 hrs</td>
-                <td style={{ color: 'var(--text-muted)' }}>0.5 hrs</td>
-                <td>
-                  <span className="status-pill active">On-Time</span>
-                </td>
-              </tr>
+              {history.length > 0 ? (
+                history.map((row) => (
+                  <tr key={row.id}>
+                    <td>
+                      <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{row.date}</span>
+                    </td>
+                    <td>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontWeight: 600, color: 'var(--status-success)' }}>
+                        <ArrowDownLeft size={13} /> {row.clock_in}
+                      </span>
+                    </td>
+                    <td>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontWeight: 600, color: 'var(--text-muted)' }}>
+                        <ArrowUpRight size={13} /> {row.clock_out}
+                      </span>
+                    </td>
+                    <td style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{row.active_hours} hrs</td>
+                    <td style={{ color: 'var(--text-muted)' }}>{row.idle_hours} hrs</td>
+                    <td>
+                      <span className={`status-pill ${row.status === 'late' ? 'late' : 'active'}`}>
+                        {row.status === 'late' ? 'Late' : 'On-Time'}
+                      </span>
+                    </td>
+                  </tr>
+                ))
+              ) : isPresent || (record && (record.active_hours > 0 || record.first_activity_at !== '--')) ? (
+                <tr>
+                  <td>
+                    <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
+                      {new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                    </span>
+                  </td>
+                  <td>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontWeight: 600, color: 'var(--status-success)' }}>
+                      <ArrowDownLeft size={13} /> {firstActivity !== '--' ? firstActivity : 'Pending'}
+                    </span>
+                  </td>
+                  <td>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontWeight: 600, color: 'var(--text-muted)' }}>
+                      <ArrowUpRight size={13} /> In Progress
+                    </span>
+                  </td>
+                  <td style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{trackedHours} hrs</td>
+                  <td style={{ color: 'var(--text-muted)' }}>{(record?.idle_hours ?? 0)} hrs</td>
+                  <td>
+                    <span className={`status-pill ${record?.status === 'late' ? 'late' : 'active'}`}>
+                      {record?.status === 'late' ? 'Late' : 'On-Time'}
+                    </span>
+                  </td>
+                </tr>
+              ) : (
+                <tr>
+                  <td colSpan={6} style={{ textAlign: 'center', padding: '2.5rem', color: 'var(--text-muted)' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+                      <Clock size={24} style={{ opacity: 0.4 }} />
+                      <span style={{ fontWeight: 600, color: 'var(--text-secondary)' }}>No attendance sessions recorded yet</span>
+                      <span style={{ fontSize: 12 }}>Click &quot;Manual Check-in Punch&quot; above to log your shift for today.</span>
+                    </div>
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>

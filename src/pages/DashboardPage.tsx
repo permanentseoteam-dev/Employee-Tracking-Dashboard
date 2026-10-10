@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import {
   Play,
@@ -13,6 +13,9 @@ import {
 import { useAuth } from '../context/AuthContext';
 import { FocusSessionWidget } from '../components/timer/FocusSessionWidget';
 import { greetUser } from '../utils/datetime';
+import { dataService } from '../services/dataService';
+import { useAppRefresh } from '../hooks/useAppRefresh';
+import { useOfficeHours } from '../hooks/useOfficeHours';
 import type { AgentStatusDto, DbStats, SystemInfoDto } from '../types';
 
 interface DashboardPageProps {
@@ -28,10 +31,62 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
   onNavigateToTab,
 }) => {
   const { user } = useAuth();
+  const {
+    isWithinOfficeHours,
+    statusLabel: officeStatusLabel,
+    workStartFormatted,
+    workEndFormatted,
+  } = useOfficeHours();
   const [timerSeconds, setTimerSeconds] = useState(0);
   const [isTimerRunning, setIsTimerRunning] = useState(false);
   const [isFocusSessionOpen, setIsFocusSessionOpen] = useState(false);
   const [focusTargetMinutes, setFocusTargetMinutes] = useState(25);
+
+  const [todayDbHours, setTodayDbHours] = useState(0);
+  const [todayStars, setTodayStars] = useState(0);
+  const [todayLateFlags, setTodayLateFlags] = useState(0);
+  const [todayCheckIn, setTodayCheckIn] = useState('--');
+  const [tasksSummary, setTasksSummary] = useState({ completed: 0, inProgress: 0, todo: 0 });
+
+  const loadEmployeeData = useCallback(async () => {
+    if (!user?.id) return;
+    try {
+      const [attList, taskList, empList] = await Promise.all([
+        dataService.getAttendance('employee', undefined, user.id),
+        dataService.getTasks('employee', user.id),
+        dataService.getEmployees('employee', undefined, user.id),
+      ]);
+      const att = attList[0];
+      if (att) {
+        setTodayDbHours(att.active_hours || 0);
+        setTodayLateFlags(att.late_minutes > 0 ? 1 : 0);
+        setTodayCheckIn(att.first_activity_at || '--');
+      }
+      if (empList && empList[0]) {
+        setTodayStars(empList[0].stars || 0);
+      }
+      if (taskList) {
+        const completed = taskList.filter((t: any) => t.status === 'completed').length;
+        const inProg = taskList.filter((t: any) => t.status === 'in_progress').length;
+        const todo = taskList.filter((t: any) => t.status === 'todo' || t.status === 'pending').length;
+        setTasksSummary({ completed, inProgress: inProg, todo });
+      }
+    } catch (e) {
+      console.error('Failed to load employee dashboard stats:', e);
+    }
+  }, [user?.id]);
+
+  useAppRefresh(loadEmployeeData);
+
+  useEffect(() => {
+    loadEmployeeData();
+    const unsubscribe = dataService.subscribeToRealtime((payload) => {
+      if (payload.table === 'employee_presence' || payload.table === 'attendance_records' || payload.table === 'tasks') {
+        loadEmployeeData();
+      }
+    });
+    return () => unsubscribe();
+  }, [loadEmployeeData]);
 
   useEffect(() => {
     let interval: any;
@@ -52,10 +107,12 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
     return `${mins}.${secs}`;
   };
 
+  const totalActiveHoursNum = Number((todayDbHours + timerSeconds / 3600).toFixed(1));
+  const cadencePct = totalActiveHoursNum > 0 ? Math.min(100, Math.round((totalActiveHoursNum / 8) * 100)) : 0;
+  const filledDotsCount = Math.round((cadencePct / 100) * 48);
+
   const targetSeconds = Math.max(60, focusTargetMinutes * 60);
   const progressRatio = timerSeconds === 0 ? 0 : Math.min(1, Math.max(0, timerSeconds / targetSeconds));
-  // Circle radius is 42, circumference is 2 * PI * 42 ≈ 263.89 (strokeDasharray is 264)
-  // When timerSeconds is 0, offset is strictly 264 (0% drawn, no green bar).
   const strokeDashoffset = timerSeconds === 0 ? 264 : Math.round(264 * (1 - progressRatio));
 
   return (
@@ -71,6 +128,10 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)' }}>
             <span className="pulse-beacon" />
             <span>Workstation Operations</span>
+            <span style={{ opacity: 0.4 }}>•</span>
+            <span style={{ color: isWithinOfficeHours ? 'var(--status-success)' : 'var(--text-muted)' }}>
+              {officeStatusLabel} ({workStartFormatted} – {workEndFormatted})
+            </span>
           </div>
           <h1 style={{ fontSize: 32, fontWeight: 800, color: 'var(--text-primary)', letterSpacing: '-0.03em', marginTop: 2 }}>
             {greetUser(user.name)}
@@ -103,7 +164,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
         <div className="frosted-card" style={{ display: 'flex', alignItems: 'center', gap: '2rem', padding: '1rem 1.75rem' }}>
           <div>
             <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
-              <span className="stat-numeric-lg">{(timerSeconds / 3600).toFixed(1)}h</span>
+              <span className="stat-numeric-lg">{totalActiveHoursNum}h</span>
               <span className="stat-diff-badge">Today</span>
             </div>
             <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--text-muted)' }}>Active Work</span>
@@ -113,8 +174,8 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
 
           <div>
             <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
-              <span className="stat-numeric-lg">10</span>
-              <span className="stat-diff-badge">⭐ High</span>
+              <span className="stat-numeric-lg">{todayStars}</span>
+              <span className="stat-diff-badge">{todayStars > 5 ? '⭐ High' : '⭐ Active'}</span>
             </div>
             <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--text-muted)' }}>Stars Balance</span>
           </div>
@@ -123,8 +184,8 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
 
           <div>
             <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
-              <span className="stat-numeric-lg">0</span>
-              <span className="stat-diff-badge">Punctual</span>
+              <span className="stat-numeric-lg">{todayLateFlags}</span>
+              <span className="stat-diff-badge">{todayLateFlags === 0 ? 'Punctual' : 'Flagged'}</span>
             </div>
             <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--text-muted)' }}>Late Flags</span>
           </div>
@@ -137,10 +198,12 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
         <div className="frosted-card" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
           <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
             <div>
-              <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-muted)' }}>Today's Activity Cadence</span>
+              <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-muted)' }}>Today&apos;s Activity Cadence</span>
               <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginTop: 4 }}>
-                <span className="stat-numeric-lg">92%</span>
-                <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--color-secondary)' }}>Active Telemetry</span>
+                <span className="stat-numeric-lg">{cadencePct}%</span>
+                <span style={{ fontSize: 11, fontWeight: 700, color: totalActiveHoursNum > 0 ? 'var(--color-secondary)' : 'var(--text-muted)' }}>
+                  {totalActiveHoursNum > 0 ? 'Active Telemetry' : 'Standby / Pending'}
+                </span>
               </div>
             </div>
             <button
@@ -153,24 +216,25 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
           </div>
 
           <div className="matrix-grid-container" style={{ margin: '1.25rem 0' }}>
-            {[
-              [1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0],
-              [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0],
-              [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
-              [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
-            ].map((row, rIdx) => (
+            {[0, 1, 2, 3].map((rIdx) => (
               <div key={rIdx} className="matrix-row">
-                {row.map((val, cIdx) => (
-                  <div key={cIdx} className={`matrix-node ${val ? 'filled' : ''}`} />
-                ))}
+                {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11].map((cIdx) => {
+                  const nodeIndex = rIdx * 12 + cIdx;
+                  const isNodeFilled = nodeIndex < filledDotsCount;
+                  return (
+                    <div key={cIdx} className={`matrix-node ${isNodeFilled ? 'filled' : ''}`} />
+                  );
+                })}
               </div>
             ))}
           </div>
 
           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'var(--text-muted)' }}>
-            <span>09:00 AM Check-in</span>
-            <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>Standard Shift</span>
-            <span>05:00 PM Check-out</span>
+            <span>{todayCheckIn !== '--' ? `${todayCheckIn} Check-in` : `${workStartFormatted} Shift Start`}</span>
+            <span style={{ fontWeight: 600, color: isWithinOfficeHours ? 'var(--status-success)' : 'var(--text-muted)' }}>
+              {officeStatusLabel}
+            </span>
+            <span>{workEndFormatted} Shift End</span>
           </div>
         </div>
 
@@ -300,19 +364,40 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8, margin: 'auto 0' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'var(--text-muted)' }}>
-              <span>2 Completed</span>
-              <span>1 In Progress</span>
-              <span>1 Todo</span>
+              <span>{tasksSummary.completed} Completed</span>
+              <span>{tasksSummary.inProgress} In Progress</span>
+              <span>{tasksSummary.todo} Todo</span>
             </div>
-            <div style={{ width: '100%', height: 28, borderRadius: 'var(--radius-pill)', background: 'var(--surface-border-subtle)', padding: 3, display: 'flex', gap: 4, overflow: 'hidden' }}>
-              <div style={{ width: '50%', height: '100%', borderRadius: 'var(--radius-pill)', background: 'var(--color-secondary-container)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <span style={{ fontSize: 10, fontWeight: 800, color: 'var(--color-on-secondary-container)' }}>50%</span>
-              </div>
-              <div style={{ width: '25%', height: '100%', borderRadius: 'var(--radius-pill)', background: 'var(--color-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <span style={{ fontSize: 10, fontWeight: 800, color: 'var(--color-on-primary)' }}>25%</span>
-              </div>
-              <div style={{ width: '25%', height: '100%', borderRadius: 'var(--radius-pill)', background: 'var(--surface-frosted-subdued)' }} />
-            </div>
+            {(() => {
+              const totalTasks = tasksSummary.completed + tasksSummary.inProgress + tasksSummary.todo;
+              if (totalTasks === 0) {
+                return (
+                  <div style={{ width: '100%', height: 28, borderRadius: 'var(--radius-pill)', background: 'var(--surface-border-subtle)', padding: 3, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 500 }}>No tasks queued for today</span>
+                  </div>
+                );
+              }
+              const donePct = Math.round((tasksSummary.completed / totalTasks) * 100);
+              const inProgPct = Math.round((tasksSummary.inProgress / totalTasks) * 100);
+              const todoPct = Math.max(0, 100 - donePct - inProgPct);
+              return (
+                <div style={{ width: '100%', height: 28, borderRadius: 'var(--radius-pill)', background: 'var(--surface-border-subtle)', padding: 3, display: 'flex', gap: 4, overflow: 'hidden' }}>
+                  {donePct > 0 && (
+                    <div style={{ width: `${donePct}%`, height: '100%', borderRadius: 'var(--radius-pill)', background: 'var(--color-secondary-container)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <span style={{ fontSize: 10, fontWeight: 800, color: 'var(--color-on-secondary-container)' }}>{donePct}%</span>
+                    </div>
+                  )}
+                  {inProgPct > 0 && (
+                    <div style={{ width: `${inProgPct}%`, height: '100%', borderRadius: 'var(--radius-pill)', background: 'var(--color-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <span style={{ fontSize: 10, fontWeight: 800, color: 'var(--color-on-primary)' }}>{inProgPct}%</span>
+                    </div>
+                  )}
+                  {todoPct > 0 && (
+                    <div style={{ width: `${todoPct}%`, height: '100%', borderRadius: 'var(--radius-pill)', background: 'var(--surface-frosted-subdued)' }} />
+                  )}
+                </div>
+              );
+            })()}
           </div>
 
           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, fontWeight: 600, color: 'var(--text-muted)' }}>

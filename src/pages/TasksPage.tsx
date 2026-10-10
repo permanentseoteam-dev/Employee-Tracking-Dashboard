@@ -14,13 +14,23 @@ interface TasksPageProps {
 export const TasksPage: React.FC<TasksPageProps> = ({ onStartTask }) => {
   const { user } = useAuth();
   const [tasks, setTasks] = useState<TaskItem[]>([]);
+  const [projects, setProjects] = useState<{ id: string; name: string }[]>([]);
+  const [selectedProjectId, setSelectedProjectId] = useState<string>('');
   const [isAdding, setIsAdding] = useState(false);
   const [newTaskTitle, setNewTaskTitle] = useState('');
+  const [createError, setCreateError] = useState<string | null>(null);
 
   const loadData = async () => {
     try {
-      const list = await dataService.getTasks('employee', undefined, user.id);
+      const [list, projList] = await Promise.all([
+        dataService.getTasks('employee', undefined, user.id),
+        dataService.getProjects('employee'),
+      ]);
       setTasks(list);
+      setProjects(projList || []);
+      if (projList && projList.length > 0 && !selectedProjectId) {
+        setSelectedProjectId(projList[0].id);
+      }
     } catch (err) {
       console.error('Failed to load employee tasks:', err);
     }
@@ -59,12 +69,15 @@ export const TasksPage: React.FC<TasksPageProps> = ({ onStartTask }) => {
   const handleCreateTask = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newTaskTitle.trim()) return;
+    setCreateError(null);
+
+    const activeProj = projects.find((p) => p.id === selectedProjectId) || projects[0];
 
     try {
       await dataService.createTask('employee', {
         title: newTaskTitle.trim(),
-        project_id: '44444444-4444-4444-4444-444444444444',
-        project_name: 'Desktop Agent v2',
+        project_id: activeProj?.id || '',
+        project_name: activeProj?.name || 'General',
         employee_id: user.id,
         employee_name: user.name,
         manager_id: user.assigned_manager_id || '',
@@ -85,7 +98,7 @@ export const TasksPage: React.FC<TasksPageProps> = ({ onStartTask }) => {
       setIsAdding(false);
       loadData();
     } catch (err: any) {
-      alert(`Failed to create task: ${err.message}`);
+      setCreateError(err.message || 'Failed to create task');
     }
   };
 
@@ -226,6 +239,22 @@ export const TasksPage: React.FC<TasksPageProps> = ({ onStartTask }) => {
                 </button>
               </div>
 
+              {createError && (
+                <div
+                  style={{
+                    marginBottom: '1rem',
+                    padding: '8px 12px',
+                    borderRadius: 8,
+                    background: 'var(--status-error-bg)',
+                    border: '1px solid rgba(220, 38, 38, 0.25)',
+                    color: 'var(--status-error)',
+                    fontSize: 12,
+                  }}
+                >
+                  {createError}
+                </div>
+              )}
+
               <form onSubmit={handleCreateTask} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                 <div>
                   <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 6 }}>
@@ -250,6 +279,35 @@ export const TasksPage: React.FC<TasksPageProps> = ({ onStartTask }) => {
                     autoFocus
                   />
                 </div>
+
+                {projects.length > 0 && (
+                  <div>
+                    <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 6 }}>
+                      Associated Project
+                    </label>
+                    <select
+                      value={selectedProjectId}
+                      onChange={(e) => setSelectedProjectId(e.target.value)}
+                      style={{
+                        width: '100%',
+                        background: 'var(--surface-frosted-subdued)',
+                        border: '1px solid var(--surface-border-subtle)',
+                        borderRadius: 'var(--radius-card-sm)',
+                        padding: '10px 14px',
+                        fontSize: 13,
+                        color: 'var(--text-primary)',
+                        outline: 'none',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      {projects.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
 
                 <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 8 }}>
                   <button type="button" className="btn-pill btn-pill-secondary" onClick={() => setIsAdding(false)}>

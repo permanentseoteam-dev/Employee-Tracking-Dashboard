@@ -12,8 +12,11 @@ async function run() {
   const { data: emps } = await supabase.from('employees').select('*');
   console.log('EMPLOYEES:', JSON.stringify(emps, null, 2));
 
-  const { data: profiles } = await supabase.from('profiles').select('*');
-  console.log('PROFILES:', JSON.stringify(profiles, null, 2));
+  const { data: projects } = await supabase.from('projects').select('*');
+  console.log('PROJECTS:', JSON.stringify(projects, null, 2));
+
+  const { data: tasks } = await supabase.from('tasks').select('*');
+  console.log('TASKS:', JSON.stringify(tasks, null, 2));
 }
 
 run();

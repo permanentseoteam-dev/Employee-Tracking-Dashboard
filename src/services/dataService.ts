@@ -1653,14 +1653,56 @@ export const dataService = {
     if (!isSupabaseConfigured()) return [];
 
     try {
-      const { data: emps } = await supabase.from('employees').select('*');
-      const { data: presence } = await supabase.from('employee_presence').select('*').order('updated_at', { ascending: false });
-
-      if (!emps || emps.length === 0) return [];
-
+      const todayStart = new Date();
+      todayStart.setHours(0, 0, 0, 0);
+      const todayStartIso = todayStart.toISOString();
       const todayStr = new Date().toISOString().split('T')[0];
 
-      return emps
+      const [
+        empsRes,
+        presenceRes,
+        attRecordsRes,
+        aggRes,
+        rulesRes,
+        usersRes,
+      ] = await Promise.all([
+        supabase.from('employees').select('*'),
+        supabase.from('employee_presence').select('*').order('updated_at', { ascending: false }),
+        supabase.from('attendance_records').select('*').gte('check_in', todayStartIso).order('check_in', { ascending: false }),
+        supabase.from('activity_aggregates').select('*').gte('window_start', todayStartIso),
+        supabase.from('attendance_rule_config').select('*').eq('id', 1).maybeSingle(),
+        supabase.from('users').select('id, full_name, email, role, department'),
+      ]);
+
+      let empList: any[] = empsRes.data || [];
+
+      // Ensure employee profile exists in pool if user recently registered
+      if (employeeId && !empList.some((e: any) => e.id === employeeId || e.user_id === employeeId)) {
+        const matchedUser = (usersRes.data || []).find((u: any) => u.id === employeeId);
+        if (matchedUser) {
+          empList.push({
+            id: matchedUser.id,
+            user_id: matchedUser.id,
+            full_name: matchedUser.full_name || matchedUser.email,
+            email: matchedUser.email,
+            department: matchedUser.department || 'Engineering',
+            team_name: 'Engineering',
+          });
+        }
+      }
+
+      if (empList.length === 0) return [];
+
+      const shiftStart = rulesRes.data?.work_start_time || '09:00';
+      const graceMinutes = Number(rulesRes.data?.grace_period_minutes) || 15;
+      const [shiftH, shiftM] = shiftStart.split(':').map(Number);
+      const graceDeadlineMs = new Date(todayStart).setHours(shiftH, shiftM + graceMinutes, 0, 0);
+
+      const presenceRows = presenceRes.data || [];
+      const attRows = attRecordsRes.data || [];
+      const aggRows = aggRes.data || [];
+
+      return empList
         .filter((e: any) => {
           if (role === 'manager') {
             if (
@@ -1679,32 +1721,157 @@ export const dataService = {
         .map((e: any) => {
           const isMatchingEmp = (candId?: string) =>
             !!candId && (candId === e.id || candId === e.user_id);
-          const presList = presence?.filter((p: any) => isMatchingEmp(p.employee_id)) || [];
-          const activePres = presList.find((p: any) => p.status === 'active');
-          const pres = activePres || presList[0];
-          const firstAct = pres?.last_activity_at
-            ? new Date(pres.last_activity_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-            : '09:00 AM';
 
-          const isOnline = pres?.status === 'active' || pres?.status === 'idle';
+          const empPresenceList = presenceRows.filter((p: any) => isMatchingEmp(p.employee_id));
+          const activePres = empPresenceList.find((p: any) => p.status === 'active');
+          const pres = activePres || empPresenceList[0];
+
+          const empAtts = attRows.filter((r: any) => isMatchingEmp(r.employee_id));
+          const latestAtt = empAtts[0];
+
+          const empAggs = aggRows.filter((a: any) => isMatchingEmp(a.employee_id));
+          const totalActiveSecs = empAggs.reduce((acc: number, a: any) => acc + (Number(a.active_seconds) || 0), 0);
+          const totalIdleSecs = empAggs.reduce((acc: number, a: any) => acc + (Number(a.idle_seconds) || 0), 0);
+
+          let firstAct = '--';
+          let firstActMs = 0;
+
+          if (latestAtt?.check_in) {
+            const d = new Date(latestAtt.check_in);
+            firstAct = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            firstActMs = d.getTime();
+          } else if (pres?.last_activity_at) {
+            const d = new Date(pres.last_activity_at);
+            if (d.getTime() >= todayStart.getTime()) {
+              firstAct = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+              firstActMs = d.getTime();
+            }
+          }
+
+          let activeHours = 0;
+          let idleHours = 0;
+
+          if (totalActiveSecs > 0) {
+            activeHours = Number((totalActiveSecs / 3600).toFixed(1));
+            idleHours = Number((totalIdleSecs / 3600).toFixed(1));
+          } else if (firstActMs > 0 && (pres?.status === 'active' || pres?.status === 'idle')) {
+            const elapsedSecs = Math.max(0, Math.floor((Date.now() - firstActMs) / 1000));
+            const liveSecs = Math.min(elapsedSecs, 8 * 3600);
+            activeHours = Number((liveSecs / 3600).toFixed(1));
+            idleHours = 0;
+          }
+
+          let status: 'on_time' | 'late' | 'absent' = 'absent';
+          let lateMinutes = 0;
+
+          if (latestAtt?.status) {
+            status = latestAtt.status === 'late' ? 'late' : 'on_time';
+          } else if (firstActMs > 0) {
+            if (firstActMs > graceDeadlineMs) {
+              status = 'late';
+              lateMinutes = Math.max(1, Math.round((firstActMs - graceDeadlineMs) / 60000));
+            } else {
+              status = 'on_time';
+              lateMinutes = 0;
+            }
+          } else if (pres?.status === 'active' || pres?.status === 'idle') {
+            status = 'on_time';
+            lateMinutes = 0;
+          }
 
           return {
             id: `att-${e.id}`,
             employee_id: e.id,
-            employee_name: e.full_name || 'Employee',
-            team_name: e.team_name || 'Engineering',
-            manager_name: 'Manager',
+            employee_name: formatDisplayName(e.full_name || e.email, normalizeDisplayNamePref(e.display_name_pref), 'Employee'),
+            team_name: e.team_name || e.department || 'Engineering',
+            manager_name: 'Assigned Manager',
             date: todayStr,
-            scheduled_start: '09:00 AM',
+            scheduled_start: `${shiftStart} AM`,
             first_activity_at: firstAct,
-            status: isOnline ? 'on_time' : 'absent',
-            late_minutes: 0,
-            active_hours: isOnline ? 5.5 : 0,
-            idle_hours: isOnline ? 0.5 : 0,
+            status,
+            late_minutes: lateMinutes,
+            active_hours: activeHours,
+            idle_hours: idleHours,
           };
         });
     } catch (err) {
       console.error('getAttendance error:', err);
+      return [];
+    }
+  },
+
+  getAttendanceHistory: async (employeeId?: string): Promise<Array<{
+    id: string;
+    date: string;
+    clock_in: string;
+    clock_out: string;
+    active_hours: number;
+    idle_hours: number;
+    status: 'on_time' | 'late' | 'absent' | 'leave';
+  }>> => {
+    if (!isSupabaseConfigured() || !employeeId) return [];
+
+    try {
+      const [attRes, aggRes] = await Promise.all([
+        supabase
+          .from('attendance_records')
+          .select('*')
+          .eq('employee_id', employeeId)
+          .order('check_in', { ascending: false })
+          .limit(14),
+        supabase
+          .from('activity_aggregates')
+          .select('*')
+          .eq('employee_id', employeeId)
+          .order('window_start', { ascending: false })
+          .limit(500),
+      ]);
+
+      const attList = attRes.data || [];
+      const aggList = aggRes.data || [];
+
+      return attList.map((rec: any) => {
+        const inDate = new Date(rec.check_in);
+        const dateStr = inDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+        const clockIn = inDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        const isToday = inDate.toDateString() === new Date().toDateString();
+        const clockOut = rec.check_out
+          ? new Date(rec.check_out).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+          : isToday
+            ? 'In Progress'
+            : '--';
+
+        const dayStartMs = new Date(inDate).setHours(0, 0, 0, 0);
+        const dayEndMs = new Date(inDate).setHours(23, 59, 59, 999);
+        const dayAggs = aggList.filter((a: any) => {
+          const t = new Date(a.window_start || a.window_end || 0).getTime();
+          return t >= dayStartMs && t <= dayEndMs;
+        });
+
+        const activeSecs = dayAggs.reduce((sum: number, a: any) => sum + (Number(a.active_seconds) || 0), 0);
+        const idleSecs = dayAggs.reduce((sum: number, a: any) => sum + (Number(a.idle_seconds) || 0), 0);
+
+        let activeHours = Number((activeSecs / 3600).toFixed(1));
+        let idleHours = Number((idleSecs / 3600).toFixed(1));
+
+        if (activeHours === 0 && rec.check_in) {
+          const outMs = rec.check_out ? new Date(rec.check_out).getTime() : isToday ? Date.now() : inDate.getTime();
+          const elapsed = Math.max(0, (outMs - inDate.getTime()) / 3600000);
+          activeHours = Number(Math.min(elapsed, 8).toFixed(1));
+        }
+
+        return {
+          id: rec.id,
+          date: dateStr,
+          clock_in: clockIn,
+          clock_out: clockOut,
+          active_hours: activeHours,
+          idle_hours: idleHours,
+          status: (rec.status as any) || 'on_time',
+        };
+      });
+    } catch (err) {
+      console.error('getAttendanceHistory error:', err);
       return [];
     }
   },
@@ -2328,17 +2495,13 @@ export const dataService = {
     task: Omit<TaskItem, 'id' | 'tracked_seconds'>,
     managerId?: string
   ): Promise<TaskItem> => {
-    if (role === 'employee') {
-      throw new Error('403 Forbidden: Employees cannot create organization tasks');
-    }
-
     const newTask = {
       project_id: task.project_id || null,
       title: task.title,
       description: '',
       assigned_to: task.employee_id || null,
-      status: task.status === 'todo' ? 'pending' : task.status,
-      priority: task.priority,
+      status: task.status === 'todo' ? 'pending' : (task.status || 'pending'),
+      priority: task.priority || 'medium',
       estimated_hours: 8,
     };
 

@@ -13,6 +13,10 @@ pub struct ActivityAggregatePayload {
     pub active_seconds: u32,
     pub idle_seconds: u32,
     pub is_idle: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub window_title: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub app_name: Option<String>,
 }
 
 /// Accumulates 1 Hz input samples into ~60s windows for activity_aggregates.
@@ -70,6 +74,12 @@ impl ActivityWindow {
 
     pub fn take_aggregate(&mut self) -> ActivityAggregatePayload {
         let now = Utc::now();
+        let title = self.last_window_title.trim().to_string();
+        let app_name = title
+            .rsplit(['-', '—', '|'])
+            .next()
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty());
         let payload = ActivityAggregatePayload {
             employee_id: self.employee_id.clone(),
             device_id: self.device_id.clone(),
@@ -81,6 +91,8 @@ impl ActivityWindow {
             active_seconds: self.active_seconds,
             idle_seconds: self.idle_seconds,
             is_idle: self.idle_seconds > self.active_seconds,
+            window_title: if title.is_empty() { None } else { Some(title) },
+            app_name,
         };
         self.window_start = now;
         self.active_seconds = 0;

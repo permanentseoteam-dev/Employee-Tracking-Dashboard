@@ -434,21 +434,46 @@ export const supabaseAuth = {
   },
 };
 
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+/** True only for a real UUID — empty / "undefined" / names must never hit employee_id columns. */
+export const isUuid = (value?: string | null): value is string =>
+  !!value && UUID_RE.test(value.trim());
+
 export const resolveSafeEmployeeId = (employeeId?: string): string => {
-  if (!employeeId || employeeId.trim() === '' || employeeId === 'undefined' || employeeId === 'null') {
-    return '';
+  if (!employeeId) return '';
+  const trimmed = employeeId.trim();
+  if (!trimmed || trimmed === 'undefined' || trimmed === 'null') return '';
+  return isUuid(trimmed) ? trimmed : '';
+};
+
+/** Resolve a usable employee UUID, falling back to the signed-in auth user. */
+export const resolveActorEmployeeId = async (
+  preferredId?: string
+): Promise<string | null> => {
+  const preferred = resolveSafeEmployeeId(preferredId);
+  if (preferred) return preferred;
+  if (!isSupabaseConfigured()) return null;
+  try {
+    const { data } = await supabase.auth.getSession();
+    const fromSession = resolveSafeEmployeeId(data.session?.user?.id);
+    return fromSession || null;
+  } catch {
+    return null;
   }
-  return employeeId.trim();
 };
 
 export const supabaseSync = {
   // Sync an activity aggregate window
   syncActivityWindow: async (payload: ActivityPayload) => {
     if (!isSupabaseConfigured()) return false;
-    const safePayload = {
-      ...payload,
-      employee_id: resolveSafeEmployeeId(payload.employee_id),
-    };
+    const employee_id = resolveSafeEmployeeId(payload.employee_id);
+    if (!employee_id) {
+      console.warn('Skipping activity_aggregates insert: missing valid employee_id');
+      return false;
+    }
+    const safePayload = { ...payload, employee_id };
     const { error } = await supabase.from('activity_aggregates').insert([safePayload]);
     if (error) {
       console.error('Failed to sync activity to Supabase:', error);
@@ -460,10 +485,12 @@ export const supabaseSync = {
   // Sync an attendance record punch
   syncAttendance: async (payload: AttendancePayload) => {
     if (!isSupabaseConfigured()) return false;
-    const safePayload = {
-      ...payload,
-      employee_id: resolveSafeEmployeeId(payload.employee_id),
-    };
+    const employee_id = resolveSafeEmployeeId(payload.employee_id);
+    if (!employee_id) {
+      console.warn('Skipping attendance_records insert: missing valid employee_id');
+      return false;
+    }
+    const safePayload = { ...payload, employee_id };
     const { error } = await supabase.from('attendance_records').insert([safePayload]);
     if (error) {
       console.error('Failed to sync attendance to Supabase:', error);
@@ -475,10 +502,12 @@ export const supabaseSync = {
   // Sync a task work session
   syncTaskSession: async (payload: TaskSessionPayload) => {
     if (!isSupabaseConfigured()) return false;
-    const safePayload = {
-      ...payload,
-      employee_id: resolveSafeEmployeeId(payload.employee_id),
-    };
+    const employee_id = resolveSafeEmployeeId(payload.employee_id);
+    if (!employee_id) {
+      console.warn('Skipping task_sessions insert: missing valid employee_id');
+      return false;
+    }
+    const safePayload = { ...payload, employee_id };
     const { error } = await supabase.from('task_sessions').insert([safePayload]);
     if (error) {
       console.error('Failed to sync task session to Supabase:', error);
@@ -499,6 +528,10 @@ export const supabaseSync = {
     if (!isSupabaseConfigured()) return null;
 
     const safeEmpId = resolveSafeEmployeeId(employeeId);
+    if (!safeEmpId) {
+      console.warn('Skipping screenshot upload: missing valid employee_id');
+      return null;
+    }
     const timestamp = new Date(capturedAt).getTime() || Date.now();
     const filePath = `${safeEmpId}/${timestamp}_${deviceId}.jpg`;
 
@@ -705,31 +738,33 @@ export const supabaseSync = {
     }
 
     // 5. Also insert into public.activity_events for immediate realtime feed compatibility
-    try {
-      await supabase.from('activity_events').insert([
-        {
-          employee_id: safeEmpId,
-          device_id: deviceId,
-          event_type: 'screen_recording',
-          occurred_at: startedAt,
-          metadata: {
-            session_id: recordId,
-            employee_name: employeeName,
-            department,
-            duration_seconds: durationSeconds,
-            requested_by: recordedBy,
-            active_window: activeWindow,
-            video_url: videoUrl,
-            thumbnail_url: thumbnailUrl,
-            storage_path: videoStoragePath,
-            file_size_bytes: videoBlob.size,
-            bucket: bucketName,
-            status: 'completed',
+    if (isUuid(safeEmpId)) {
+      try {
+        await supabase.from('activity_events').insert([
+          {
+            employee_id: safeEmpId,
+            device_id: deviceId || 'WIN-CLIENT',
+            event_type: 'screen_recording',
+            occurred_at: startedAt,
+            metadata: {
+              session_id: recordId,
+              employee_name: employeeName,
+              department,
+              duration_seconds: durationSeconds,
+              requested_by: recordedBy,
+              active_window: activeWindow,
+              video_url: videoUrl,
+              thumbnail_url: thumbnailUrl,
+              storage_path: videoStoragePath,
+              file_size_bytes: videoBlob.size,
+              bucket: bucketName,
+              status: 'completed',
+            },
           },
-        },
-      ]);
-    } catch (err) {
-      console.warn('Could not insert recording into activity_events:', err);
+        ]);
+      } catch (err) {
+        console.warn('Could not insert recording into activity_events:', err);
+      }
     }
 
     return {
@@ -779,35 +814,44 @@ export const supabaseSync = {
 
     // 2. Insert record into public.activity_events table
     let eventRecord: any = null;
-    try {
-      const { data, error } = await supabase.from('activity_events').insert([
-        {
-          employee_id: safeEmpId,
-          device_id: snapshot.device_id || 'WIN-CLIENT-DESKTOP',
-          event_type: 'BREAK_TELEMETRY_SNAPSHOT',
-          occurred_at: snapshot.started_at,
-          metadata: {
-            snapshot_id: snapshot.id,
-            employee_name: snapshot.employee_name,
-            break_type: snapshot.break_type,
-            break_title: snapshot.break_title,
-            current_time_slot: snapshot.current_time_slot,
-            time_slot_index: snapshot.time_slot_index,
-            storage_path: storagePath,
-            bucket: bucketName,
-            heatmap_data: snapshot.heatmap_data,
-            keyboard_data: snapshot.keyboard_data,
-            hourly_state: snapshot.hourly_state,
-            status: snapshot.status,
-          },
-        },
-      ]).select();
+    if (isUuid(safeEmpId)) {
+      try {
+        const { data, error } = await supabase
+          .from('activity_events')
+          .insert([
+            {
+              employee_id: safeEmpId,
+              device_id: snapshot.device_id || 'WIN-CLIENT-DESKTOP',
+              event_type: 'BREAK_TELEMETRY_SNAPSHOT',
+              occurred_at: snapshot.started_at,
+              metadata: {
+                snapshot_id: snapshot.id,
+                employee_name: snapshot.employee_name,
+                break_type: snapshot.break_type,
+                break_title: snapshot.break_title,
+                current_time_slot: snapshot.current_time_slot,
+                time_slot_index: snapshot.time_slot_index,
+                storage_path: storagePath,
+                bucket: bucketName,
+                heatmap_data: snapshot.heatmap_data,
+                keyboard_data: snapshot.keyboard_data,
+                hourly_state: snapshot.hourly_state,
+                status: snapshot.status,
+              },
+            },
+          ])
+          .select();
 
-      if (!error && data && data.length > 0) {
-        eventRecord = data[0];
+        if (!error && data && data.length > 0) {
+          eventRecord = data[0];
+        } else if (error) {
+          console.warn('Could not insert break snapshot into activity_events:', error.message);
+        }
+      } catch (err) {
+        console.warn('Could not insert break snapshot into activity_events:', err);
       }
-    } catch (err) {
-      console.warn('Could not insert break snapshot into activity_events:', err);
+    } else {
+      console.warn('Skipping BREAK_TELEMETRY_SNAPSHOT: missing valid employee_id');
     }
 
     return {
@@ -834,26 +878,33 @@ export const supabaseSync = {
     if (!isSupabaseConfigured()) return null;
 
     const safeEmpId = resolveSafeEmployeeId(params.employeeId);
+    if (!isUuid(safeEmpId)) {
+      console.warn('Skipping BREAK_TELEMETRY_RESUMED: missing valid employee_id');
+      return null;
+    }
     try {
-      const { data, error } = await supabase.from('activity_events').insert([
-        {
-          employee_id: safeEmpId,
-          device_id: params.deviceId || 'WIN-CLIENT-DESKTOP',
-          event_type: 'BREAK_TELEMETRY_RESUMED',
-          occurred_at: params.resumedAt,
-          metadata: {
-            snapshot_id: params.snapshotId,
-            employee_name: params.employeeName,
-            break_type: params.breakType,
-            break_duration_seconds: params.breakDurationSeconds,
-            resumed_at: params.resumedAt,
-            current_time_slot: params.timeSlot,
-            time_slot_index: params.timeSlotIndex,
-            resumed_state: params.resumedState,
-            status: 'resumed',
+      const { data, error } = await supabase
+        .from('activity_events')
+        .insert([
+          {
+            employee_id: safeEmpId,
+            device_id: params.deviceId || 'WIN-CLIENT-DESKTOP',
+            event_type: 'BREAK_TELEMETRY_RESUMED',
+            occurred_at: params.resumedAt,
+            metadata: {
+              snapshot_id: params.snapshotId,
+              employee_name: params.employeeName,
+              break_type: params.breakType,
+              break_duration_seconds: params.breakDurationSeconds,
+              resumed_at: params.resumedAt,
+              current_time_slot: params.timeSlot,
+              time_slot_index: params.timeSlotIndex,
+              resumed_state: params.resumedState,
+              status: 'resumed',
+            },
           },
-        },
-      ]).select();
+        ])
+        .select();
 
       if (error) {
         console.warn('Failed to insert BREAK_TELEMETRY_RESUMED into activity_events:', error);

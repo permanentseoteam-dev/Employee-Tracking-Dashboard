@@ -151,7 +151,8 @@ export const AdminMonitoringPage: React.FC<AdminMonitoringPageProps> = ({ initia
       'admin',
       'VIEW_SCREENSHOT',
       `${sc.employee_name} (${formatCaptureDateTime(sc.captured_at)})`,
-      'Inspected full resolution capture'
+      'Inspected full resolution capture',
+      user?.id
     );
   };
 
@@ -229,7 +230,8 @@ export const AdminMonitoringPage: React.FC<AdminMonitoringPageProps> = ({ initia
       'admin',
       'INSPECT_LIVE_SCREEN',
       emp.name,
-      `Opened live workstation stream for ${emp.name}`
+      `Opened live workstation stream for ${emp.name}`,
+      user?.id
     );
     const res = await dataService.startLiveSession(
       emp.user_id || emp.id,

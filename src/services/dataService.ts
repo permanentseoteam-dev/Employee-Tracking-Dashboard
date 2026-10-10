@@ -41,7 +41,7 @@ import {
 import type { AgentRuntimeConfig } from '../types';
 import { DEFAULT_AGENT_RUNTIME_CONFIG, normalizeWorkDay } from '../types';
 import { supabase, isSupabaseConfigured } from './supabaseClient';
-import { supabaseSync } from './supabaseService';
+import { resolveActorEmployeeId, supabaseSync } from './supabaseService';
 import { generateWorkstationRecordingClip } from '../utils/screenRecordingGenerator';
 import { formatCaptureTime, isDummyMediaUrl, parseCaptureDate } from '../utils/datetime';
 import { formatDisplayName, normalizeDisplayNamePref } from '../utils/displayName';
@@ -3390,23 +3390,25 @@ export const dataService = {
     };
     localAuditLogs = [newEntry, ...localAuditLogs];
 
-    // Also persist to activity_events table if connected
+    // Persist to activity_events only when we have a real employee UUID (NOT NULL column).
     if (isSupabaseConfigured()) {
-      const isUuid = !!actorId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(actorId);
-      supabase
-        .from('activity_events')
-        .insert([
+      void (async () => {
+        const employeeId = await resolveActorEmployeeId(actorId);
+        if (!employeeId) {
+          // Keep local audit only — never insert null employee_id (Postgres 23502)
+          return;
+        }
+        const { error } = await supabase.from('activity_events').insert([
           {
-            ...(isUuid ? { employee_id: actorId } : {}),
+            employee_id: employeeId,
             device_id: 'WIN-CLIENT',
             event_type: action.toLowerCase(),
             occurred_at: new Date().toISOString(),
             metadata: { actor: actorName, role: actorRole, target, details },
           },
-        ])
-        .then(({ error }) => {
-          if (error) console.warn('Could not persist audit event to Supabase:', error.message);
-        });
+        ]);
+        if (error) console.warn('Could not persist audit event to Supabase:', error.message);
+      })();
     }
   },
 

@@ -160,6 +160,8 @@ create table if not exists public.activity_aggregates (
     active_seconds integer not null default 0,
     idle_seconds integer not null default 0,
     is_idle boolean not null default false,
+    window_title text,
+    app_name text,
     created_at timestamptz default now()
 );
 

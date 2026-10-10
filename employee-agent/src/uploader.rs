@@ -316,20 +316,65 @@ impl SupabaseUploader {
         &self,
         payload: &crate::activity::ActivityAggregatePayload,
     ) -> Result<(), String> {
+        let employee_id = payload.employee_id.trim();
+        if uuid::Uuid::parse_str(employee_id).is_err() {
+            return Err(
+                "activity_aggregates skipped: employee_id is missing or not a valid UUID".into(),
+            );
+        }
+        // Explicit RFC3339 strings — avoids PostgREST rejecting exotic DateTime encodings
+        let mut row = serde_json::json!({
+            "employee_id": employee_id,
+            "device_id": payload.device_id,
+            "window_start": payload.window_start.to_rfc3339(),
+            "window_end": payload.window_end.to_rfc3339(),
+            "key_press_count": payload.key_press_count,
+            "mouse_move_count": payload.mouse_move_count,
+            "mouse_click_count": payload.mouse_click_count,
+            "active_seconds": payload.active_seconds,
+            "idle_seconds": payload.idle_seconds,
+            "is_idle": payload.is_idle,
+        });
+        if let Some(ref t) = payload.window_title {
+            row["window_title"] = serde_json::json!(t);
+        }
+        if let Some(ref a) = payload.app_name {
+            row["app_name"] = serde_json::json!(a);
+        }
         let url = format!("{}/rest/v1/activity_aggregates", self.base_url);
         let resp = self
             .client
             .post(&url)
-            .json(&[payload])
+            .json(&[row.clone()])
             .send()
             .await
             .map_err(|e| format!("activity_aggregates insert failed: {}", e))?;
-        if !resp.status().is_success() {
-            let status = resp.status();
-            let body = resp.text().await.unwrap_or_default();
-            return Err(format!("activity_aggregates HTTP {}: {}", status, body));
+        if resp.status().is_success() {
+            return Ok(());
         }
-        Ok(())
+        let status = resp.status();
+        let body = resp.text().await.unwrap_or_default();
+        // Older DBs without window_title/app_name — retry core columns only
+        if body.contains("window_title") || body.contains("app_name") || body.contains("PGRST204") {
+            row.as_object_mut().map(|o| {
+                o.remove("window_title");
+                o.remove("app_name");
+            });
+            let retry = self
+                .client
+                .post(&url)
+                .json(&[row])
+                .send()
+                .await
+                .map_err(|e| format!("activity_aggregates retry failed: {}", e))?;
+            if retry.status().is_success() {
+                return Ok(());
+            }
+            let rs = retry.status();
+            let rb = retry.text().await.unwrap_or_default();
+            return Err(format!("activity_aggregates HTTP {}: {}", rs, rb));
+        }
+        Err(format!("activity_aggregates HTTP {}: {}", status, body))
     }
 
     pub async fn insert_activity_event(
@@ -340,10 +385,16 @@ impl SupabaseUploader {
         window_title: &str,
         is_idle: bool,
     ) -> Result<(), String> {
+        let employee_id = employee_id.trim();
+        if uuid::Uuid::parse_str(employee_id).is_err() {
+            return Err(
+                "activity_events skipped: employee_id is missing or not a valid UUID".into(),
+            );
+        }
         let url = format!("{}/rest/v1/activity_events", self.base_url);
         let row = serde_json::json!({
             "employee_id": employee_id,
-            "device_id": device_id,
+            "device_id": if device_id.trim().is_empty() { "WIN-CLIENT" } else { device_id },
             "event_type": event_type,
             "occurred_at": Utc::now().to_rfc3339(),
             "metadata": {

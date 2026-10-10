@@ -151,7 +151,8 @@ export const ManagerMonitoringPage: React.FC<ManagerMonitoringPageProps> = ({ in
       'manager',
       'VIEW_SCREENSHOT',
       `${sc.employee_name} (${formatCaptureDateTime(sc.captured_at)})`,
-      'Team manager inspected screenshot capture'
+      'Team manager inspected screenshot capture',
+      user?.id
     );
   };
 
@@ -195,7 +196,8 @@ export const ManagerMonitoringPage: React.FC<ManagerMonitoringPageProps> = ({ in
       'manager',
       'INSPECT_LIVE_SCREEN',
       emp.name,
-      `Opened live workstation stream for ${emp.name}`
+      `Opened live workstation stream for ${emp.name}`,
+      user?.id
     );
     const res = await dataService.startLiveSession(emp.user_id || emp.id, user.name);
     if (!res.success) {

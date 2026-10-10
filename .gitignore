@@ -16,6 +16,8 @@ src-tauri/gen/
 agent/target/
 target-employee-agent/
 employee-agent/target/
+target-desktop/
+target-tauri-check/
 
 # Supabase temp & scratch
 supabase/.temp/

@@ -533,7 +533,7 @@ export const AdminMonitoringPage: React.FC<AdminMonitoringPageProps> = ({ initia
                     height: 170,
                     borderRadius: 'var(--radius-card-sm)',
                     overflow: 'hidden',
-                    background: 'var(--surface-frosted-subdued)',
+                    background: '#000000',
                     border: '1px solid var(--surface-border-subtle)',
                     position: 'relative',
                     display: 'flex',
@@ -542,49 +542,61 @@ export const AdminMonitoringPage: React.FC<AdminMonitoringPageProps> = ({ initia
                     alignItems: 'center',
                   }}
                 >
-                  {emp.latest_screenshot_url ? (
-                    <img
-                      src={emp.latest_screenshot_url}
-                      alt={emp.active_window || 'Live Workstation'}
-                      style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                      onError={(e) => {
-                        (e.currentTarget as HTMLElement).style.display = 'none';
+                  {isOnline ? (
+                    <>
+                      {emp.latest_screenshot_url ? (
+                        <img
+                          src={emp.latest_screenshot_url}
+                          alt={emp.active_window || 'Live Workstation'}
+                          style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                          onError={(e) => {
+                            (e.currentTarget as HTMLElement).style.display = 'none';
+                          }}
+                        />
+                      ) : null}
+
+                      {/* Fallback & Live Overlay Info */}
+                      <div
+                        style={{
+                          position: 'absolute',
+                          inset: 0,
+                          background: emp.latest_screenshot_url
+                            ? 'linear-gradient(to top, rgba(15,23,42,0.85) 0%, rgba(15,23,42,0.1) 60%)'
+                            : 'radial-gradient(circle at 50% 50%, rgba(76,107,255,0.15), rgba(15,23,42,0.9))',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          justifyContent: 'space-between',
+                          padding: 10,
+                        }}
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <span className="live-telemetry-badge" style={{ fontSize: 10, padding: '2px 8px' }}>
+                            <Monitor size={11} /> {emp.device_name || 'WIN-WORKSTATION'}
+                          </span>
+                          <span style={{ fontSize: 10, color: '#e2e8f0', background: 'rgba(0,0,0,0.6)', padding: '2px 6px', borderRadius: 4 }}>
+                            {emp.last_screenshot !== 'No captures' ? `Capture: ${emp.last_screenshot}` : 'Live Stream'}
+                          </span>
+                        </div>
+
+                        {emp.active_window && emp.active_window !== '—' ? (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <Monitor size={14} color="#38bdf8" />
+                            <span style={{ fontSize: 12, fontWeight: 700, color: '#ffffff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {emp.active_window}
+                            </span>
+                          </div>
+                        ) : null}
+                      </div>
+                    </>
+                  ) : (
+                    <div
+                      style={{
+                        width: '100%',
+                        height: '100%',
+                        background: '#000000',
                       }}
                     />
-                  ) : null}
-
-                  {/* Fallback & Live Overlay Info */}
-                  <div
-                    style={{
-                      position: 'absolute',
-                      inset: 0,
-                      background: emp.latest_screenshot_url
-                        ? 'linear-gradient(to top, rgba(15,23,42,0.85) 0%, rgba(15,23,42,0.1) 60%)'
-                        : 'radial-gradient(circle at 50% 50%, rgba(76,107,255,0.15), rgba(15,23,42,0.9))',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      justifyContent: 'space-between',
-                      padding: 10,
-                    }}
-                  >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span className="live-telemetry-badge" style={{ fontSize: 10, padding: '2px 8px' }}>
-                        <Monitor size={11} /> {emp.device_name || 'WIN-WORKSTATION'}
-                      </span>
-                      <span style={{ fontSize: 10, color: '#e2e8f0', background: 'rgba(0,0,0,0.6)', padding: '2px 6px', borderRadius: 4 }}>
-                        {emp.last_screenshot !== 'No captures' ? `Capture: ${emp.last_screenshot}` : 'Live Stream'}
-                      </span>
-                    </div>
-
-                    {emp.active_window && emp.active_window !== '—' ? (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <Monitor size={14} color="#38bdf8" />
-                        <span style={{ fontSize: 12, fontWeight: 700, color: '#ffffff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          {emp.active_window}
-                        </span>
-                      </div>
-                    ) : null}
-                  </div>
+                  )}
                 </div>
 
                 {/* Telemetry Stats Row */}
@@ -1385,56 +1397,58 @@ export const AdminMonitoringPage: React.FC<AdminMonitoringPageProps> = ({ initia
                 activeWindow={selectedLiveEmployee.active_window}
               >
                 {/* Top Overlay Banner with Window Title */}
-                <div
-                  style={{
-                    position: 'absolute',
-                    top: 12,
-                    left: 12,
-                    right: 12,
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    pointerEvents: 'none',
-                  }}
-                >
+                {selectedLiveEmployee.status !== 'offline' && (
                   <div
                     style={{
-                      background: 'rgba(15, 23, 42, 0.85)',
-                      backdropFilter: 'blur(8px)',
-                      padding: '6px 12px',
-                      borderRadius: 'var(--radius-pill)',
-                      border: '1px solid rgba(255,255,255,0.15)',
+                      position: 'absolute',
+                      top: 12,
+                      left: 12,
+                      right: 12,
                       display: 'flex',
+                      justifyContent: 'space-between',
                       alignItems: 'center',
-                      gap: 8,
-                      fontSize: 12,
-                      color: '#ffffff',
-                      fontWeight: 600,
+                      pointerEvents: 'none',
                     }}
                   >
-                    <Monitor size={14} color="#38bdf8" />
-                    <span>
-                      Active Window:{' '}
-                      {selectedLiveEmployee.active_window && selectedLiveEmployee.active_window !== '—'
-                        ? selectedLiveEmployee.active_window
-                        : 'Unavailable'}
-                    </span>
-                  </div>
+                    <div
+                      style={{
+                        background: 'rgba(15, 23, 42, 0.85)',
+                        backdropFilter: 'blur(8px)',
+                        padding: '6px 12px',
+                        borderRadius: 'var(--radius-pill)',
+                        border: '1px solid rgba(255,255,255,0.15)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 8,
+                        fontSize: 12,
+                        color: '#ffffff',
+                        fontWeight: 600,
+                      }}
+                    >
+                      <Monitor size={14} color="#38bdf8" />
+                      <span>
+                        Active Window:{' '}
+                        {selectedLiveEmployee.active_window && selectedLiveEmployee.active_window !== '—'
+                          ? selectedLiveEmployee.active_window
+                          : 'Unavailable'}
+                      </span>
+                    </div>
 
-                  <div
-                    style={{
-                      background: 'rgba(15, 23, 42, 0.85)',
-                      backdropFilter: 'blur(8px)',
-                      padding: '4px 10px',
-                      borderRadius: 'var(--radius-pill)',
-                      border: '1px solid rgba(255,255,255,0.15)',
-                      fontSize: 11,
-                      color: '#94a3b8',
-                    }}
-                  >
-                    {liveStatusText}
+                    <div
+                      style={{
+                        background: 'rgba(15, 23, 42, 0.85)',
+                        backdropFilter: 'blur(8px)',
+                        padding: '4px 10px',
+                        borderRadius: 'var(--radius-pill)',
+                        border: '1px solid rgba(255,255,255,0.15)',
+                        fontSize: 11,
+                        color: '#94a3b8',
+                      }}
+                    >
+                      {liveStatusText}
+                    </div>
                   </div>
-                </div>
+                )}
               </LiveScreenFrame>
 
               {/* Realtime Telemetry Grid */}

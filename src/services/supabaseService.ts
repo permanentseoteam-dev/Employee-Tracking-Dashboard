@@ -229,7 +229,7 @@ export const supabaseAuth = {
       throw new Error('Supabase is not configured');
     }
     const now = new Date().toISOString();
-    const row = {
+    const row: Record<string, any> = {
       id: params.id,
       email: params.email.trim(),
       full_name: params.full_name.trim(),
@@ -239,11 +239,10 @@ export const supabaseAuth = {
       phone: params.phone?.trim() || null,
       avatar_url: params.avatar_url || null,
       team_id: params.team_id || null,
-      display_name_pref: params.display_name_pref || 'first',
       updated_at: now,
     };
 
-    const { data, error } = await supabase
+    let { data, error } = await supabase
       .from('profiles')
       .upsert(row, { onConflict: 'id' })
       .select('*')
@@ -263,7 +262,6 @@ export const supabaseAuth = {
           avatar_url: row.avatar_url,
           team_name: row.team_name,
           phone: row.phone,
-          display_name_pref: row.display_name_pref,
         },
         { onConflict: 'id' }
       );
@@ -289,7 +287,6 @@ export const supabaseAuth = {
               avatar_url: row.avatar_url,
               phone: row.phone,
               team_name: row.team_name,
-              display_name_pref: row.display_name_pref,
               updated_at: now,
             })
             .eq('id', existing.id);

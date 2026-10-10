@@ -524,7 +524,7 @@ export const dataService = {
         supabase.from('screenshot_records').select('*').order('captured_at', { ascending: false }).limit(50),
         supabase.from('screenshots').select('*').order('captured_at', { ascending: false }).limit(50),
         supabase.from('tasks').select('*').eq('status', 'in_progress'),
-        supabase.from('users').select('id, full_name, email, display_name_pref').eq('role', 'manager'),
+        supabase.from('users').select('id, full_name, email').eq('role', 'manager'),
         supabase.from('employee_star_balances').select('employee_id, stars'),
       ]);
 
@@ -653,7 +653,7 @@ export const dataService = {
           manager_id: e.manager_id || '',
           manager_name: formatDisplayName(
             mgr?.full_name,
-            normalizeDisplayNamePref(mgr?.display_name_pref),
+            normalizeDisplayNamePref((mgr as any)?.display_name_pref),
             'Unassigned'
           ),
           status,

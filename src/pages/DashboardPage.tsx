@@ -175,7 +175,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
           <div>
             <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
               <span className="stat-numeric-lg">{todayStars}</span>
-              <span className="stat-diff-badge">{todayStars > 5 ? '⭐ High' : '⭐ Active'}</span>
+              <span className="stat-diff-badge">{todayStars > 5 ? '⭐ High' : todayStars > 0 ? '⭐ Active' : 'Standard'}</span>
             </div>
             <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--text-muted)' }}>Stars Balance</span>
           </div>

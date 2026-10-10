@@ -1876,6 +1876,82 @@ export const dataService = {
     }
   },
 
+  getEmployeeTelemetryStats: async (employeeId?: string): Promise<{
+    stars: number;
+    activeWindowsCount: number;
+    productivityRatio: string;
+    activeHours: number;
+    idleHours: number;
+  }> => {
+    if (!isSupabaseConfigured() || !employeeId) {
+      return { stars: 0, activeWindowsCount: 0, productivityRatio: '--', activeHours: 0, idleHours: 0 };
+    }
+
+    try {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const todayIso = today.toISOString();
+
+      const [starRes, empRes, aggRes] = await Promise.all([
+        supabase
+          .from('employee_star_balances')
+          .select('employee_id, stars'),
+        supabase
+          .from('employees')
+          .select('id, user_id')
+          .or(`id.eq.${employeeId},user_id.eq.${employeeId}`)
+          .maybeSingle(),
+        supabase
+          .from('activity_aggregates')
+          .select('*')
+          .gte('window_start', todayIso),
+      ]);
+
+      const empRecord = empRes.data;
+      const validEmpIds = new Set<string>([employeeId]);
+      if (empRecord?.id) validEmpIds.add(empRecord.id);
+      if (empRecord?.user_id) validEmpIds.add(empRecord.user_id);
+
+      // Stars
+      const starRows = starRes.data || [];
+      const matchedStar = starRows.find((r: any) => validEmpIds.has(String(r.employee_id)));
+      let stars = matchedStar?.stars != null ? Number(matchedStar.stars) : 0;
+      if (stars === 0) {
+        for (const id of validEmpIds) {
+          const inMem = employeeStarsMap.get(id);
+          if (inMem != null && inMem > 0) {
+            stars = inMem;
+            break;
+          }
+        }
+      }
+
+      // Telemetry aggregates
+      const aggRows = aggRes.data || [];
+      const empAggs = aggRows.filter((a: any) => validEmpIds.has(String(a.employee_id)));
+      const activeWindowsCount = empAggs.length;
+
+      const totalActiveSecs = empAggs.reduce((sum: number, a: any) => sum + (Number(a.active_seconds) || 0), 0);
+      const totalIdleSecs = empAggs.reduce((sum: number, a: any) => sum + (Number(a.idle_seconds) || 0), 0);
+      const totalSecs = totalActiveSecs + totalIdleSecs;
+
+      const productivityRatio = totalSecs > 0
+        ? `${((totalActiveSecs / totalSecs) * 100).toFixed(1)}%`
+        : '--';
+
+      return {
+        stars,
+        activeWindowsCount,
+        productivityRatio,
+        activeHours: Number((totalActiveSecs / 3600).toFixed(1)),
+        idleHours: Number((totalIdleSecs / 3600).toFixed(1)),
+      };
+    } catch (err) {
+      console.error('getEmployeeTelemetryStats error:', err);
+      return { stars: 0, activeWindowsCount: 0, productivityRatio: '--', activeHours: 0, idleHours: 0 };
+    }
+  },
+
   // 7. Projects Query & Mutations
   getProjects: async (role: UserRole, managerId?: string, _employeeId?: string): Promise<ProjectItem[]> => {
     if (!isSupabaseConfigured()) return [];

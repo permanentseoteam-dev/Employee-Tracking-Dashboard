@@ -36,6 +36,20 @@ interface AgentTelemetryInfo {
   status: string;
 }
 
+export interface ConnectedWorkstationTelemetry {
+  deviceId: string;
+  deviceName: string;
+  employeeId?: string;
+  employeeName?: string;
+  employeeEmail?: string;
+  lastHeartbeatTime: string;
+  rawHeartbeat: string;
+  activeWindow: string;
+  isOnline: boolean;
+  status: string;
+  isCurrentDevice: boolean;
+}
+
 const WORK_DAY_OPTIONS: { id: string; label: string }[] = [
   { id: 'mon', label: 'Mon' },
   { id: 'tue', label: 'Tue' },
@@ -60,6 +74,12 @@ export const AdminSettingsAuditPage: React.FC<AdminSettingsAuditPageProps> = ({ 
 
   const isHoursDirtyRef = React.useRef(false);
   const isConfigDirtyRef = React.useRef(false);
+
+  const [workstations, setWorkstations] = useState<ConnectedWorkstationTelemetry[]>([]);
+  const [selectedDeviceId, setSelectedDeviceId] = useState<string>('all');
+  void workstations;
+  void selectedDeviceId;
+  void setSelectedDeviceId;
 
   const [agentTelemetry, setAgentTelemetry] = useState<AgentTelemetryInfo>({
     deviceId: '—',
@@ -93,7 +113,7 @@ export const AdminSettingsAuditPage: React.FC<AdminSettingsAuditPageProps> = ({ 
 
   const loadData = async (forceSettings = false) => {
     try {
-      const [cfg, hours, logs, presenceRes, latestEventRes] = await Promise.all([
+      const [cfg, hours, logs, presenceRes, eventsRes, profilesRes, localSysInfo] = await Promise.all([
         !isConfigDirtyRef.current || forceSettings ? api.getAppConfig() : Promise.resolve(null),
         !isHoursDirtyRef.current || forceSettings ? dataService.getAgentRuntimeConfig() : Promise.resolve(null),
         dataService.getAuditLogs('admin'),
@@ -101,12 +121,16 @@ export const AdminSettingsAuditPage: React.FC<AdminSettingsAuditPageProps> = ({ 
           .from('employee_presence')
           .select('*')
           .order('last_activity_at', { ascending: false })
-          .limit(1),
+          .limit(20),
         supabase
           .from('activity_events')
           .select('*')
           .order('occurred_at', { ascending: false })
-          .limit(1),
+          .limit(40),
+        supabase
+          .from('profiles')
+          .select('id, full_name, email, role'),
+        api.getSystemInfo().catch(() => null),
       ]);
 
       if (cfg && (!isConfigDirtyRef.current || forceSettings)) {
@@ -127,29 +151,65 @@ export const AdminSettingsAuditPage: React.FC<AdminSettingsAuditPageProps> = ({ 
         now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true })
       );
 
-      // Extract real agent presence & last heartbeat timestamp
-      const p = presenceRes.data?.[0];
-      const ev = latestEventRes.data?.[0];
-      const hbTime = p?.last_activity_at || ev?.occurred_at || ev?.created_at;
+      const presenceList = presenceRes.data || [];
+      const eventsList = eventsRes.data || [];
+      const profilesList = profilesRes.data || [];
+      const localDeviceId = localSysInfo?.device_id || '';
 
-      let isAgentActive = true;
-      if (hbTime) {
-        const diffSecs = (Date.now() - new Date(hbTime).getTime()) / 1000;
-        isAgentActive = diffSecs < 180; // active within last 3 minutes
+      // Group presence records by distinct device_id
+      const deviceMap = new Map<string, any>();
+      for (const p of presenceList) {
+        if (!p.device_id) continue;
+        if (!deviceMap.has(p.device_id)) {
+          deviceMap.set(p.device_id, p);
+        }
       }
 
-      setAgentTelemetry({
-        deviceId: p?.device_id || ev?.device_id || '—',
-        deviceName: p?.device_name || ev?.metadata?.device_name || p?.device_id || 'Unnamed device',
-        lastHeartbeatTime: hbTime ? formatLocalTime(hbTime) : 'No heartbeat yet',
-        rawHeartbeat: hbTime || '',
-        activeWindow:
-          ev?.metadata?.window ||
-          ev?.metadata?.window_title ||
-          '—',
-        isOnline: isAgentActive,
-        status: p?.status || (isAgentActive ? 'active' : 'offline'),
+      const mappedWorkstations: ConnectedWorkstationTelemetry[] = Array.from(deviceMap.values()).map((p) => {
+        const matchingProfile = profilesList.find((prof: any) => prof.id === p.employee_id);
+        const latestDevEvent = eventsList.find(
+          (ev: any) =>
+            ev.device_id === p.device_id ||
+            (ev.metadata?.device_name && ev.metadata.device_name === p.device_id)
+        );
+        const hbTime = p.last_activity_at || latestDevEvent?.occurred_at;
+        const diffSecs = hbTime ? (Date.now() - new Date(hbTime).getTime()) / 1000 : 999999;
+        const isOnline = diffSecs < 180; // active within last 3 minutes
+
+        return {
+          deviceId: p.device_id,
+          deviceName: p.device_id.replace(/^WIN-/, '').replace(/-[^-]+$/, ''),
+          employeeId: p.employee_id,
+          employeeName: matchingProfile?.full_name || 'System User',
+          employeeEmail: matchingProfile?.email || '',
+          lastHeartbeatTime: hbTime ? formatLocalTime(hbTime) : 'No heartbeat yet',
+          rawHeartbeat: hbTime || '',
+          activeWindow:
+            latestDevEvent?.metadata?.window ||
+            latestDevEvent?.metadata?.window_title ||
+            '—',
+          isOnline,
+          status: p.status || (isOnline ? 'active' : 'offline'),
+          isCurrentDevice: p.device_id === localDeviceId,
+        };
       });
+
+      setWorkstations(mappedWorkstations);
+
+      if (mappedWorkstations.length > 0) {
+        const primary =
+          (selectedDeviceId !== 'all' ? mappedWorkstations.find((w) => w.deviceId === selectedDeviceId) : null) ||
+          mappedWorkstations[0];
+        setAgentTelemetry({
+          deviceId: primary.deviceId,
+          deviceName: primary.deviceName,
+          lastHeartbeatTime: primary.lastHeartbeatTime,
+          rawHeartbeat: primary.rawHeartbeat,
+          activeWindow: primary.activeWindow,
+          isOnline: primary.isOnline,
+          status: primary.status,
+        });
+      }
     } catch (err) {
       console.error('Error loading settings and audit data:', err);
     }
@@ -542,8 +602,10 @@ export const AdminSettingsAuditPage: React.FC<AdminSettingsAuditPageProps> = ({ 
                   gap: 6,
                   padding: '3px 10px',
                   borderRadius: 12,
-                  background: agentTelemetry.isOnline ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)',
-                  color: agentTelemetry.isOnline ? '#10b981' : '#ef4444',
+                  background: workstations.some((w) => w.isOnline)
+                    ? 'rgba(16, 185, 129, 0.15)'
+                    : 'rgba(239, 68, 68, 0.15)',
+                  color: workstations.some((w) => w.isOnline) ? '#10b981' : '#ef4444',
                   fontSize: 11,
                   fontWeight: 700,
                 }}
@@ -554,159 +616,230 @@ export const AdminSettingsAuditPage: React.FC<AdminSettingsAuditPageProps> = ({ 
                     height: 7,
                     borderRadius: '50%',
                     background: 'currentColor',
-                    boxShadow: agentTelemetry.isOnline ? '0 0 6px #10b981' : 'none',
+                    boxShadow: workstations.some((w) => w.isOnline) ? '0 0 6px #10b981' : 'none',
                   }}
                 />
-                <span>{agentTelemetry.isOnline ? 'ACTIVE & SYNCED' : 'AWAITING AGENT'}</span>
+                <span>
+                  {workstations.filter((w) => w.isOnline).length > 1
+                    ? `${workstations.filter((w) => w.isOnline).length} WORKSTATIONS ACTIVE & SYNCED`
+                    : workstations.some((w) => w.isOnline)
+                      ? 'ACTIVE & SYNCED'
+                      : 'AWAITING AGENT'}
+                </span>
               </div>
             </div>
 
             <p style={{ fontSize: 13, color: 'var(--text-secondary)', margin: 0 }}>
-              Live telemetry heartbeat receiver constantly synced with the running background desktop agent executable.
+              Live telemetry heartbeat receiver constantly synced with running background desktop agent workstations.
             </p>
 
+            {/* Workstation Selector Tabs if multiple connected workstations */}
+            {workstations.length > 1 && (
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  flexWrap: 'wrap',
+                  padding: 4,
+                  background: 'var(--surface-subtle)',
+                  borderRadius: 'var(--radius-card-sm)',
+                }}
+              >
+                <button
+                  type="button"
+                  onClick={() => setSelectedDeviceId('all')}
+                  style={{
+                    padding: '5px 12px',
+                    borderRadius: 'var(--radius-card-sm)',
+                    border: 'none',
+                    background: selectedDeviceId === 'all' ? 'var(--color-primary)' : 'transparent',
+                    color: selectedDeviceId === 'all' ? '#ffffff' : 'var(--text-secondary)',
+                    fontSize: 11,
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease',
+                  }}
+                >
+                  All Connected Workstations ({workstations.length})
+                </button>
+                {workstations.map((w) => (
+                  <button
+                    key={w.deviceId}
+                    type="button"
+                    onClick={() => setSelectedDeviceId(w.deviceId)}
+                    style={{
+                      padding: '5px 10px',
+                      borderRadius: 'var(--radius-card-sm)',
+                      border: 'none',
+                      background: selectedDeviceId === w.deviceId ? 'var(--color-primary)' : 'transparent',
+                      color: selectedDeviceId === w.deviceId ? '#ffffff' : 'var(--text-secondary)',
+                      fontSize: 11,
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 6,
+                      transition: 'all 0.15s ease',
+                    }}
+                  >
+                    <span
+                      style={{
+                        width: 6,
+                        height: 6,
+                        borderRadius: '50%',
+                        background: w.isOnline ? '#10b981' : '#ef4444',
+                      }}
+                    />
+                    <span>{w.deviceId}</span>
+                    {w.isCurrentDevice && (
+                      <span style={{ opacity: 0.75, fontSize: 10 }}>(This PC)</span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* Render Workstations */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {/* Agent Workstation Card */}
-              <div
-                style={{
-                  padding: '12px 14px',
-                  background: 'var(--surface-frosted-subdued)',
-                  borderRadius: 'var(--radius-card-sm)',
-                  border: '1px solid var(--surface-border-subtle)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <div
-                    style={{
-                      width: 32,
-                      height: 32,
-                      borderRadius: 8,
-                      background: 'rgba(76, 107, 255, 0.12)',
-                      color: 'var(--color-secondary)',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                    }}
-                  >
-                    <Laptop size={16} />
-                  </div>
-                  <div>
-                    <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--text-primary)' }}>
-                      Connected Workstation
+              {(selectedDeviceId === 'all'
+                ? workstations
+                : workstations.filter((w) => w.deviceId === selectedDeviceId)
+              ).map((ws) => (
+                <div
+                  key={ws.deviceId}
+                  style={{
+                    padding: '12px 14px',
+                    background: 'var(--surface-frosted-subdued)',
+                    borderRadius: 'var(--radius-card-sm)',
+                    border: '1px solid var(--surface-border-subtle)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 10,
+                  }}
+                >
+                  {/* Workstation Header */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <div
+                        style={{
+                          width: 32,
+                          height: 32,
+                          borderRadius: 8,
+                          background: 'rgba(76, 107, 255, 0.12)',
+                          color: 'var(--color-secondary)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                        }}
+                      >
+                        <Laptop size={16} />
+                      </div>
+                      <div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <span style={{ fontWeight: 700, fontSize: 13, color: 'var(--text-primary)' }}>
+                            Connected Workstation
+                          </span>
+                          {ws.isCurrentDevice && (
+                            <span className="live-telemetry-badge" style={{ fontSize: 9 }}>
+                              This Machine
+                            </span>
+                          )}
+                        </div>
+                        <div style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'monospace' }}>
+                          {ws.deviceId}
+                          {ws.employeeName && ws.employeeName !== 'System User' ? ` · ${ws.employeeName}` : ''}
+                        </div>
+                      </div>
                     </div>
-                    <div style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'monospace' }}>
-                      {agentTelemetry.deviceId}
+                    <div style={{ textAlign: 'right' }}>
+                      <span
+                        className={`status-pill ${ws.isOnline ? 'active' : 'offline'}`}
+                        style={{ fontSize: 11 }}
+                      >
+                        {ws.isOnline ? 'ACTIVE' : 'OFFLINE'}
+                      </span>
                     </div>
                   </div>
-                </div>
-                <div style={{ textAlign: 'right' }}>
-                  <span className="status-pill active" style={{ fontSize: 11 }}>
-                    {agentTelemetry.status.toUpperCase()}
-                  </span>
-                </div>
-              </div>
 
-              {/* Timestamp Sync Card */}
-              <div
-                style={{
-                  padding: '12px 14px',
-                  background: 'var(--surface-frosted-subdued)',
-                  borderRadius: 'var(--radius-card-sm)',
-                  border: '1px solid var(--surface-border-subtle)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <div
-                    style={{
-                      width: 32,
-                      height: 32,
-                      borderRadius: 8,
-                      background: 'rgba(16, 185, 129, 0.12)',
-                      color: '#10b981',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                    }}
-                  >
-                    <Clock size={16} />
-                  </div>
-                  <div>
-                    <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--text-primary)' }}>
-                      Synchronized Timestamp
-                    </div>
-                    <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-                      Last agent heartbeat received:
-                    </div>
-                  </div>
-                </div>
-                <div style={{ textAlign: 'right' }}>
-                  <div style={{ fontFamily: 'monospace', fontWeight: 800, fontSize: 12, color: 'var(--text-primary)' }}>
-                    {agentTelemetry.lastHeartbeatTime}
-                  </div>
-                  <div style={{ fontSize: 10, color: 'var(--status-success)', fontWeight: 600 }}>
-                    Live Local Sync
-                  </div>
-                </div>
-              </div>
-
-              {/* Active Window & State */}
-              <div
-                style={{
-                  padding: '12px 14px',
-                  background: 'var(--surface-frosted-subdued)',
-                  borderRadius: 'var(--radius-card-sm)',
-                  border: '1px solid var(--surface-border-subtle)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
-                  <div
-                    style={{
-                      width: 32,
-                      height: 32,
-                      borderRadius: 8,
-                      background: 'rgba(245, 158, 11, 0.12)',
-                      color: '#f59e0b',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      flexShrink: 0,
-                    }}
-                  >
-                    <Cpu size={16} />
-                  </div>
-                  <div style={{ minWidth: 0 }}>
-                    <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--text-primary)' }}>
-                      Active Window Telemetry
-                    </div>
+                  {/* Details Grid (Timestamp & Active Window) */}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
                     <div
                       style={{
-                        fontSize: 11,
-                        color: 'var(--text-secondary)',
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        whiteSpace: 'nowrap',
-                        maxWidth: 240,
+                        padding: '8px 10px',
+                        background: 'var(--surface-subtle)',
+                        borderRadius: 8,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
                       }}
-                      title={agentTelemetry.activeWindow}
                     >
-                      {agentTelemetry.activeWindow}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <Clock size={13} color="#10b981" />
+                        <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Last Sync:</span>
+                      </div>
+                      <span style={{ fontSize: 11, fontWeight: 700, fontFamily: 'monospace' }}>
+                        {ws.lastHeartbeatTime}
+                      </span>
+                    </div>
+
+                    <div
+                      style={{
+                        padding: '8px 10px',
+                        background: 'var(--surface-subtle)',
+                        borderRadius: 8,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        minWidth: 0,
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0, flex: 1 }}>
+                        <Cpu size={13} color="#f59e0b" />
+                        <span
+                          style={{
+                            fontSize: 11,
+                            color: 'var(--text-secondary)',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
+                          }}
+                          title={ws.activeWindow}
+                        >
+                          {ws.activeWindow}
+                        </span>
+                      </div>
+                      <span
+                        style={{
+                          color: '#10b981',
+                          fontSize: 10,
+                          fontWeight: 700,
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 3,
+                          marginLeft: 4,
+                        }}
+                      >
+                        <CheckCircle2 size={12} />
+                        Tracking
+                      </span>
                     </div>
                   </div>
                 </div>
-                <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 4, color: '#10b981', fontSize: 11, fontWeight: 700 }}>
-                  <CheckCircle2 size={14} />
-                  <span>Tracking</span>
+              ))}
+
+              {workstations.length === 0 && (
+                <div
+                  style={{
+                    padding: '24px',
+                    textAlign: 'center',
+                    color: 'var(--text-muted)',
+                    fontSize: 12,
+                  }}
+                >
+                  No desktop agents or active workstations currently reporting presence.
                 </div>
-              </div>
+              )}
             </div>
 
             <div

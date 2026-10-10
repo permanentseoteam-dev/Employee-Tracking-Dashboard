@@ -157,11 +157,12 @@ export const App: React.FC = () => {
     };
   }, [isAuthenticated, role, user?.id, fetchState]);
 
-  // Real-time Employee Presence Tracking to Supabase
+  // Real-time Workstation & User Presence Tracking to Supabase
   useEffect(() => {
-    if (!isAuthenticated || role !== 'employee' || !user?.id || !isConfigured) return;
+    if (!isAuthenticated || !user?.id || !isConfigured) return;
 
-    const deviceIdentifier = systemInfo.hostname || 'WORKSTATION-CLIENT';
+    const deviceIdentifier =
+      systemInfo.device_id || systemInfo.hostname || 'WORKSTATION-CLIENT';
 
     const sendPresence = async (presenceStatus: 'active' | 'offline' = 'active') => {
       try {
@@ -181,7 +182,7 @@ export const App: React.FC = () => {
     };
 
     sendPresence('active');
-    const interval = setInterval(() => sendPresence('active'), 30000);
+    const interval = setInterval(() => sendPresence('active'), 25000);
 
     const onUnload = () => {
       sendPresence('offline');
@@ -193,7 +194,7 @@ export const App: React.FC = () => {
       window.removeEventListener('beforeunload', onUnload);
       sendPresence('offline');
     };
-  }, [isAuthenticated, role, user?.id, isConfigured, systemInfo.hostname]);
+  }, [isAuthenticated, user?.id, isConfigured, systemInfo.device_id, systemInfo.hostname]);
 
   if (isLoading) {
     return (

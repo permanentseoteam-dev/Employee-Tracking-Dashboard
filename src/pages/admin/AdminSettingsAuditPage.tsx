@@ -26,15 +26,6 @@ interface AdminSettingsAuditPageProps {
   initialView?: 'all' | 'settings' | 'audit-logs';
 }
 
-interface AgentTelemetryInfo {
-  deviceId: string;
-  deviceName: string;
-  lastHeartbeatTime: string;
-  rawHeartbeat: string;
-  activeWindow: string;
-  isOnline: boolean;
-  status: string;
-}
 
 export interface ConnectedWorkstationTelemetry {
   deviceId: string;
@@ -77,19 +68,6 @@ export const AdminSettingsAuditPage: React.FC<AdminSettingsAuditPageProps> = ({ 
 
   const [workstations, setWorkstations] = useState<ConnectedWorkstationTelemetry[]>([]);
   const [selectedDeviceId, setSelectedDeviceId] = useState<string>('all');
-  void workstations;
-  void selectedDeviceId;
-  void setSelectedDeviceId;
-
-  const [agentTelemetry, setAgentTelemetry] = useState<AgentTelemetryInfo>({
-    deviceId: '—',
-    deviceName: 'Awaiting agent…',
-    lastHeartbeatTime: 'Checking agent...',
-    rawHeartbeat: '',
-    activeWindow: '—',
-    isOnline: false,
-    status: 'offline',
-  });
 
   useEffect(() => {
     if (initialView) {
@@ -196,20 +174,6 @@ export const AdminSettingsAuditPage: React.FC<AdminSettingsAuditPageProps> = ({ 
 
       setWorkstations(mappedWorkstations);
 
-      if (mappedWorkstations.length > 0) {
-        const primary =
-          (selectedDeviceId !== 'all' ? mappedWorkstations.find((w) => w.deviceId === selectedDeviceId) : null) ||
-          mappedWorkstations[0];
-        setAgentTelemetry({
-          deviceId: primary.deviceId,
-          deviceName: primary.deviceName,
-          lastHeartbeatTime: primary.lastHeartbeatTime,
-          rawHeartbeat: primary.rawHeartbeat,
-          activeWindow: primary.activeWindow,
-          isOnline: primary.isOnline,
-          status: primary.status,
-        });
-      }
     } catch (err) {
       console.error('Error loading settings and audit data:', err);
     }

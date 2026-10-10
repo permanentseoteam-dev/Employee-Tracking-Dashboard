@@ -32,7 +32,6 @@ import {
 import {
   parseAndTransformEmbedUrl,
   extractUrlFromHtml,
-  normalizeRawUrl,
   type EmbedUrlInfo,
 } from '../../utils/embedUrl';
 import type {
@@ -64,12 +63,20 @@ function itemIcon(type: ProjectTreeItemType, size = 16) {
   }
 }
 
-function normalizeUrl(url: string): string {
-  return normalizeRawUrl(url);
+function getEmbedSourceRaw(item: ProjectTreeItem): string {
+  const content = item.content as any;
+  // Prefer the original pasted URL so transforms/blocked-host detection stay accurate
+  return (
+    content?.original_url ||
+    (item.data_url && /^https?:\/\//i.test(item.data_url) ? item.data_url : '') ||
+    item.embed_url ||
+    content?.embed_url ||
+    ''
+  );
 }
 
 function getEmbedUrl(item: ProjectTreeItem): string {
-  const raw = item.embed_url || (item.content as any)?.embed_url || item.data_url || '';
+  const raw = getEmbedSourceRaw(item);
   if (!raw) return '';
   return parseAndTransformEmbedUrl(raw).embedUrl;
 }
@@ -84,8 +91,7 @@ function getOriginalUrl(item: ProjectTreeItem): string {
 }
 
 function getEmbedInfo(item: ProjectTreeItem): EmbedUrlInfo {
-  const raw = item.embed_url || (item.content as any)?.embed_url || item.data_url || '';
-  return parseAndTransformEmbedUrl(raw);
+  return parseAndTransformEmbedUrl(getEmbedSourceRaw(item));
 }
 
 export const ProjectExplorer: React.FC<ProjectExplorerProps> = ({ role, managerId }) => {
@@ -206,6 +212,16 @@ export const ProjectExplorer: React.FC<ProjectExplorerProps> = ({ role, managerI
   useEffect(() => {
     loadProjects();
   }, [loadProjects]);
+
+  // If an iframe never finishes (or finishes blank), clear the spinner and offer the link card
+  useEffect(() => {
+    if (!embedViewerItem || embedViewMode !== 'embed' || !iframeLoading) return;
+    const timer = window.setTimeout(() => {
+      setIframeLoading(false);
+      setEmbedViewMode('card');
+    }, 10000);
+    return () => window.clearTimeout(timer);
+  }, [embedViewerItem, embedViewMode, iframeLoading, iframeKey]);
 
   useEffect(() => {
     try {
@@ -403,7 +419,14 @@ export const ProjectExplorer: React.FC<ProjectExplorerProps> = ({ role, managerI
       setCreateMenu(null);
       setNameDraft('');
       setEmbedUrlDraft('');
-      showToast('ok', `Embed link “${item.name}” added`);
+      if (!info.canEmbedInIframe || info.isKnownFrameBlocked) {
+        showToast(
+          'ok',
+          `“${item.name}” saved — open in a new tab (this site blocks in-app preview)`
+        );
+      } else {
+        showToast('ok', `Embed link “${item.name}” added`);
+      }
       openEditor(item);
     } catch (err: any) {
       showToast('err', err?.message || 'Failed to add embed');
@@ -451,6 +474,9 @@ export const ProjectExplorer: React.FC<ProjectExplorerProps> = ({ role, managerI
         },
       });
       setEmbedEditMode(false);
+      setEmbedViewMode(
+        !info.canEmbedInIframe || info.isKnownFrameBlocked || !info.embedUrl ? 'card' : 'embed'
+      );
       setIframeKey((k) => k + 1);
       setIframeLoading(true);
       showToast('ok', 'Embed updated successfully');
@@ -512,7 +538,9 @@ export const ProjectExplorer: React.FC<ProjectExplorerProps> = ({ role, managerI
     const info = getEmbedInfo(item);
     setEmbedViewerItem(item);
     setEmbedEditMode(false);
-    setEmbedViewMode(info.isKnownFrameBlocked ? 'card' : 'embed');
+    setEmbedViewMode(
+      !info.canEmbedInIframe || info.isKnownFrameBlocked || !info.embedUrl ? 'card' : 'embed'
+    );
     setIframeLoading(true);
     setIframeKey((k) => k + 1);
     setEditEmbedUrlDraft(info.originalUrl || info.embedUrl);
@@ -1413,31 +1441,44 @@ export const ProjectExplorer: React.FC<ProjectExplorerProps> = ({ role, managerI
                         />
                         {embedUrlDraft.trim() && (() => {
                           const info = parseAndTransformEmbedUrl(embedUrlDraft);
+                          const warn = !info.canEmbedInIframe || info.isKnownFrameBlocked;
                           return (
                             <div
                               style={{
                                 marginTop: 4,
                                 display: 'flex',
-                                alignItems: 'center',
+                                alignItems: 'flex-start',
                                 gap: 6,
                                 padding: '6px 10px',
                                 borderRadius: 8,
-                                background: 'rgba(6, 182, 212, 0.08)',
-                                border: '1px solid rgba(6, 182, 212, 0.2)',
+                                background: warn
+                                  ? 'rgba(245, 158, 11, 0.1)'
+                                  : 'rgba(6, 182, 212, 0.08)',
+                                border: warn
+                                  ? '1px solid rgba(245, 158, 11, 0.35)'
+                                  : '1px solid rgba(6, 182, 212, 0.2)',
                                 fontSize: 11,
                                 color: 'var(--text-secondary)',
                               }}
                             >
-                              <Globe size={13} color="#06b6d4" />
+                              {warn ? (
+                                <AlertCircle size={13} color="#d97706" style={{ flexShrink: 0, marginTop: 1 }} />
+                              ) : (
+                                <Globe size={13} color="#06b6d4" style={{ flexShrink: 0, marginTop: 1 }} />
+                              )}
                               <span>
                                 Detected <strong>{info.provider}</strong>
-                                {info.notes ? ` · ${info.notes}` : ' · Ready for in-app preview'}
+                                {info.notes
+                                  ? ` · ${info.notes}`
+                                  : warn
+                                    ? ' · Will open via link card (site blocks iframes)'
+                                    : ' · Ready for in-app preview'}
                               </span>
                             </div>
                           );
                         })()}
                         <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-                          Paste any link from Google Docs/Sheets/Slides/Drive, YouTube, Figma, Loom, Vimeo, or any web URL.
+                          Best in-app: Google Docs/Sheets/Slides/Drive (shared “Anyone with the link”), YouTube, Figma, Loom. Other sites open as a link card.
                         </span>
                       </div>
 
@@ -1660,17 +1701,18 @@ export const ProjectExplorer: React.FC<ProjectExplorerProps> = ({ role, managerI
                 </div>
 
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  {getEmbedUrl(embedViewerItem) && (
+                  {(getEmbedInfo(embedViewerItem).originalUrl || getEmbedUrl(embedViewerItem)) && (
                     <>
                       <button
                         type="button"
-                        className="btn-pill btn-pill-secondary"
+                        className="btn-pill btn-pill-primary"
                         style={{ padding: '6px 12px', fontSize: 12, gap: 6 }}
                         onClick={() => {
-                          const url = getEmbedUrl(embedViewerItem);
+                          const info = getEmbedInfo(embedViewerItem);
+                          const url = info.originalUrl || info.embedUrl;
                           if (url) window.open(url, '_blank', 'noopener,noreferrer');
                         }}
-                        title="Open embed in new browser tab"
+                        title="Open original link in a new browser tab"
                       >
                         <ExternalLink size={13} />
                         <span>Open in Tab</span>
@@ -1680,17 +1722,34 @@ export const ProjectExplorer: React.FC<ProjectExplorerProps> = ({ role, managerI
                         className="btn-pill btn-pill-secondary"
                         style={{ padding: '6px 12px', fontSize: 12, gap: 6 }}
                         onClick={() => {
-                          const url = getEmbedUrl(embedViewerItem);
+                          const info = getEmbedInfo(embedViewerItem);
+                          const url = info.originalUrl || info.embedUrl;
                           if (url) {
                             navigator.clipboard?.writeText(url);
                             showToast('ok', 'Link copied to clipboard');
                           }
                         }}
-                        title="Copy embed link"
+                        title="Copy original link"
                       >
                         <Copy size={13} />
                         <span>Copy Link</span>
                       </button>
+                      {embedViewMode === 'card' && getEmbedUrl(embedViewerItem) && (
+                        <button
+                          type="button"
+                          className="btn-pill btn-pill-secondary"
+                          style={{ padding: '6px 12px', fontSize: 12, gap: 6 }}
+                          onClick={() => {
+                            setEmbedViewMode('embed');
+                            setIframeLoading(true);
+                            setIframeKey((k) => k + 1);
+                          }}
+                          title="Try in-app preview anyway"
+                        >
+                          <RefreshCw size={13} />
+                          <span>Try Preview</span>
+                        </button>
+                      )}
                     </>
                   )}
 
@@ -1782,7 +1841,7 @@ export const ProjectExplorer: React.FC<ProjectExplorerProps> = ({ role, managerI
                 </div>
               )}
 
-              {/* Embed Iframe / Preview Container */}
+              {/* Embed preview — card fallback when the host blocks iframes */}
               <div
                 style={{
                   flex: 1,
@@ -1791,48 +1850,156 @@ export const ProjectExplorer: React.FC<ProjectExplorerProps> = ({ role, managerI
                   width: '100%',
                   borderRadius: 10,
                   overflow: 'hidden',
-                  background: '#ffffff',
+                  background:
+                    embedViewMode === 'card'
+                      ? 'var(--surface-frosted-subdued, #f8fafc)'
+                      : '#ffffff',
                   border: '1px solid var(--surface-border-subtle)',
                   position: 'relative',
                   display: 'flex',
                   flexDirection: 'column',
                 }}
               >
-                {getEmbedUrl(embedViewerItem) ? (
-                  <iframe
-                    src={getEmbedUrl(embedViewerItem)}
-                    title={embedViewerItem.name}
-                    sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-downloads allow-modals"
-                    allow="fullscreen; accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                    style={{
-                      width: '100%',
-                      height: '100%',
-                      minHeight: 440,
-                      border: 'none',
-                      flex: 1,
-                      borderRadius: 10,
-                    }}
-                  />
-                ) : (
-                  <div
-                    style={{
-                      display: 'flex',
-                      flexDirection: 'column',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      height: '100%',
-                      padding: 24,
-                      color: 'var(--text-muted)',
-                      gap: 8,
-                    }}
-                  >
-                    <Globe size={32} color="var(--text-muted)" />
-                    <p style={{ margin: 0, fontSize: 13 }}>No embed link configured for this item.</p>
-                  </div>
-                )}
+                {(() => {
+                  const info = getEmbedInfo(embedViewerItem);
+                  const useCard =
+                    embedViewMode === 'card' ||
+                    info.isKnownFrameBlocked ||
+                    !info.canEmbedInIframe ||
+                    !info.embedUrl;
+
+                  if (useCard) {
+                    return (
+                      <div
+                        style={{
+                          display: 'flex',
+                          flexDirection: 'column',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          height: '100%',
+                          minHeight: 440,
+                          padding: 32,
+                          gap: 14,
+                          textAlign: 'center',
+                        }}
+                      >
+                        <div
+                          style={{
+                            width: 56,
+                            height: 56,
+                            borderRadius: 14,
+                            background: 'rgba(6, 182, 212, 0.12)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                          }}
+                        >
+                          <Globe size={28} color="#0891b2" />
+                        </div>
+                        <div>
+                          <div style={{ fontSize: 15, fontWeight: 800, color: 'var(--text-primary)' }}>
+                            {info.provider || 'Web Link'}
+                          </div>
+                          <p
+                            style={{
+                              margin: '8px 0 0',
+                              fontSize: 13,
+                              color: 'var(--text-muted)',
+                              maxWidth: 420,
+                              lineHeight: 1.45,
+                            }}
+                          >
+                            {info.notes ||
+                              'This site cannot be shown inside the app (provider security). Open it in a new tab instead.'}
+                          </p>
+                        </div>
+                        {(info.originalUrl || info.embedUrl) && (
+                          <button
+                            type="button"
+                            className="btn-pill btn-pill-primary"
+                            style={{ marginTop: 4 }}
+                            onClick={() =>
+                              window.open(
+                                info.originalUrl || info.embedUrl,
+                                '_blank',
+                                'noopener,noreferrer'
+                              )
+                            }
+                          >
+                            <ExternalLink size={14} />
+                            <span>Open in new tab</span>
+                          </button>
+                        )}
+                        {!info.embedUrl && !info.originalUrl && (
+                          <p style={{ margin: 0, fontSize: 13, color: 'var(--text-muted)' }}>
+                            No embed link configured for this item.
+                          </p>
+                        )}
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <>
+                      {iframeLoading && (
+                        <div
+                          style={{
+                            position: 'absolute',
+                            inset: 0,
+                            zIndex: 2,
+                            display: 'flex',
+                            flexDirection: 'column',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: 10,
+                            background: 'rgba(248, 250, 252, 0.92)',
+                            color: 'var(--text-muted)',
+                            fontSize: 13,
+                            fontWeight: 600,
+                          }}
+                        >
+                          <Loader2 size={22} className="spin" />
+                          <span>Loading preview…</span>
+                          <button
+                            type="button"
+                            className="btn-pill btn-pill-secondary"
+                            style={{ padding: '5px 12px', fontSize: 11, marginTop: 4 }}
+                            onClick={() => {
+                              setEmbedViewMode('card');
+                              setIframeLoading(false);
+                            }}
+                          >
+                            Preview stuck? Show link card
+                          </button>
+                        </div>
+                      )}
+                      <iframe
+                        key={iframeKey}
+                        src={info.embedUrl}
+                        title={embedViewerItem.name}
+                        referrerPolicy="no-referrer-when-downgrade"
+                        sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox allow-downloads allow-modals"
+                        allow="fullscreen; accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                        onLoad={() => setIframeLoading(false)}
+                        onError={() => {
+                          setIframeLoading(false);
+                          setEmbedViewMode('card');
+                        }}
+                        style={{
+                          width: '100%',
+                          height: '100%',
+                          minHeight: 440,
+                          border: 'none',
+                          flex: 1,
+                          borderRadius: 10,
+                          background: '#fff',
+                        }}
+                      />
+                    </>
+                  );
+                })()}
               </div>
 
-              {/* Security / X-Frame-Options notice */}
               <div
                 style={{
                   display: 'flex',
@@ -1844,8 +2011,10 @@ export const ProjectExplorer: React.FC<ProjectExplorerProps> = ({ role, managerI
                   paddingTop: 4,
                 }}
               >
-                <span>
-                  Tip: If the embedded page refuses to connect due to provider security (e.g. Google Docs login restrictions), click <strong>Open in Tab</strong>.
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                  <AlertCircle size={12} />
+                  {getEmbedInfo(embedViewerItem).notes ||
+                    'Google / Office links need “Anyone with the link” sharing. Sites that block iframes open via Open in Tab.'}
                 </span>
                 <button
                   type="button"

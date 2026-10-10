@@ -5,7 +5,7 @@ use std::path::PathBuf;
 
 pub const DEFAULT_SUPABASE_URL: &str = "https://isywkcymfzpgjerfuors.supabase.co";
 pub const DEFAULT_SUPABASE_ANON_KEY: &str = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlzeXdrY3ltZnpwZ2plcmZ1b3JzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTEzNDQwMzAsImV4cCI6MjEwNjkyMDAzMH0.b7GmU3Bz1zRB7sROsCchnohgZVb6LIyw8v_N_lNLDPs";
-pub const DEFAULT_EMPLOYEE_ID: &str = "cccccccc-cccc-cccc-cccc-cccccccccccc"; // Arsal
+pub const DEFAULT_EMPLOYEE_ID: &str = "d9b4bfb3-9953-522d-84af-3de709e7caa8"; // Arsal Agent
 
 #[derive(Debug, Clone)]
 pub struct AgentConfig {

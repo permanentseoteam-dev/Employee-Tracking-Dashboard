@@ -359,17 +359,81 @@ export const LoginPage: React.FC = () => {
                   }}
                 >
                   <p style={{ margin: 0 }}>
-                    Supabase blocks sign in when <strong>&quot;Confirm email&quot;</strong> is enabled in project settings.
+                    Supabase blocks sign in when <strong>&quot;Confirm email&quot;</strong> is enabled in your project settings.
                   </p>
-                  <ul style={{ margin: '0 0 0 1.25rem', padding: 0, lineHeight: 1.5 }}>
+                  <ul style={{ margin: '0 0 0 1.25rem', padding: 0, lineHeight: 1.6 }}>
                     <li>
-                      <strong>Recommended:</strong> In Supabase Dashboard &rarr;{' '}
-                      <em>Authentication &rarr; Providers &rarr; Email</em>, toggle <strong>OFF</strong> &quot;Confirm email&quot; and save.
+                      <strong>Option 1 (Instant):</strong> Open{' '}
+                      <a
+                        href="https://supabase.com/dashboard/project/isywkcymfzpgjerfuors/auth/providers"
+                        target="_blank"
+                        rel="noreferrer"
+                        style={{ color: 'var(--color-primary)', textDecoration: 'underline', fontWeight: 600 }}
+                      >
+                        Auth &rarr; Providers &rarr; Email
+                      </a>{' '}
+                      and toggle <strong>OFF &quot;Confirm email&quot;</strong>, then Save.
                     </li>
                     <li>
-                      <strong>Or SQL:</strong> Run migration <code>015_auto_confirm_users.sql</code> in the Supabase SQL Editor.
+                      <strong>Option 2 (SQL):</strong> Open{' '}
+                      <a
+                        href="https://supabase.com/dashboard/project/isywkcymfzpgjerfuors/sql/new"
+                        target="_blank"
+                        rel="noreferrer"
+                        style={{ color: 'var(--color-primary)', textDecoration: 'underline', fontWeight: 600 }}
+                      >
+                        SQL Editor
+                      </a>{' '}
+                      and run{' '}
+                      <code style={{ background: 'var(--surface-frosted)', padding: '2px 4px', borderRadius: 4 }}>
+                        015_auto_confirm_users.sql
+                      </code>{' '}
+                      to auto-confirm all users.
                     </li>
                   </ul>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4, flexWrap: 'wrap' }}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const sqlCode = `UPDATE auth.users SET email_confirmed_at = now() WHERE email_confirmed_at IS NULL;\nCREATE OR REPLACE FUNCTION public.auto_confirm_new_user() RETURNS trigger AS $$ BEGIN IF NEW.email_confirmed_at IS NULL THEN NEW.email_confirmed_at := now(); END IF; RETURN NEW; END; $$ LANGUAGE plpgsql SECURITY DEFINER;\nDROP TRIGGER IF EXISTS on_auth_user_created_auto_confirm ON auth.users;\nCREATE TRIGGER on_auth_user_created_auto_confirm BEFORE INSERT ON auth.users FOR EACH ROW EXECUTE FUNCTION public.auto_confirm_new_user();\nNOTIFY pgrst, 'reload schema';`;
+                        navigator.clipboard?.writeText(sqlCode);
+                        alert('SQL copied to clipboard! Paste and Run in Supabase SQL Editor.');
+                      }}
+                      style={{
+                        padding: '6px 12px',
+                        borderRadius: 'var(--radius-pill)',
+                        border: '1px solid var(--surface-border)',
+                        background: 'var(--color-primary)',
+                        color: 'var(--color-on-primary)',
+                        fontSize: 12,
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        boxShadow: 'var(--shadow-pill)',
+                      }}
+                    >
+                      Copy Auto-Confirm SQL
+                    </button>
+                    <a
+                      href="https://supabase.com/dashboard/project/isywkcymfzpgjerfuors/sql/new"
+                      target="_blank"
+                      rel="noreferrer"
+                      style={{
+                        padding: '6px 12px',
+                        borderRadius: 'var(--radius-pill)',
+                        border: '1px solid var(--surface-border-subtle)',
+                        background: 'var(--surface-frosted-elevated)',
+                        color: 'var(--text-primary)',
+                        fontSize: 12,
+                        fontWeight: 600,
+                        textDecoration: 'none',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 4,
+                      }}
+                    >
+                      Open SQL Editor &rarr;
+                    </a>
+                  </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4 }}>
                     <button
                       type="button"

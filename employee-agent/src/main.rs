@@ -1,4 +1,5 @@
 mod auth;
+mod commands;
 mod compression;
 mod config;
 mod device;
@@ -182,11 +183,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut heartbeat_timer = interval(Duration::from_secs(heartbeat_secs));
     let mut config_timer = interval(Duration::from_secs(refresh_secs));
     let mut stop_poll = interval(Duration::from_secs(2));
+    let mut command_timer = interval(Duration::from_secs(2));
+    let mut live_timer = interval(Duration::from_secs(1));
+    let mut live_runtime = commands::LiveRuntime::default();
 
     screenshot_timer.tick().await;
     heartbeat_timer.tick().await;
     config_timer.tick().await;
     stop_poll.tick().await;
+    command_timer.tick().await;
+    live_timer.tick().await;
 
     loop {
         tokio::select! {
@@ -198,6 +204,33 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 snap.paused = is_paused();
                 snap.updated_at = now_rfc3339();
                 write_status(&snap);
+            }
+
+            _ = command_timer.tick() => {
+                if stop_requested() { break; }
+                let cfg = config.read().await.clone();
+                commands::poll_and_handle(&uploader, &cfg, &device_info, &mut live_runtime).await;
+            }
+
+            _ = live_timer.tick() => {
+                if stop_requested() { break; }
+                if !live_runtime.active || is_paused() {
+                    continue;
+                }
+                let cfg = config.read().await.clone();
+                match commands::push_live_frame(&uploader, &cfg).await {
+                    Ok(()) => {
+                        snap.last_collection_at = Some(now_rfc3339());
+                        snap.last_upload_at = Some(now_rfc3339());
+                        snap.backend_ok = true;
+                        write_status(&snap);
+                    }
+                    Err(e) => {
+                        tracing::warn!("Live frame push failed: {}", e);
+                        snap.last_error = Some(e);
+                        write_status(&snap);
+                    }
+                }
             }
 
             _ = heartbeat_timer.tick() => {

@@ -7,6 +7,7 @@ import { MatrixHeatmap } from '../../components/telemetry/MatrixHeatmap';
 import { KeyboardActivityView } from '../../components/telemetry/KeyboardActivityView';
 import { formatCaptureDateTime, formatCaptureTime } from '../../utils/datetime';
 import type { ScreenshotItem, EmployeeRecord, ScreenRecordingItem } from '../../types/roles';
+import { FrameSequencePlayer } from '../../components/monitoring/FrameSequencePlayer';
 
 import { useAppRefresh } from '../../hooks/useAppRefresh';
 import { RefreshButton } from '../../components/common/RefreshButton';
@@ -27,6 +28,8 @@ export const ManagerMonitoringPage: React.FC<ManagerMonitoringPageProps> = ({ in
 
   // Live Screen Inspection & Recording Modal State
   const [selectedLiveEmployee, setSelectedLiveEmployee] = useState<EmployeeRecord | null>(null);
+  const [liveFrameUrl, setLiveFrameUrl] = useState<string | null>(null);
+  const [liveStatusText, setLiveStatusText] = useState<string>('Connecting to agent…');
   const [isRecordingMap, setIsRecordingMap] = useState<Record<string, boolean>>({});
   const [recordingSecondsMap, setRecordingSecondsMap] = useState<Record<string, number>>({});
   const [recordingSuccessMessage, setRecordingSuccessMessage] = useState<string | null>(null);
@@ -103,32 +106,42 @@ export const ManagerMonitoringPage: React.FC<ManagerMonitoringPageProps> = ({ in
     };
   }, [user.id, filterEmployeeId]);
 
-  // Handle on-demand screen recording
   const handleStartScreenRecording = async (emp: EmployeeRecord, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
 
     const empId = emp.id;
+    if (isRecordingMap[empId]) return;
     setIsRecordingMap((prev) => ({ ...prev, [empId]: true }));
     setRecordingSecondsMap((prev) => ({ ...prev, [empId]: 0 }));
     setRecordingSuccessMessage(null);
 
-    // Call Supabase on-demand recording trigger
-    await dataService.triggerOnDemandScreenRecording('manager', empId, user.name, emp.name, emp.active_window);
-
-    // Live Recording Progress Timer (8-second recording session)
     let secs = 0;
     const recTimer = setInterval(() => {
       secs += 1;
       setRecordingSecondsMap((prev) => ({ ...prev, [empId]: secs }));
-
-      if (secs >= 8) {
-        clearInterval(recTimer);
-        setIsRecordingMap((prev) => ({ ...prev, [empId]: false }));
-        setRecordingSuccessMessage(`10s Screen stream recorded for ${emp.name} & stored securely in Supabase vault.`);
-        loadData();
-        setTimeout(() => setRecordingSuccessMessage(null), 6000);
-      }
     }, 1000);
+
+    try {
+      const agentEmpId = emp.user_id || empId;
+      const res = await dataService.triggerOnDemandScreenRecording(
+        'manager',
+        agentEmpId,
+        user.name,
+        emp.name,
+        emp.active_window
+      );
+      setRecordingSuccessMessage(
+        res.success
+          ? `Real desktop recording saved for ${emp.name}.`
+          : res.message || `Recording failed for ${emp.name}.`
+      );
+      if (res.success && res.recording) setSelectedRecording(res.recording);
+      await loadData();
+    } finally {
+      clearInterval(recTimer);
+      setIsRecordingMap((prev) => ({ ...prev, [empId]: false }));
+      setTimeout(() => setRecordingSuccessMessage(null), 8000);
+    }
   };
 
   const handleOpenScreenshot = (sc: ScreenshotItem) => {
@@ -163,16 +176,65 @@ export const ManagerMonitoringPage: React.FC<ManagerMonitoringPageProps> = ({ in
     }
   };
 
-  const handleOpenLiveModal = (emp: EmployeeRecord) => {
+  const handleCloseLiveModal = async () => {
+    const emp = selectedLiveEmployee;
+    setSelectedLiveEmployee(null);
+    setLiveFrameUrl(null);
+    setLiveStatusText('Connecting to agent…');
+    if (emp) {
+      await dataService.stopLiveSession(emp.user_id || emp.id, user.name);
+    }
+  };
+
+  const handleOpenLiveModal = async (emp: EmployeeRecord) => {
     setSelectedLiveEmployee(emp);
+    setLiveFrameUrl(null);
+    setLiveStatusText('Requesting live frames from agent…');
     dataService.logAction(
       user.name,
       'manager',
       'INSPECT_LIVE_SCREEN',
       emp.name,
-      `Inspected live workstation screen and telemetry for ${emp.name}`
+      `Opened live workstation stream for ${emp.name}`
     );
+    const res = await dataService.startLiveSession(emp.user_id || emp.id, user.name);
+    if (!res.success) {
+      setLiveStatusText(res.message || 'Failed to start live session');
+    }
   };
+
+  useEffect(() => {
+    if (!selectedLiveEmployee) return;
+    const empId = selectedLiveEmployee.user_id || selectedLiveEmployee.id;
+    let cancelled = false;
+
+    const tick = async () => {
+      const session = await dataService.getLiveSession(empId);
+      if (cancelled) return;
+      if (session?.frame_url) {
+        setLiveFrameUrl(session.frame_url);
+        setLiveStatusText(
+          session.active
+            ? `Live · ${session.width || '?'}×${session.height || '?'} · ${formatCaptureTime(session.updated_at)}`
+            : 'Waiting for agent…'
+        );
+      } else {
+        setLiveStatusText('Waiting for agent live frame…');
+      }
+    };
+
+    tick();
+    const poll = setInterval(tick, 1000);
+    const keepalive = setInterval(() => {
+      void dataService.heartbeatLiveSession(empId, user.name);
+    }, 25000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(poll);
+      clearInterval(keepalive);
+    };
+  }, [selectedLiveEmployee?.id, selectedLiveEmployee?.user_id, user.name]);
 
   const selectedEmpRecord = teamEmployees.find(
     (e) => e.id === filterEmployeeId || e.user_id === filterEmployeeId || e.name === filterEmployeeId
@@ -1092,7 +1154,7 @@ export const ManagerMonitoringPage: React.FC<ManagerMonitoringPageProps> = ({ in
       {/* Interactive Live Screen Inspector & On-Demand Recording Modal */}
       <AnimatePresence>
         {selectedLiveEmployee && (
-          <div className="stitch-modal-backdrop" onClick={() => setSelectedLiveEmployee(null)}>
+          <div className="stitch-modal-backdrop" onClick={() => void handleCloseLiveModal()}>
             <motion.div
               initial={{ scale: 0.95, opacity: 0, y: 15 }}
               animate={{ scale: 1, opacity: 1, y: 0 }}
@@ -1148,14 +1210,14 @@ export const ManagerMonitoringPage: React.FC<ManagerMonitoringPageProps> = ({ in
                   <button
                     type="button"
                     className="btn-icon-circle"
-                    onClick={() => setSelectedLiveEmployee(null)}
+                    onClick={() => void handleCloseLiveModal()}
                   >
                     <X size={16} />
                   </button>
                 </div>
               </div>
 
-              {/* Main Screen Stream Frame */}
+              {/* Main Screen Stream Frame — real agent live JPEG */}
               <div
                 style={{
                   borderRadius: 'var(--radius-card-sm)',
@@ -1170,9 +1232,10 @@ export const ManagerMonitoringPage: React.FC<ManagerMonitoringPageProps> = ({ in
                   justifyContent: 'center',
                 }}
               >
-                {selectedLiveEmployee.latest_screenshot_url ? (
+                {liveFrameUrl ? (
                   <img
-                    src={selectedLiveEmployee.latest_screenshot_url}
+                    key={liveFrameUrl}
+                    src={liveFrameUrl}
                     alt={selectedLiveEmployee.active_window || 'Live Screen Stream'}
                     style={{ width: '100%', height: '100%', maxHeight: '55vh', objectFit: 'contain' }}
                   />
@@ -1180,11 +1243,9 @@ export const ManagerMonitoringPage: React.FC<ManagerMonitoringPageProps> = ({ in
                   <div style={{ textAlign: 'center', padding: '3rem', color: '#94a3b8' }}>
                     <Monitor size={48} color="#38bdf8" style={{ margin: '0 auto 12px' }} />
                     <div style={{ fontSize: 16, fontWeight: 700, color: '#ffffff' }}>
-                      {selectedLiveEmployee.active_window || 'Active Engineering Workspace'}
+                      {selectedLiveEmployee.name}
                     </div>
-                    <div style={{ fontSize: 12, marginTop: 4 }}>
-                      Workstation is connected &bull; Telemetry syncing via Supabase
-                    </div>
+                    <div style={{ fontSize: 12, marginTop: 4 }}>{liveStatusText}</div>
                   </div>
                 )}
 
@@ -1231,7 +1292,7 @@ export const ManagerMonitoringPage: React.FC<ManagerMonitoringPageProps> = ({ in
                       color: '#94a3b8',
                     }}
                   >
-                    Last Capture: {selectedLiveEmployee.last_screenshot}
+                    {liveStatusText}
                   </div>
                 </div>
               </div>
@@ -1363,7 +1424,15 @@ export const ManagerMonitoringPage: React.FC<ManagerMonitoringPageProps> = ({ in
               </div>
 
               <div style={{ borderRadius: 'var(--radius-card-sm)', overflow: 'hidden', background: '#000', maxHeight: 520, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                {selectedRecording.video_url && selectedRecording.video_url.endsWith('.mp4') ? (
+                {selectedRecording.frame_manifest?.frame_urls?.length ? (
+                  <FrameSequencePlayer
+                    manifest={selectedRecording.frame_manifest}
+                    posterUrl={selectedRecording.thumbnail_url}
+                    style={{ width: '100%', maxHeight: 520, minHeight: 320 }}
+                  />
+                ) : selectedRecording.video_url &&
+                  (selectedRecording.video_url.includes('.mp4') ||
+                    selectedRecording.video_url.includes('.webm')) ? (
                   <video
                     src={selectedRecording.video_url}
                     controls

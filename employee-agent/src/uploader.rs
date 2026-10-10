@@ -221,4 +221,114 @@ impl SupabaseUploader {
             .map_err(|e| format!("Office-hours config parse failed: {}", e))?;
         Ok(rows.into_iter().next())
     }
+
+    pub async fn fetch_pending_commands(
+        &self,
+        employee_id: &str,
+    ) -> Result<Vec<crate::commands::AgentCommandRow>, String> {
+        let url = format!(
+            "{}/rest/v1/agent_commands?employee_id=eq.{}&status=eq.pending&order=created_at.asc&limit=10",
+            self.base_url, employee_id
+        );
+        let resp = self
+            .client
+            .get(&url)
+            .send()
+            .await
+            .map_err(|e| format!("Command poll failed: {}", e))?;
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            return Err(format!("Command poll HTTP {}: {}", status, body));
+        }
+        resp.json()
+            .await
+            .map_err(|e| format!("Command poll parse failed: {}", e))
+    }
+
+    pub async fn update_command_status(
+        &self,
+        command_id: &str,
+        status: &str,
+        result: serde_json::Value,
+    ) -> Result<(), String> {
+        let url = format!(
+            "{}/rest/v1/agent_commands?id=eq.{}",
+            self.base_url, command_id
+        );
+        let body = serde_json::json!({
+            "status": status,
+            "result": result,
+            "updated_at": Utc::now().to_rfc3339(),
+        });
+        let resp = self
+            .client
+            .patch(&url)
+            .json(&body)
+            .send()
+            .await
+            .map_err(|e| format!("Command status update failed: {}", e))?;
+        if !resp.status().is_success() {
+            let status_code = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            return Err(format!(
+                "Command status update HTTP {}: {}",
+                status_code, text
+            ));
+        }
+        Ok(())
+    }
+
+    pub async fn upsert_live_session(
+        &self,
+        employee_id: &str,
+        active: bool,
+        storage_path: Option<&str>,
+        width: Option<u32>,
+        height: Option<u32>,
+    ) -> Result<(), String> {
+        let url = format!("{}/rest/v1/employee_live_sessions", self.base_url);
+        let row = serde_json::json!({
+            "employee_id": employee_id,
+            "active": active,
+            "storage_path": storage_path,
+            "width": width,
+            "height": height,
+            "updated_at": Utc::now().to_rfc3339(),
+        });
+        let resp = self
+            .client
+            .post(&url)
+            .header("Prefer", "resolution=merge-duplicates")
+            .json(&row)
+            .send()
+            .await
+            .map_err(|e| format!("Live session upsert failed: {}", e))?;
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            return Err(format!("Live session upsert HTTP {}: {}", status, body));
+        }
+        Ok(())
+    }
+
+    pub async fn insert_screen_recording(
+        &self,
+        row: serde_json::Value,
+    ) -> Result<(), String> {
+        let url = format!("{}/rest/v1/screen_recordings", self.base_url);
+        let resp = self
+            .client
+            .post(&url)
+            .json(&row)
+            .send()
+            .await
+            .map_err(|e| format!("screen_recordings insert failed: {}", e))?;
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            return Err(format!("screen_recordings insert HTTP {}: {}", status, body));
+        }
+        Ok(())
+    }
 }

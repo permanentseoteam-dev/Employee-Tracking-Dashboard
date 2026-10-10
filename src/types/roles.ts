@@ -128,6 +128,15 @@ export interface ScreenshotItem {
   window_title: string;
 }
 
+export interface ScreenRecordingFrameManifest {
+  fps: number;
+  width?: number;
+  height?: number;
+  frames: string[];
+  /** Resolved public URLs parallel to frames (filled by dataService). */
+  frame_urls?: string[];
+}
+
 export interface ScreenRecordingItem {
   id: string;
   employee_id: string;
@@ -143,7 +152,20 @@ export interface ScreenRecordingItem {
   recorded_by: string;
   active_window: string;
   file_size_bytes: number;
-  status: 'completed' | 'processing' | 'recording';
+  status: 'completed' | 'processing' | 'recording' | 'failed';
+  /** Real agent frame-sequence recording (no fake canvas). */
+  frame_manifest?: ScreenRecordingFrameManifest | null;
+}
+
+export interface EmployeeLiveSession {
+  employee_id: string;
+  active: boolean;
+  storage_path: string | null;
+  width: number | null;
+  height: number | null;
+  updated_at: string;
+  /** Cache-busted public URL for latest live JPEG */
+  frame_url: string | null;
 }
 
 export interface AttendanceRecordItem {

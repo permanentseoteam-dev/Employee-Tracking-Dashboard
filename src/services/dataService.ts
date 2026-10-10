@@ -25,6 +25,8 @@ import type {
   ProjectAccessScope,
   ProjectTreeItem,
   ProjectTreeItemType,
+  EmployeeLiveSession,
+  ScreenRecordingFrameManifest,
 } from '../types/roles';
 import { DEFAULT_BREAK_SCHEDULE } from '../types/roles';
 import {
@@ -683,6 +685,7 @@ export const dataService = {
 
         return {
           id: e.id,
+          user_id: e.user_id || undefined,
           name: formatDisplayName(
             e.full_name || e.email,
             normalizeDisplayNamePref(e.display_name_pref),
@@ -1294,18 +1297,40 @@ export const dataService = {
 
         if (!recErr && recData && recData.length > 0) {
           const mappedFromTable: ScreenRecordingItem[] = recData.map((r: any) => {
-            let resolvedVideoUrl = r.video_url;
-            let resolvedThumbUrl = r.thumbnail_url;
+            const bucket =
+              r.metadata?.bucket ||
+              (r.storage_path?.includes('recordings/') ? 'screenshots' : 'recordings');
+            let resolvedVideoUrl = r.video_url || '';
+            let resolvedThumbUrl = r.thumbnail_url || '';
 
-            // Resolve dynamic live Supabase public URLs if storage path exists
-            if (r.storage_path) {
-              const bucket = r.metadata?.bucket || (r.storage_path.includes('recordings/') ? 'screenshots' : 'recordings');
+            let frameManifest: ScreenRecordingFrameManifest | null = null;
+            if (r.frame_manifest?.frames?.length) {
+              const frames: string[] = r.frame_manifest.frames;
+              const frame_urls = frames.map((p: string) => {
+                const { data } = supabase.storage.from(bucket).getPublicUrl(p);
+                return data?.publicUrl || '';
+              });
+              frameManifest = {
+                fps: Number(r.frame_manifest.fps) || 2,
+                width: r.frame_manifest.width,
+                height: r.frame_manifest.height,
+                frames,
+                frame_urls,
+              };
+              if (!resolvedThumbUrl && frame_urls[0]) resolvedThumbUrl = frame_urls[0];
+              // Sequence recordings use first frame as poster; video_url may be empty
+              if (!resolvedVideoUrl) resolvedVideoUrl = frame_urls[0] || '';
+            } else if (r.storage_path && !r.frame_manifest) {
               const { data: pubData } = supabase.storage.from(bucket).getPublicUrl(r.storage_path);
               if (pubData?.publicUrl) resolvedVideoUrl = pubData.publicUrl;
             }
             if (r.metadata?.thumbnail_storage_path) {
-              const bucket = r.metadata?.bucket || (r.metadata.thumbnail_storage_path.includes('thumbnails/') ? 'screenshots' : 'recordings');
-              const { data: thumbData } = supabase.storage.from(bucket).getPublicUrl(r.metadata.thumbnail_storage_path);
+              const { data: thumbData } = supabase.storage
+                .from(bucket)
+                .getPublicUrl(r.metadata.thumbnail_storage_path);
+              if (thumbData?.publicUrl) resolvedThumbUrl = thumbData.publicUrl;
+            } else if (resolvedThumbUrl && !resolvedThumbUrl.startsWith('http')) {
+              const { data: thumbData } = supabase.storage.from(bucket).getPublicUrl(resolvedThumbUrl);
               if (thumbData?.publicUrl) resolvedThumbUrl = thumbData.publicUrl;
             }
 
@@ -1325,8 +1350,13 @@ export const dataService = {
               active_window: r.active_window || '—',
               file_size_bytes: Number(r.file_size_bytes) || 0,
               status: r.status || 'completed',
+              frame_manifest: frameManifest,
             };
-          }).filter((r) => !isDummyMediaUrl(r.video_url) && !!r.video_url);
+          }).filter(
+            (r) =>
+              !!r.frame_manifest?.frames?.length ||
+              (!!r.video_url && !isDummyMediaUrl(r.video_url))
+          );
           list = [...mappedFromTable, ...list];
         }
 
@@ -1402,13 +1432,92 @@ export const dataService = {
       });
     }
 
-    // Never surface sample/dummy clips
-    list = list.filter((r) => !!r.video_url && !isDummyMediaUrl(r.video_url));
+    // Keep real agent sequences + real videos; drop dummy clips
+    list = list.filter(
+      (r) =>
+        !!r.frame_manifest?.frames?.length ||
+        (!!r.video_url && !isDummyMediaUrl(r.video_url))
+    );
 
     return list.sort((a, b) => new Date(b.started_at).getTime() - new Date(a.started_at).getTime());
   },
 
-  // 5c. On-Demand Live Screen Recording Trigger & Supabase Storage Bucket Persistence
+  /** Ask employee-agent to start pushing real desktop frames (~1/sec). */
+  startLiveSession: async (
+    employeeId: string,
+    requestedBy: string
+  ): Promise<{ success: boolean; message: string }> => {
+    if (!isSupabaseConfigured()) {
+      return { success: false, message: 'Supabase is not configured.' };
+    }
+    const { error } = await supabase.from('agent_commands').insert({
+      employee_id: employeeId,
+      command: 'start_live',
+      payload: { requested_by: requestedBy },
+      status: 'pending',
+      requested_by: requestedBy,
+    });
+    if (error) return { success: false, message: error.message };
+    return { success: true, message: 'Live session requested from agent.' };
+  },
+
+  stopLiveSession: async (
+    employeeId: string,
+    requestedBy: string
+  ): Promise<{ success: boolean; message: string }> => {
+    if (!isSupabaseConfigured()) {
+      return { success: false, message: 'Supabase is not configured.' };
+    }
+    const { error } = await supabase.from('agent_commands').insert({
+      employee_id: employeeId,
+      command: 'stop_live',
+      payload: { requested_by: requestedBy },
+      status: 'pending',
+      requested_by: requestedBy,
+    });
+    if (error) return { success: false, message: error.message };
+    return { success: true, message: 'Live session stop requested.' };
+  },
+
+  /** Keepalive while Live modal is open (resets agent 60s idle timer). */
+  heartbeatLiveSession: async (employeeId: string, requestedBy: string): Promise<void> => {
+    if (!isSupabaseConfigured()) return;
+    await supabase.from('agent_commands').insert({
+      employee_id: employeeId,
+      command: 'start_live',
+      payload: { requested_by: requestedBy, keepalive: true },
+      status: 'pending',
+      requested_by: requestedBy,
+    });
+  },
+
+  getLiveSession: async (employeeId: string): Promise<EmployeeLiveSession | null> => {
+    if (!isSupabaseConfigured()) return null;
+    const { data, error } = await supabase
+      .from('employee_live_sessions')
+      .select('*')
+      .eq('employee_id', employeeId)
+      .maybeSingle();
+    if (error || !data) return null;
+    let frame_url: string | null = null;
+    if (data.storage_path) {
+      const { data: pub } = supabase.storage.from('screenshots').getPublicUrl(data.storage_path);
+      if (pub?.publicUrl) {
+        frame_url = `${pub.publicUrl}?t=${encodeURIComponent(data.updated_at || Date.now())}`;
+      }
+    }
+    return {
+      employee_id: data.employee_id,
+      active: !!data.active,
+      storage_path: data.storage_path || null,
+      width: data.width ?? null,
+      height: data.height ?? null,
+      updated_at: data.updated_at,
+      frame_url,
+    };
+  },
+
+  // Real on-demand recording via employee-agent (no canvas fake)
   triggerOnDemandScreenRecording: async (
     role: UserRole,
     employeeId: string,
@@ -1416,104 +1525,154 @@ export const dataService = {
     employeeName?: string,
     activeWindow?: string
   ): Promise<{ success: boolean; message: string; recordId: string; recording: ScreenRecordingItem }> => {
-    const recordId = `rec-${Date.now()}`;
-    const startedAt = new Date().toISOString();
     const resolvedName = employeeName || 'Unknown employee';
     const resolvedWindow = activeWindow || 'Workstation';
 
-    // 1. Generate live workstation video clip and thumbnail
-    let videoBlob: Blob | null = null;
-    let thumbnailBlob: Blob | null = null;
-    try {
-      const generated = await generateWorkstationRecordingClip(resolvedName, employeeId, resolvedWindow, 10);
-      videoBlob = generated.videoBlob;
-      thumbnailBlob = generated.thumbnailBlob;
-    } catch (err) {
-      console.warn('Could not generate canvas recording clip:', err);
+    if (!isSupabaseConfigured()) {
+      return {
+        success: false,
+        message: 'Supabase is not configured.',
+        recordId: '',
+        recording: null as unknown as ScreenRecordingItem,
+      };
     }
 
-    let videoUrl = '';
-    let thumbnailUrl = '';
-    let fileSizeBytes = 0;
+    const { data: cmd, error: insertErr } = await supabase
+      .from('agent_commands')
+      .insert({
+        employee_id: employeeId,
+        command: 'record',
+        payload: {
+          duration_secs: 10,
+          requested_by: requestedBy,
+          employee_name: resolvedName,
+          active_window: resolvedWindow,
+        },
+        status: 'pending',
+        requested_by: requestedBy,
+      })
+      .select('id')
+      .single();
 
-    // 2. Upload video and thumbnail to Supabase Storage inside bucket under employee folder
-    if (videoBlob && isSupabaseConfigured()) {
-      try {
-        const uploadRes = await supabaseSync.uploadScreenRecording({
-          videoBlob,
-          thumbnailBlob: thumbnailBlob || undefined,
-          employeeId,
-          deviceId: 'WIN-DESKTOP-QUVQI4B-ok',
-          startedAt,
-          durationSeconds: 10,
-          recordedBy: requestedBy,
-          activeWindow: resolvedWindow,
-          employeeName: resolvedName,
-          department: 'Engineering',
+    if (insertErr || !cmd?.id) {
+      return {
+        success: false,
+        message: insertErr?.message || 'Failed to queue record command for agent.',
+        recordId: '',
+        recording: null as unknown as ScreenRecordingItem,
+      };
+    }
+
+    const commandId = cmd.id as string;
+    const deadline = Date.now() + 45_000;
+    let recordingId = '';
+    let failedMsg = '';
+
+    while (Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 1500));
+      const { data: row } = await supabase
+        .from('agent_commands')
+        .select('status, result')
+        .eq('id', commandId)
+        .maybeSingle();
+      if (!row) continue;
+      if (row.status === 'done') {
+        recordingId = row.result?.recording_id || '';
+        break;
+      }
+      if (row.status === 'failed') {
+        failedMsg = row.result?.error || 'Agent recording failed.';
+        break;
+      }
+    }
+
+    if (failedMsg) {
+      return {
+        success: false,
+        message: failedMsg,
+        recordId: '',
+        recording: null as unknown as ScreenRecordingItem,
+      };
+    }
+    if (!recordingId) {
+      return {
+        success: false,
+        message:
+          'Timed out waiting for agent recording. Ensure employee-agent is running with the correct EMPLOYEE_ID.',
+        recordId: '',
+        recording: null as unknown as ScreenRecordingItem,
+      };
+    }
+
+    const list = await dataService.getScreenRecordings(role, undefined, employeeId);
+    let recording =
+      list.find((r) => r.id === recordingId) ||
+      (await (async () => {
+        const { data: r } = await supabase
+          .from('screen_recordings')
+          .select('*')
+          .eq('id', recordingId)
+          .maybeSingle();
+        if (!r) return null;
+        const bucket = r.metadata?.bucket || 'screenshots';
+        const frames: string[] = r.frame_manifest?.frames || [];
+        const frame_urls = frames.map((p: string) => {
+          const { data } = supabase.storage.from(bucket).getPublicUrl(p);
+          return data?.publicUrl || '';
         });
-
-        if (uploadRes) {
-          videoUrl = uploadRes.videoUrl;
-          if (uploadRes.thumbnailUrl) thumbnailUrl = uploadRes.thumbnailUrl;
-          fileSizeBytes = uploadRes.fileSizeBytes;
-        }
-      } catch (uploadErr) {
-        console.warn('Supabase screen recording storage upload failed:', uploadErr);
-      }
-    }
-
-    if (!videoUrl || isDummyMediaUrl(videoUrl)) {
-      if (videoBlob) {
-        // Fallback: create object URL so recording is immediately viewable and playable in browser
-        videoUrl = URL.createObjectURL(videoBlob);
-        if (thumbnailBlob) {
-          thumbnailUrl = URL.createObjectURL(thumbnailBlob);
-        }
-        fileSizeBytes = videoBlob.size;
-      } else {
         return {
-          success: false,
-          message: 'Recording failed: no real video was captured.',
-          recordId,
-          recording: null as unknown as ScreenRecordingItem,
-        };
-      }
+          id: r.id,
+          employee_id: r.employee_id,
+          employee_name: resolvedName,
+          department: '—',
+          device_id: r.device_id,
+          device_name: r.metadata?.device_name,
+          started_at: r.started_at,
+          duration_seconds: r.duration_seconds || 10,
+          video_url: frame_urls[0] || '',
+          thumbnail_url: frame_urls[0] || '',
+          trigger_type: 'on_demand' as const,
+          recorded_by: requestedBy,
+          active_window: resolvedWindow,
+          file_size_bytes: Number(r.file_size_bytes) || 0,
+          status: 'completed' as const,
+          frame_manifest: frames.length
+            ? {
+                fps: Number(r.frame_manifest?.fps) || 2,
+                width: r.frame_manifest?.width,
+                height: r.frame_manifest?.height,
+                frames,
+                frame_urls,
+              }
+            : null,
+        } satisfies ScreenRecordingItem;
+      })());
+
+    if (!recording) {
+      return {
+        success: false,
+        message: 'Recording finished but row was not found in screen_recordings.',
+        recordId: recordingId,
+        recording: null as unknown as ScreenRecordingItem,
+      };
     }
 
-    const newRecording: ScreenRecordingItem = {
-      id: recordId,
-      employee_id: employeeId,
-      employee_name: resolvedName,
-      department: 'Engineering',
-      device_id: 'WIN-DESKTOP-QUVQI4B-ok',
-      device_name: 'DESKTOP-QUVQI4B',
-      started_at: startedAt,
-      duration_seconds: 10,
-      video_url: videoUrl,
-      thumbnail_url: thumbnailUrl,
-      trigger_type: 'on_demand',
-      recorded_by: requestedBy,
-      active_window: resolvedWindow,
-      file_size_bytes: fileSizeBytes,
-      status: 'completed',
-    };
-
-    // Store in local memory store
-    screenRecordingsStore.unshift(newRecording);
+    recording = { ...recording, employee_name: resolvedName, active_window: resolvedWindow };
+    screenRecordingsStore.unshift(recording);
 
     dataService.logAction(
       requestedBy,
       role,
       'TRIGGER_SCREEN_RECORDING',
       resolvedName,
-      `Captured on-demand 10-second screen recording session for ${resolvedName} (${resolvedWindow}) - Archived in Supabase Storage`
+      `Agent recorded ${recording.duration_seconds}s real desktop session for ${resolvedName}`
     );
 
     return {
       success: true,
-      message: 'On-demand screen recording recorded and archived to Supabase Storage successfully.',
-      recordId,
-      recording: newRecording,
+      message: 'Real desktop recording captured by employee agent and saved to Supabase.',
+      recordId: recording.id,
+      recording,
     };
   },
 

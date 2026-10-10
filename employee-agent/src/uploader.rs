@@ -312,6 +312,61 @@ impl SupabaseUploader {
         Ok(())
     }
 
+    pub async fn insert_activity_aggregate(
+        &self,
+        payload: &crate::activity::ActivityAggregatePayload,
+    ) -> Result<(), String> {
+        let url = format!("{}/rest/v1/activity_aggregates", self.base_url);
+        let resp = self
+            .client
+            .post(&url)
+            .json(&[payload])
+            .send()
+            .await
+            .map_err(|e| format!("activity_aggregates insert failed: {}", e))?;
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            return Err(format!("activity_aggregates HTTP {}: {}", status, body));
+        }
+        Ok(())
+    }
+
+    pub async fn insert_activity_event(
+        &self,
+        employee_id: &str,
+        device_id: &str,
+        event_type: &str,
+        window_title: &str,
+        is_idle: bool,
+    ) -> Result<(), String> {
+        let url = format!("{}/rest/v1/activity_events", self.base_url);
+        let row = serde_json::json!({
+            "employee_id": employee_id,
+            "device_id": device_id,
+            "event_type": event_type,
+            "occurred_at": Utc::now().to_rfc3339(),
+            "metadata": {
+                "window": window_title,
+                "window_title": window_title,
+                "is_idle": is_idle,
+            }
+        });
+        let resp = self
+            .client
+            .post(&url)
+            .json(&[row])
+            .send()
+            .await
+            .map_err(|e| format!("activity_events insert failed: {}", e))?;
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            return Err(format!("activity_events HTTP {}: {}", status, body));
+        }
+        Ok(())
+    }
+
     pub async fn insert_screen_recording(
         &self,
         row: serde_json::Value,

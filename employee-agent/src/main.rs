@@ -1,9 +1,11 @@
+mod activity;
 mod auth;
 mod commands;
 mod compression;
 mod config;
 mod device;
 mod heartbeat;
+mod input;
 mod office_hours;
 mod screenshot;
 mod status_file;
@@ -185,7 +187,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut stop_poll = interval(Duration::from_secs(2));
     let mut command_timer = interval(Duration::from_secs(2));
     let mut live_timer = interval(Duration::from_secs(1));
+    let mut activity_timer = interval(Duration::from_secs(1));
     let mut live_runtime = commands::LiveRuntime::default();
+    let mut input_tracker = input::WindowsInputTracker::new(
+        config.read().await.idle_threshold_secs.max(30),
+    );
+    let mut activity_window = activity::ActivityWindow::new(
+        config.read().await.employee_id.clone(),
+        device_info.device_identifier.clone(),
+    );
+    let mut last_event_push = std::time::Instant::now();
 
     screenshot_timer.tick().await;
     heartbeat_timer.tick().await;
@@ -193,6 +204,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     stop_poll.tick().await;
     command_timer.tick().await;
     live_timer.tick().await;
+    activity_timer.tick().await;
 
     loop {
         tokio::select! {
@@ -229,6 +241,60 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         tracing::warn!("Live frame push failed: {}", e);
                         snap.last_error = Some(e);
                         write_status(&snap);
+                    }
+                }
+            }
+
+            _ = activity_timer.tick() => {
+                if stop_requested() { break; }
+                if is_paused() {
+                    continue;
+                }
+                let snap_in = input_tracker.get_snapshot();
+                activity_window.record_sample(
+                    snap_in.is_user_idle,
+                    snap_in.key_presses,
+                    snap_in.mouse_moves,
+                    snap_in.mouse_clicks,
+                    &snap_in.active_window_title,
+                );
+
+                // Push active-window heartbeat event every ~15s for Live card title
+                if last_event_push.elapsed() >= Duration::from_secs(15) {
+                    last_event_push = std::time::Instant::now();
+                    let cfg = config.read().await.clone();
+                    let _ = uploader
+                        .insert_activity_event(
+                            &cfg.employee_id,
+                            &device_info.device_identifier,
+                            "heartbeat",
+                            &snap_in.active_window_title,
+                            snap_in.is_user_idle,
+                        )
+                        .await;
+                }
+
+                if activity_window.is_ready() {
+                    let agg = activity_window.take_aggregate();
+                    match uploader.insert_activity_aggregate(&agg).await {
+                        Ok(()) => {
+                            tracing::info!(
+                                "📊 Activity synced: keys={} moves={} clicks={} active={}s idle={}s",
+                                agg.key_press_count,
+                                agg.mouse_move_count,
+                                agg.mouse_click_count,
+                                agg.active_seconds,
+                                agg.idle_seconds
+                            );
+                            snap.last_upload_at = Some(now_rfc3339());
+                            snap.backend_ok = true;
+                            write_status(&snap);
+                        }
+                        Err(e) => {
+                            tracing::warn!("Activity aggregate upload failed: {}", e);
+                            snap.last_error = Some(e);
+                            write_status(&snap);
+                        }
                     }
                 }
             }

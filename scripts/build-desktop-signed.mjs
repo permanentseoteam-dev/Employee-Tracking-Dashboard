@@ -22,6 +22,14 @@ if (!process.env.TAURI_SIGNING_PRIVATE_KEY_PASSWORD) {
     process.env.TAURI_UPDATER_KEY_PASSWORD || 'tracking-updater';
 }
 
+if (!process.env.VITE_SUPABASE_URL) {
+  process.env.VITE_SUPABASE_URL = 'https://isywkcymfzpgjerfuors.supabase.co';
+}
+if (!process.env.VITE_SUPABASE_ANON_KEY) {
+  process.env.VITE_SUPABASE_ANON_KEY =
+    'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlzeXdrY3ltZnpwZ2plcmZ1b3JzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTEzNDQwMzAsImV4cCI6MjEwNjkyMDAzMH0.b7GmU3Bz1zRB7sROsCchnohgZVb6LIyw8v_N_lNLDPs';
+}
+
 function run(cmd, args) {
   const r = spawnSync(cmd, args, { stdio: 'inherit', shell: true, env: process.env });
   if (r.status !== 0) process.exit(r.status ?? 1);

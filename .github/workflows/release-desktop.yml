@@ -16,6 +16,9 @@ permissions:
 jobs:
   publish:
     runs-on: windows-latest
+    env:
+      VITE_SUPABASE_URL: https://isywkcymfzpgjerfuors.supabase.co
+      VITE_SUPABASE_ANON_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlzeXdrY3ltZnpwZ2plcmZ1b3JzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTEzNDQwMzAsImV4cCI6MjEwNjkyMDAzMH0.b7GmU3Bz1zRB7sROsCchnohgZVb6LIyw8v_N_lNLDPs
     steps:
       - uses: actions/checkout@v4
 

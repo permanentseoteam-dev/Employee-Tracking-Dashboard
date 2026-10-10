@@ -45,7 +45,7 @@ import type { AgentStatusDto, DbStats, NavTab, SystemInfoDto } from './types';
 
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { LoginPage } from './pages/LoginPage';
-import { supabase } from './services/supabaseClient';
+import { supabase, supabaseUrl, supabaseAnonKey } from './services/supabaseClient';
 
 export const App: React.FC = () => {
   const { user, role, currentRoute, navigate, isAuthenticated, isLoading, isConfigured } = useAuth();
@@ -124,8 +124,8 @@ export const App: React.FC = () => {
     (async () => {
       try {
         await api.setMonitoringAuthorized(true);
-        const url = (import.meta as any).env?.VITE_SUPABASE_URL || '';
-        const key = (import.meta as any).env?.VITE_SUPABASE_ANON_KEY || '';
+        const url = (import.meta as any).env?.VITE_SUPABASE_URL || supabaseUrl;
+        const key = (import.meta as any).env?.VITE_SUPABASE_ANON_KEY || supabaseAnonKey;
         // Always refresh binary + write EMPLOYEE_ID=auth user id, then ensure
         // the *installed* agent is running (kills sandbox/stale copies).
         if (url && key) {

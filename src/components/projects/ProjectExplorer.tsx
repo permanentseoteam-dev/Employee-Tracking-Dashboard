@@ -20,6 +20,7 @@ import {
   Loader2,
   AlertCircle,
   ShieldCheck,
+  RefreshCw,
 } from 'lucide-react';
 import { dataService } from '../../services/dataService';
 import { useAuth } from '../../context/AuthContext';
@@ -28,6 +29,12 @@ import {
   resolveItemAccess,
   resolveProjectAccess,
 } from '../../utils/projectAccess';
+import {
+  parseAndTransformEmbedUrl,
+  extractUrlFromHtml,
+  normalizeRawUrl,
+  type EmbedUrlInfo,
+} from '../../utils/embedUrl';
 import type {
   ProjectAccessLevel,
   ProjectItem,
@@ -58,18 +65,27 @@ function itemIcon(type: ProjectTreeItemType, size = 16) {
 }
 
 function normalizeUrl(url: string): string {
-  const trimmed = url.trim();
-  if (!trimmed) return '';
-  if (/^https?:\/\//i.test(trimmed)) return trimmed;
-  return `https://${trimmed}`;
+  return normalizeRawUrl(url);
 }
 
 function getEmbedUrl(item: ProjectTreeItem): string {
-  if (item.embed_url) return item.embed_url;
+  const raw = item.embed_url || (item.content as any)?.embed_url || item.data_url || '';
+  if (!raw) return '';
+  return parseAndTransformEmbedUrl(raw).embedUrl;
+}
+
+function getOriginalUrl(item: ProjectTreeItem): string {
   const content = item.content as any;
-  if (content?.embed_url) return content.embed_url;
+  if (content?.original_url) return content.original_url;
   if (item.data_url && /^https?:\/\//i.test(item.data_url)) return item.data_url;
-  return '';
+  const raw = item.embed_url || content?.embed_url || '';
+  if (!raw) return '';
+  return parseAndTransformEmbedUrl(raw).originalUrl;
+}
+
+function getEmbedInfo(item: ProjectTreeItem): EmbedUrlInfo {
+  const raw = item.embed_url || (item.content as any)?.embed_url || item.data_url || '';
+  return parseAndTransformEmbedUrl(raw);
 }
 
 export const ProjectExplorer: React.FC<ProjectExplorerProps> = ({ role, managerId }) => {
@@ -94,6 +110,9 @@ export const ProjectExplorer: React.FC<ProjectExplorerProps> = ({ role, managerI
   const [embedUrlDraft, setEmbedUrlDraft] = useState('');
   const [embedViewerItem, setEmbedViewerItem] = useState<ProjectTreeItem | null>(null);
   const [embedEditMode, setEmbedEditMode] = useState(false);
+  const [embedViewMode, setEmbedViewMode] = useState<'embed' | 'card'>('embed');
+  const [iframeLoading, setIframeLoading] = useState(true);
+  const [iframeKey, setIframeKey] = useState(0);
   const [editEmbedUrlDraft, setEditEmbedUrlDraft] = useState('');
   const [editEmbedNameDraft, setEditEmbedNameDraft] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
@@ -358,7 +377,7 @@ export const ProjectExplorer: React.FC<ProjectExplorerProps> = ({ role, managerI
       showToast('err', 'Embed URL is required');
       return;
     }
-    const finalUrl = normalizeUrl(rawUrl);
+    const info = parseAndTransformEmbedUrl(rawUrl);
     setBusy(true);
     try {
       const item = await dataService.createProjectItem({
@@ -366,7 +385,14 @@ export const ProjectExplorer: React.FC<ProjectExplorerProps> = ({ role, managerI
         parentId: createMenu.parentId,
         itemType: 'embed',
         name,
-        embedUrl: finalUrl,
+        embedUrl: info.embedUrl,
+        dataUrl: info.originalUrl,
+        content: {
+          embed_url: info.embedUrl,
+          original_url: info.originalUrl,
+          provider: info.provider,
+          format: 'embed',
+        },
         createdBy: user.id,
       });
       await loadItems(createMenu.projectId);
@@ -388,20 +414,24 @@ export const ProjectExplorer: React.FC<ProjectExplorerProps> = ({ role, managerI
 
   const handleSaveEmbedEdit = async () => {
     if (!embedViewerItem) return;
-    const newUrl = normalizeUrl(editEmbedUrlDraft.trim());
+    const rawUrl = editEmbedUrlDraft.trim();
     const newName = editEmbedNameDraft.trim() || embedViewerItem.name;
-    if (!newUrl) {
+    if (!rawUrl) {
       showToast('err', 'Valid embed URL is required');
       return;
     }
+    const info = parseAndTransformEmbedUrl(rawUrl);
     setBusy(true);
     try {
       await dataService.updateProjectItem(embedViewerItem.project_id, embedViewerItem.id, {
         name: newName,
-        embed_url: newUrl,
+        embed_url: info.embedUrl,
+        data_url: info.originalUrl,
         content: {
           ...(typeof embedViewerItem.content === 'object' && embedViewerItem.content !== null ? embedViewerItem.content : {}),
-          embed_url: newUrl,
+          embed_url: info.embedUrl,
+          original_url: info.originalUrl,
+          provider: info.provider,
           format: 'embed',
         },
       });
@@ -409,15 +439,20 @@ export const ProjectExplorer: React.FC<ProjectExplorerProps> = ({ role, managerI
       setEmbedViewerItem({
         ...embedViewerItem,
         name: newName,
-        embed_url: newUrl,
-        data_url: newUrl,
+        embed_url: info.embedUrl,
+        data_url: info.originalUrl,
+        external_provider: info.provider,
         content: {
           ...(typeof embedViewerItem.content === 'object' && embedViewerItem.content !== null ? embedViewerItem.content : {}),
-          embed_url: newUrl,
+          embed_url: info.embedUrl,
+          original_url: info.originalUrl,
+          provider: info.provider,
           format: 'embed',
         },
       });
       setEmbedEditMode(false);
+      setIframeKey((k) => k + 1);
+      setIframeLoading(true);
       showToast('ok', 'Embed updated successfully');
     } catch (err: any) {
       showToast('err', err?.message || 'Failed to update embed');
@@ -474,9 +509,13 @@ export const ProjectExplorer: React.FC<ProjectExplorerProps> = ({ role, managerI
       downloadItem(item);
       return;
     }
+    const info = getEmbedInfo(item);
     setEmbedViewerItem(item);
     setEmbedEditMode(false);
-    setEditEmbedUrlDraft(getEmbedUrl(item));
+    setEmbedViewMode(info.isKnownFrameBlocked ? 'card' : 'embed');
+    setIframeLoading(true);
+    setIframeKey((k) => k + 1);
+    setEditEmbedUrlDraft(info.originalUrl || info.embedUrl);
     setEditEmbedNameDraft(item.name);
   };
 
@@ -539,14 +578,15 @@ export const ProjectExplorer: React.FC<ProjectExplorerProps> = ({ role, managerI
     setBusy(true);
     try {
       const embedUrl = getEmbedUrl(item);
+      const originalUrl = getOriginalUrl(item);
       await dataService.createProjectItem({
         projectId,
         parentId: item.parent_id,
         itemType: item.item_type,
         name: `${item.name} (copy)`,
-        content: (item.content as any) || (embedUrl ? { embed_url: embedUrl, format: 'embed' } : {}),
+        content: (item.content as any) || (embedUrl ? { embed_url: embedUrl, original_url: originalUrl, format: 'embed' } : {}),
         embedUrl: embedUrl || undefined,
-        dataUrl: item.data_url,
+        dataUrl: originalUrl || item.data_url,
         mimeType: item.mime_type,
         createdBy: user.id,
       });
@@ -580,7 +620,7 @@ export const ProjectExplorer: React.FC<ProjectExplorerProps> = ({ role, managerI
 
   const downloadItem = (item: ProjectTreeItem) => {
     if (item.item_type === 'embed') {
-      const url = getEmbedUrl(item);
+      const url = getOriginalUrl(item) || getEmbedUrl(item);
       if (url) window.open(url, '_blank', 'noopener,noreferrer');
       return;
     }
@@ -828,7 +868,7 @@ export const ProjectExplorer: React.FC<ProjectExplorerProps> = ({ role, managerI
                     className="nav-pill-item"
                     style={{ justifyContent: 'flex-start' }}
                     onClick={() => {
-                      const url = getEmbedUrl(item);
+                      const url = getOriginalUrl(item) || getEmbedUrl(item);
                       if (url) window.open(url, '_blank', 'noopener,noreferrer');
                       setFileMenuOpen(null);
                     }}
@@ -840,7 +880,7 @@ export const ProjectExplorer: React.FC<ProjectExplorerProps> = ({ role, managerI
                     className="nav-pill-item"
                     style={{ justifyContent: 'flex-start' }}
                     onClick={() => {
-                      const url = getEmbedUrl(item);
+                      const url = getOriginalUrl(item) || getEmbedUrl(item);
                       if (url) {
                         navigator.clipboard?.writeText(url);
                         showToast('ok', 'Link copied to clipboard');
@@ -1364,12 +1404,40 @@ export const ProjectExplorer: React.FC<ProjectExplorerProps> = ({ role, managerI
                           type="text"
                           className="stitch-input"
                           value={embedUrlDraft}
-                          onChange={(e) => setEmbedUrlDraft(e.target.value)}
-                          placeholder="https://docs.google.com/... or https://figma.com/..."
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setEmbedUrlDraft(extractUrlFromHtml(val));
+                          }}
+                          placeholder="Paste URL or <iframe> snippet (Google Docs, Sheets, YouTube, Figma...)"
                           required
                         />
+                        {embedUrlDraft.trim() && (() => {
+                          const info = parseAndTransformEmbedUrl(embedUrlDraft);
+                          return (
+                            <div
+                              style={{
+                                marginTop: 4,
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: 6,
+                                padding: '6px 10px',
+                                borderRadius: 8,
+                                background: 'rgba(6, 182, 212, 0.08)',
+                                border: '1px solid rgba(6, 182, 212, 0.2)',
+                                fontSize: 11,
+                                color: 'var(--text-secondary)',
+                              }}
+                            >
+                              <Globe size={13} color="#06b6d4" />
+                              <span>
+                                Detected <strong>{info.provider}</strong>
+                                {info.notes ? ` · ${info.notes}` : ' · Ready for in-app preview'}
+                              </span>
+                            </div>
+                          );
+                        })()}
                         <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-                          Paste any embed link, Figma prototype, Google Docs/Sheets/Slides, Loom, YouTube or web URL.
+                          Paste any link from Google Docs/Sheets/Slides/Drive, YouTube, Figma, Loom, Vimeo, or any web URL.
                         </span>
                       </div>
 

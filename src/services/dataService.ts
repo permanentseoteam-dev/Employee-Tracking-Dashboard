@@ -49,6 +49,7 @@ import {
   mergeBreakSchedule,
   normalizeBreakTime,
 } from '../utils/breakSchedule';
+import { parseAndTransformEmbedUrl } from '../utils/embedUrl';
 
 
 export const ADMIN_USER_ID = 'df8351c6-bb34-4aa0-afd2-ff1a39766242';
@@ -316,7 +317,10 @@ function saveLocalProjectItems(projectId: string, items: ProjectTreeItem[]) {
 
 function mapDbProjectItem(row: any): ProjectTreeItem {
   const content = row.content ?? null;
-  const embedUrl = row.embed_url || content?.embed_url || (row.item_type === 'embed' ? row.data_url : null);
+  const rawEmbed = row.embed_url || content?.embed_url || (row.item_type === 'embed' ? row.data_url : null);
+  const parsed = rawEmbed ? parseAndTransformEmbedUrl(rawEmbed) : null;
+  const embedUrl = parsed?.embedUrl || rawEmbed;
+  const originalUrl = row.data_url || content?.original_url || parsed?.originalUrl || rawEmbed;
   return {
     id: row.id,
     project_id: row.project_id,
@@ -326,12 +330,12 @@ function mapDbProjectItem(row: any): ProjectTreeItem {
         ? 'embed'
         : row.item_type,
     name: row.name,
-    content: content ?? null,
+    content: content ?? (parsed ? { embed_url: embedUrl, original_url: originalUrl, provider: parsed.provider, format: 'embed' } : null),
     embed_url: embedUrl ?? null,
     storage_path: row.storage_path ?? null,
-    data_url: row.data_url ?? null,
+    data_url: originalUrl ?? null,
     mime_type: row.mime_type ?? null,
-    external_provider: row.external_provider ?? null,
+    external_provider: row.external_provider ?? parsed?.provider ?? null,
     external_file_id: row.external_file_id ?? null,
     created_by: row.created_by ?? null,
     created_at: row.created_at || new Date().toISOString(),
@@ -2483,10 +2487,19 @@ export const dataService = {
 
     const now = new Date().toISOString();
     const effectiveEmbedUrl = params.embedUrl || (params.content as any)?.embed_url || (params.itemType === 'embed' ? params.dataUrl : null);
+    const parsedEmbed = effectiveEmbedUrl ? parseAndTransformEmbedUrl(effectiveEmbedUrl) : null;
+    const finalEmbedUrl = parsedEmbed?.embedUrl || effectiveEmbedUrl || null;
+    const finalOriginalUrl = parsedEmbed?.originalUrl || params.dataUrl || effectiveEmbedUrl || null;
+
     const defaultContent =
       params.content ??
       (params.itemType === 'embed'
-        ? { embed_url: effectiveEmbedUrl || '', format: 'embed' }
+        ? {
+            embed_url: finalEmbedUrl || '',
+            original_url: finalOriginalUrl || '',
+            provider: parsedEmbed?.provider || 'Web Link',
+            format: 'embed',
+          }
         : params.itemType === 'document'
           ? { body: '', format: 'internal_document' }
           : params.itemType === 'spreadsheet'
@@ -2506,7 +2519,8 @@ export const dataService = {
               item_type: params.itemType,
               name,
               content: defaultContent ?? {},
-              data_url: params.dataUrl || effectiveEmbedUrl || null,
+              embed_url: finalEmbedUrl,
+              data_url: finalOriginalUrl,
               mime_type: params.mimeType || (params.itemType === 'embed' ? 'text/uri-list' : null),
               created_by: params.createdBy || null,
               updated_at: now,
@@ -2540,10 +2554,10 @@ export const dataService = {
       item_type: params.itemType,
       name,
       content: defaultContent,
-      embed_url: effectiveEmbedUrl || null,
-      data_url: params.dataUrl || effectiveEmbedUrl || null,
+      embed_url: finalEmbedUrl,
+      data_url: finalOriginalUrl,
       mime_type: params.mimeType || (params.itemType === 'embed' ? 'text/uri-list' : null),
-      external_provider: null,
+      external_provider: parsedEmbed?.provider || null,
       external_file_id: null,
       created_by: params.createdBy || null,
       created_at: now,

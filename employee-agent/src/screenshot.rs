@@ -12,7 +12,19 @@ pub struct ScreenCapture;
 
 impl ScreenCapture {
     #[cfg(target_os = "windows")]
+    #[cfg(target_os = "windows")]
     pub fn capture() -> Result<RawScreenshot, String> {
+        std::thread::spawn(Self::capture_windows_internal)
+            .join()
+            .map_err(|_| "Screenshot capture thread panicked".to_string())?
+    }
+
+    #[cfg(target_os = "windows")]
+    fn capture_windows_internal() -> Result<RawScreenshot, String> {
+        use windows_sys::Win32::System::StationsAndDesktops::{
+            CloseDesktop, CloseWindowStation, OpenDesktopA, OpenWindowStationA,
+            SetProcessWindowStation, SetThreadDesktop,
+        };
         use windows_sys::Win32::Graphics::Gdi::{
             BitBlt, CreateCompatibleBitmap, CreateCompatibleDC, DeleteDC, DeleteObject,
             GetDIBits, ReleaseDC, BITMAPINFO, BITMAPINFOHEADER, BI_RGB, DIB_RGB_COLORS, SRCCOPY,
@@ -23,6 +35,18 @@ impl ScreenCapture {
         };
 
         unsafe {
+            // Attach process and thread to interactive desktop WinSta0\Default
+            let winsta_name = b"WinSta0\0";
+            let hwinsta = OpenWindowStationA(winsta_name.as_ptr(), 0, 0x0000037F);
+            if hwinsta != 0 {
+                SetProcessWindowStation(hwinsta);
+            }
+            let desk_name = b"Default\0";
+            let hdesk = OpenDesktopA(desk_name.as_ptr(), 0, 0, 0x000001FF);
+            if hdesk != 0 {
+                SetThreadDesktop(hdesk);
+            }
+
             const CAPTUREBLT: u32 = 0x40000000;
             let hwnd_desktop = GetDesktopWindow();
             let mut hdc_screen = windows_sys::Win32::Graphics::Gdi::GetDC(0);
@@ -99,6 +123,9 @@ impl ScreenCapture {
                             DeleteDC(hdc_mem);
                             ReleaseDC(0, hdc_screen);
 
+                            if hdesk != 0 { CloseDesktop(hdesk); }
+                            if hwinsta != 0 { CloseWindowStation(hwinsta); }
+
                             if lines > 0 {
                                 return Ok(RawScreenshot {
                                     bgra_pixels: raw_pixels,
@@ -121,6 +148,9 @@ impl ScreenCapture {
                     ReleaseDC(0, hdc_screen);
                 }
             }
+
+            if hdesk != 0 { CloseDesktop(hdesk); }
+            if hwinsta != 0 { CloseWindowStation(hwinsta); }
 
             // Robust fallback if display driver is locked / background session
             Ok(Self::generate_fallback_frame(1920, 1080))

@@ -9,6 +9,7 @@ import { formatCaptureDateTime, formatCaptureTime } from '../../utils/datetime';
 import { agentCommandEmployeeId } from '../../utils/agentEmployeeId';
 import type { ScreenshotItem, EmployeeRecord, ScreenRecordingItem } from '../../types/roles';
 import { FrameSequencePlayer } from '../../components/monitoring/FrameSequencePlayer';
+import { LiveScreenFrame } from '../../components/monitoring/LiveScreenFrame';
 
 import { useAppRefresh } from '../../hooks/useAppRefresh';
 import { RefreshButton } from '../../components/common/RefreshButton';
@@ -1374,38 +1375,15 @@ export const AdminMonitoringPage: React.FC<AdminMonitoringPageProps> = ({ initia
                 </div>
               </div>
 
-              {/* Main Screen Stream Frame — real agent live JPEG */}
-              <div
-                style={{
-                  borderRadius: 'var(--radius-card-sm)',
-                  overflow: 'hidden',
-                  background: '#090d16',
-                  border: '1px solid var(--surface-border)',
-                  position: 'relative',
-                  minHeight: 380,
-                  maxHeight: '55vh',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
+              {/* Main Screen Stream Frame — real agent live JPEG (no self-mirror / no flicker) */}
+              <LiveScreenFrame
+                frameUrl={liveFrameUrl}
+                statusText={liveStatusText}
+                employeeName={selectedLiveEmployee.name}
+                deviceId={selectedLiveEmployee.device_id}
+                deviceName={selectedLiveEmployee.device_name}
+                activeWindow={selectedLiveEmployee.active_window}
               >
-                {liveFrameUrl ? (
-                  <img
-                    key={liveFrameUrl}
-                    src={liveFrameUrl}
-                    alt={selectedLiveEmployee.active_window || 'Live Screen Stream'}
-                    style={{ width: '100%', height: '100%', maxHeight: '55vh', objectFit: 'contain' }}
-                  />
-                ) : (
-                  <div style={{ textAlign: 'center', padding: '3rem', color: '#94a3b8' }}>
-                    <Monitor size={48} color="#38bdf8" style={{ margin: '0 auto 12px' }} />
-                    <div style={{ fontSize: 16, fontWeight: 700, color: '#ffffff' }}>
-                      {selectedLiveEmployee.name}
-                    </div>
-                    <div style={{ fontSize: 12, marginTop: 4 }}>{liveStatusText}</div>
-                  </div>
-                )}
-
                 {/* Top Overlay Banner with Window Title */}
                 <div
                   style={{
@@ -1457,7 +1435,7 @@ export const AdminMonitoringPage: React.FC<AdminMonitoringPageProps> = ({ initia
                     {liveStatusText}
                   </div>
                 </div>
-              </div>
+              </LiveScreenFrame>
 
               {/* Realtime Telemetry Grid */}
               <div

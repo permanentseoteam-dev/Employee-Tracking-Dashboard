@@ -1443,6 +1443,79 @@ export const dataService = {
     return list.sort((a, b) => new Date(b.started_at).getTime() - new Date(a.started_at).getTime());
   },
 
+  /**
+   * Resolve the id the employee-agent uses (auth user_id when set, else employees.id).
+   * Live/record commands MUST use this same value as agent .env EMPLOYEE_ID.
+   */
+  resolveAgentEmployeeId: async (employeeId: string): Promise<string> => {
+    if (!isSupabaseConfigured() || !employeeId) return employeeId;
+    const { data } = await supabase
+      .from('employees')
+      .select('id, user_id')
+      .or(`id.eq.${employeeId},user_id.eq.${employeeId}`)
+      .limit(1)
+      .maybeSingle();
+    if (!data) return employeeId;
+    return (data.user_id && String(data.user_id).trim()) || data.id || employeeId;
+  },
+
+  /**
+   * Preflight: agent online for this employee (presence heartbeat < 2 min)
+   * or warn if prior live/record commands are stuck pending.
+   */
+  ensureLiveAgentReady: async (
+    employeeId: string
+  ): Promise<{ ok: boolean; agentEmployeeId: string; message: string }> => {
+    const agentEmployeeId = await dataService.resolveAgentEmployeeId(employeeId);
+    if (!isSupabaseConfigured()) {
+      return {
+        ok: false,
+        agentEmployeeId,
+        message: 'Supabase is not configured.',
+      };
+    }
+
+    const since = new Date(Date.now() - 120_000).toISOString();
+    const { data: presence } = await supabase
+      .from('employee_presence')
+      .select('employee_id, status, last_activity_at, updated_at')
+      .eq('employee_id', agentEmployeeId)
+      .gte('updated_at', since)
+      .order('updated_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    const { data: stuck } = await supabase
+      .from('agent_commands')
+      .select('id, command, created_at')
+      .eq('employee_id', agentEmployeeId)
+      .eq('status', 'pending')
+      .lt('created_at', new Date(Date.now() - 30_000).toISOString())
+      .limit(5);
+
+    if (stuck && stuck.length > 0 && !presence) {
+      return {
+        ok: false,
+        agentEmployeeId,
+        message: `Agent for this employee is not processing commands (EMPLOYEE_ID=${agentEmployeeId}). Run npm run agent:ensure or restart the desktop agent after signing in as that employee.`,
+      };
+    }
+
+    if (!presence) {
+      return {
+        ok: true,
+        agentEmployeeId,
+        message: `No recent presence for ${agentEmployeeId}; sending command anyway. If Live stays blank, ensure employee-agent is running with that EMPLOYEE_ID.`,
+      };
+    }
+
+    return {
+      ok: true,
+      agentEmployeeId,
+      message: 'Agent target resolved.',
+    };
+  },
+
   /** Ask employee-agent to start pushing real desktop frames (~1/sec). */
   startLiveSession: async (
     employeeId: string,
@@ -1451,15 +1524,24 @@ export const dataService = {
     if (!isSupabaseConfigured()) {
       return { success: false, message: 'Supabase is not configured.' };
     }
+    const ready = await dataService.ensureLiveAgentReady(employeeId);
+    if (!ready.ok) {
+      return { success: false, message: ready.message };
+    }
     const { error } = await supabase.from('agent_commands').insert({
-      employee_id: employeeId,
+      employee_id: ready.agentEmployeeId,
       command: 'start_live',
       payload: { requested_by: requestedBy },
       status: 'pending',
       requested_by: requestedBy,
     });
     if (error) return { success: false, message: error.message };
-    return { success: true, message: 'Live session requested from agent.' };
+    return {
+      success: true,
+      message: ready.message.includes('No recent presence')
+        ? ready.message
+        : 'Live session requested from agent.',
+    };
   },
 
   stopLiveSession: async (
@@ -1469,8 +1551,9 @@ export const dataService = {
     if (!isSupabaseConfigured()) {
       return { success: false, message: 'Supabase is not configured.' };
     }
+    const agentEmployeeId = await dataService.resolveAgentEmployeeId(employeeId);
     const { error } = await supabase.from('agent_commands').insert({
-      employee_id: employeeId,
+      employee_id: agentEmployeeId,
       command: 'stop_live',
       payload: { requested_by: requestedBy },
       status: 'pending',
@@ -1483,8 +1566,9 @@ export const dataService = {
   /** Keepalive while Live modal is open (resets agent 60s idle timer). */
   heartbeatLiveSession: async (employeeId: string, requestedBy: string): Promise<void> => {
     if (!isSupabaseConfigured()) return;
+    const agentEmployeeId = await dataService.resolveAgentEmployeeId(employeeId);
     await supabase.from('agent_commands').insert({
-      employee_id: employeeId,
+      employee_id: agentEmployeeId,
       command: 'start_live',
       payload: { requested_by: requestedBy, keepalive: true },
       status: 'pending',
@@ -1494,10 +1578,11 @@ export const dataService = {
 
   getLiveSession: async (employeeId: string): Promise<EmployeeLiveSession | null> => {
     if (!isSupabaseConfigured()) return null;
+    const agentEmployeeId = await dataService.resolveAgentEmployeeId(employeeId);
     const { data, error } = await supabase
       .from('employee_live_sessions')
       .select('*')
-      .eq('employee_id', employeeId)
+      .eq('employee_id', agentEmployeeId)
       .maybeSingle();
     if (error || !data) return null;
     let frame_url: string | null = null;
@@ -1538,10 +1623,21 @@ export const dataService = {
       };
     }
 
+    const ready = await dataService.ensureLiveAgentReady(employeeId);
+    if (!ready.ok) {
+      return {
+        success: false,
+        message: ready.message,
+        recordId: '',
+        recording: null as unknown as ScreenRecordingItem,
+      };
+    }
+    const targetId = ready.agentEmployeeId;
+
     const { data: cmd, error: insertErr } = await supabase
       .from('agent_commands')
       .insert({
-        employee_id: employeeId,
+        employee_id: targetId,
         command: 'record',
         payload: {
           duration_secs: 10,
@@ -1598,14 +1694,13 @@ export const dataService = {
     if (!recordingId) {
       return {
         success: false,
-        message:
-          'Timed out waiting for agent recording. Ensure employee-agent is running with the correct EMPLOYEE_ID.',
+        message: `Timed out waiting for agent recording (EMPLOYEE_ID=${targetId}). Run npm run agent:ensure on that PC, or sign in as that employee in the desktop app so the agent restarts with the matching id.`,
         recordId: '',
         recording: null as unknown as ScreenRecordingItem,
       };
     }
 
-    const list = await dataService.getScreenRecordings(role, undefined, employeeId);
+    const list = await dataService.getScreenRecordings(role, undefined, targetId);
     let recording =
       list.find((r) => r.id === recordingId) ||
       (await (async () => {

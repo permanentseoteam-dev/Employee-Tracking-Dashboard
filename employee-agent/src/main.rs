@@ -80,9 +80,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         last_error: None,
         paused: is_paused(),
         backend_ok: false,
+        supports_live_commands: true,
         updated_at: now_rfc3339(),
     };
     write_status(&snap);
+    println!(
+        "📺 Live/Record commands enabled for EMPLOYEE_ID={}",
+        config.employee_id
+    );
 
     let uploader = SupabaseUploader::new(&config.supabase_url, &config.supabase_anon_key)?;
     let heartbeat_service = HeartbeatService::new(

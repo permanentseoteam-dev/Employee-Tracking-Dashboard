@@ -23,7 +23,11 @@ pub fn configure_monitoring_agent(
     supabase_url: String,
     supabase_anon_key: String,
 ) -> Result<(), String> {
-    supervisor.write_runtime_env(&employee_id, &supabase_url, &supabase_anon_key)
+    supervisor.write_runtime_env(&employee_id, &supabase_url, &supabase_anon_key)?;
+    // Apply env immediately: refresh binary + restart installed agent under this EMPLOYEE_ID
+    supervisor.set_deliberately_stopped(false);
+    let _ = supervisor.ensure_running();
+    Ok(())
 }
 
 #[tauri::command]

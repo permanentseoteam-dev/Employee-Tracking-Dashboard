@@ -14,6 +14,8 @@ pub struct AgentStatusSnapshot {
     pub last_error: Option<String>,
     pub paused: bool,
     pub backend_ok: bool,
+    /// Agent can poll agent_commands for live/record.
+    pub supports_live_commands: bool,
     pub updated_at: String,
 }
 

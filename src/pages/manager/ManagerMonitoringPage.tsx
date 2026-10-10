@@ -6,6 +6,7 @@ import { dataService, isAdminRecord } from '../../services/dataService';
 import { MatrixHeatmap } from '../../components/telemetry/MatrixHeatmap';
 import { KeyboardActivityView } from '../../components/telemetry/KeyboardActivityView';
 import { formatCaptureDateTime, formatCaptureTime } from '../../utils/datetime';
+import { agentCommandEmployeeId } from '../../utils/agentEmployeeId';
 import type { ScreenshotItem, EmployeeRecord, ScreenRecordingItem } from '../../types/roles';
 import { FrameSequencePlayer } from '../../components/monitoring/FrameSequencePlayer';
 
@@ -122,7 +123,7 @@ export const ManagerMonitoringPage: React.FC<ManagerMonitoringPageProps> = ({ in
     }, 1000);
 
     try {
-      const agentEmpId = emp.user_id || empId;
+      const agentEmpId = agentCommandEmployeeId(emp);
       const res = await dataService.triggerOnDemandScreenRecording(
         'manager',
         agentEmpId,
@@ -183,7 +184,7 @@ export const ManagerMonitoringPage: React.FC<ManagerMonitoringPageProps> = ({ in
     setLiveFrameUrl(null);
     setLiveStatusText('Connecting to agent…');
     if (emp) {
-      await dataService.stopLiveSession(emp.user_id || emp.id, user.name);
+      await dataService.stopLiveSession(agentCommandEmployeeId(emp), user.name);
     }
   };
 
@@ -199,7 +200,7 @@ export const ManagerMonitoringPage: React.FC<ManagerMonitoringPageProps> = ({ in
       `Opened live workstation stream for ${emp.name}`,
       user?.id
     );
-    const res = await dataService.startLiveSession(emp.user_id || emp.id, user.name);
+    const res = await dataService.startLiveSession(agentCommandEmployeeId(emp), user.name);
     if (!res.success) {
       setLiveStatusText(res.message || 'Failed to start live session');
     }
@@ -207,7 +208,7 @@ export const ManagerMonitoringPage: React.FC<ManagerMonitoringPageProps> = ({ in
 
   useEffect(() => {
     if (!selectedLiveEmployee) return;
-    const empId = selectedLiveEmployee.user_id || selectedLiveEmployee.id;
+    const empId = agentCommandEmployeeId(selectedLiveEmployee);
     let cancelled = false;
 
     const tick = async () => {

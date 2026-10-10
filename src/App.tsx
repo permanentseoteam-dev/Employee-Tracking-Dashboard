@@ -126,23 +126,15 @@ export const App: React.FC = () => {
         await api.setMonitoringAuthorized(true);
         const url = (import.meta as any).env?.VITE_SUPABASE_URL || '';
         const key = (import.meta as any).env?.VITE_SUPABASE_ANON_KEY || '';
+        // Always refresh binary + write EMPLOYEE_ID=auth user id, then ensure
+        // the *installed* agent is running (kills sandbox/stale copies).
         if (url && key) {
           await api.configureMonitoringAgent(user.id, url, key);
         }
-        const current = await api.getAgentLifecycleStatus();
         if (cancelled) return;
-        if (current.lifecycle === 'NOT_INSTALLED') {
-          await api.installMonitoringAgent();
-        }
-        const again = await api.getAgentLifecycleStatus();
-        if (
-          !cancelled &&
-          !again.process_alive &&
-          !again.deliberately_stopped &&
-          again.policy_allows_collection
-        ) {
-          await api.startMonitoringAgent();
-        }
+        await api.installMonitoringAgent();
+        if (cancelled) return;
+        await api.startMonitoringAgent();
         await fetchState();
       } catch (e) {
         console.warn('Monitoring agent bootstrap:', e);

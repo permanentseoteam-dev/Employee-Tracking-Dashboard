@@ -10,7 +10,8 @@
     "preview": "vite preview",
     "tauri": "tauri",
     "prepare:agent": "node scripts/prepare-agent-bundle.mjs",
-    "build:agent": "cargo build --release --manifest-path employee-agent/Cargo.toml",
+    "agent:ensure": "node scripts/ensure-agent.mjs",
+    "build:agent": "cargo build --release --manifest-path employee-agent/Cargo.toml --target-dir target-employee-agent",
     "build:desktop": "node scripts/build-desktop-signed.mjs",
     "release:desktop": "node scripts/publish-github-release.mjs"
   },

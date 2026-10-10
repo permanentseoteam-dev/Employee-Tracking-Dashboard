@@ -72,6 +72,8 @@ struct AgentStatusFile {
     last_error: Option<String>,
     paused: Option<bool>,
     backend_ok: Option<bool>,
+    #[serde(default)]
+    supports_live_commands: Option<bool>,
 }
 
 struct SupervisorInner {
@@ -134,12 +136,9 @@ impl AgentSupervisor {
         Self::install_exe_path().is_file()
     }
 
-    /// Copy bundled or sibling `employee-agent.exe` into LocalAppData install dir.
-    pub fn install_from_candidates(&self, extra_candidates: &[PathBuf]) -> Result<PathBuf, String> {
-        let dest_dir = Self::agent_dir();
-        fs::create_dir_all(&dest_dir).map_err(|e| format!("Cannot create agent dir: {e}"))?;
+    /// Collect candidate agent binaries (bundle, repo, install dir).
+    fn agent_binary_candidates(extra_candidates: &[PathBuf]) -> Vec<PathBuf> {
         let dest = Self::install_exe_path();
-
         let mut candidates = extra_candidates.to_vec();
         if let Ok(exe) = std::env::current_exe() {
             if let Some(dir) = exe.parent() {
@@ -147,31 +146,97 @@ impl AgentSupervisor {
                 candidates.push(dir.join("agent").join(AGENT_EXE_NAME));
                 candidates.push(dir.join("resources").join("agent").join(AGENT_EXE_NAME));
                 candidates.push(dir.join("resources").join(AGENT_EXE_NAME));
-                // NSIS may already have copied during install
-                candidates.push(dest.clone());
             }
         }
-        // Dev / repo layout
+        // Dev / repo layout — prefer freshly built release over stale install
         candidates.push(PathBuf::from("src-tauri/resources/agent").join(AGENT_EXE_NAME));
         candidates.push(PathBuf::from("resources/agent").join(AGENT_EXE_NAME));
+        candidates.push(PathBuf::from("target-employee-agent/release").join(AGENT_EXE_NAME));
+        candidates.push(PathBuf::from("employee-agent/target/release").join(AGENT_EXE_NAME));
         candidates.push(PathBuf::from("release/employee-agent-windows").join(AGENT_EXE_NAME));
         candidates.push(PathBuf::from("../release/employee-agent-windows").join(AGENT_EXE_NAME));
+        candidates.push(dest);
+        candidates
+    }
 
-        let src = candidates
+    /// Newest existing candidate by mtime, then size (so release builds beat old installs).
+    fn pick_best_agent_binary(candidates: Vec<PathBuf>) -> Option<PathBuf> {
+        candidates
             .into_iter()
-            .find(|p| p.is_file())
+            .filter(|p| p.is_file())
+            .max_by(|a, b| {
+                let am = fs::metadata(a).ok();
+                let bm = fs::metadata(b).ok();
+                let at = am.as_ref().and_then(|m| m.modified().ok());
+                let bt = bm.as_ref().and_then(|m| m.modified().ok());
+                match (at, bt) {
+                    (Some(ta), Some(tb)) if ta != tb => ta.cmp(&tb),
+                    _ => {
+                        let al = am.map(|m| m.len()).unwrap_or(0);
+                        let bl = bm.map(|m| m.len()).unwrap_or(0);
+                        al.cmp(&bl)
+                    }
+                }
+            })
+    }
+
+    fn binary_needs_copy(src: &Path, dest: &Path) -> bool {
+        if !dest.is_file() {
+            return true;
+        }
+        if src.canonicalize().ok() == dest.canonicalize().ok() {
+            return false;
+        }
+        let Ok(sm) = fs::metadata(src) else {
+            return true;
+        };
+        let Ok(dm) = fs::metadata(dest) else {
+            return true;
+        };
+        if sm.len() != dm.len() {
+            return true;
+        }
+        match (sm.modified(), dm.modified()) {
+            (Ok(st), Ok(dt)) => st > dt,
+            _ => true,
+        }
+    }
+
+    /// Copy newest bundled/sibling `employee-agent.exe` into LocalAppData.
+    /// Returns `(install_path, binary_replaced)`.
+    pub fn install_from_candidates(
+        &self,
+        extra_candidates: &[PathBuf],
+    ) -> Result<PathBuf, String> {
+        let (path, _replaced) = self.install_from_candidates_ex(extra_candidates)?;
+        Ok(path)
+    }
+
+    pub fn install_from_candidates_ex(
+        &self,
+        extra_candidates: &[PathBuf],
+    ) -> Result<(PathBuf, bool), String> {
+        let dest_dir = Self::agent_dir();
+        fs::create_dir_all(&dest_dir).map_err(|e| format!("Cannot create agent dir: {e}"))?;
+        let dest = Self::install_exe_path();
+
+        let src = Self::pick_best_agent_binary(Self::agent_binary_candidates(extra_candidates))
             .ok_or_else(|| {
                 format!(
                     "Could not find {AGENT_EXE_NAME}. Reinstall the desktop app (agent must be bundled)."
                 )
             })?;
 
-        // Always refresh from bundle when source differs (repair)
-        if src.canonicalize().ok() != dest.canonicalize().ok() {
+        let mut replaced = false;
+        if Self::binary_needs_copy(&src, &dest) {
+            // Windows locks the running image — stop agents before overwrite
+            Self::force_kill_all_agents();
+            std::thread::sleep(Duration::from_millis(400));
+            let _ = fs::remove_file(Self::agent_dir().join("agent.lock"));
             fs::copy(&src, &dest).map_err(|e| format!("Failed to install agent binary: {e}"))?;
+            replaced = true;
         }
 
-        // Verify integrity
         let meta = fs::metadata(&dest).map_err(|e| format!("Agent install verify failed: {e}"))?;
         if meta.len() < 1_000_000 {
             return Err(format!(
@@ -189,7 +254,7 @@ impl AgentSupervisor {
         ) {
             inner.state = AgentLifecycleState::Installed;
         }
-        Ok(dest)
+        Ok((dest, replaced))
     }
 
     /// User-visible Task Scheduler registration (ONLOGON, limited rights).
@@ -242,18 +307,53 @@ impl AgentSupervisor {
         supabase_url: &str,
         supabase_anon_key: &str,
     ) -> Result<(), String> {
+        let employee_id = employee_id.trim();
+        let supabase_url = supabase_url.trim().trim_end_matches('/');
+        let supabase_anon_key = supabase_anon_key.trim();
+        if employee_id.is_empty() {
+            return Err("EMPLOYEE_ID is required to configure the monitoring agent.".into());
+        }
+        if employee_id.len() < 32 {
+            return Err(format!(
+                "EMPLOYEE_ID looks invalid ({employee_id}). Use the signed-in auth user id."
+            ));
+        }
+        if supabase_url.is_empty() || supabase_anon_key.is_empty() {
+            return Err("Supabase URL and anon key are required for the agent.".into());
+        }
+
+        let previous = Self::read_env_employee_id();
         let dir = Self::agent_dir();
         fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
         let body = format!(
-            "SUPABASE_URL={}\nSUPABASE_ANON_KEY={}\nEMPLOYEE_ID={}\n",
-            supabase_url.trim(),
-            supabase_anon_key.trim(),
-            employee_id.trim()
+            "SUPABASE_URL={supabase_url}\nSUPABASE_ANON_KEY={supabase_anon_key}\nEMPLOYEE_ID={employee_id}\nSCREENSHOT_INTERVAL_SECONDS=60\nHEARTBEAT_INTERVAL_SECONDS=30\nSCREENSHOT_QUALITY=70\n"
         );
-        fs::write(Self::env_file_path(), body).map_err(|e| format!("Failed to write agent .env: {e}"))?;
+        fs::write(Self::env_file_path(), body)
+            .map_err(|e| format!("Failed to write agent .env: {e}"))?;
         let mut inner = self.inner.lock();
         inner.employee_id = Some(employee_id.to_string());
+        drop(inner);
+
+        // If the identity changed while an agent is running, force a clean restart next ensure.
+        if previous.as_deref() != Some(employee_id) && Self::process_is_alive() {
+            Self::force_kill_all_agents();
+            let _ = fs::remove_file(Self::agent_dir().join("agent.lock"));
+        }
         Ok(())
+    }
+
+    fn read_env_employee_id() -> Option<String> {
+        let raw = fs::read_to_string(Self::env_file_path()).ok()?;
+        for line in raw.lines() {
+            let line = line.trim();
+            if let Some(rest) = line.strip_prefix("EMPLOYEE_ID=") {
+                let v = rest.trim().trim_matches('"');
+                if !v.is_empty() {
+                    return Some(v.to_string());
+                }
+            }
+        }
+        None
     }
 
     pub fn set_monitoring_authorized(&self, authorized: bool) {
@@ -284,6 +384,66 @@ impl AgentSupervisor {
 
     pub fn process_is_alive() -> bool {
         find_process_running(AGENT_EXE_NAME)
+    }
+
+    /// True only when the process running is the LocalAppData installed binary.
+    pub fn installed_agent_alive() -> bool {
+        let install = match Self::install_exe_path().canonicalize() {
+            Ok(p) => p,
+            Err(_) => return false,
+        };
+        list_agent_processes().into_iter().any(|(_pid, path)| {
+            path.canonicalize()
+                .map(|p| p == install)
+                .unwrap_or(false)
+        })
+    }
+
+    /// Kill every employee-agent.exe (including sandbox/dev copies).
+    pub fn force_kill_all_agents() {
+        #[cfg(windows)]
+        {
+            let _ = Command::new("taskkill")
+                .args(["/IM", AGENT_EXE_NAME, "/F", "/T"])
+                .creation_flags(CREATE_NO_WINDOW)
+                .output();
+        }
+        #[cfg(not(windows))]
+        {
+            let _ = Command::new("pkill").arg("-f").arg(AGENT_EXE_NAME).output();
+        }
+        let _ = fs::remove_file(Self::agent_dir().join("agent.lock"));
+    }
+
+    /// Kill agents whose executable path is not the installed binary.
+    pub fn kill_foreign_agents() -> bool {
+        let install = Self::install_exe_path().canonicalize().ok();
+        let mut killed = false;
+        for (pid, path) in list_agent_processes() {
+            let is_installed = install
+                .as_ref()
+                .and_then(|inst| path.canonicalize().ok().map(|p| p == *inst))
+                .unwrap_or(false);
+            if !is_installed {
+                #[cfg(windows)]
+                {
+                    let _ = Command::new("taskkill")
+                        .args(["/PID", &pid.to_string(), "/F", "/T"])
+                        .creation_flags(CREATE_NO_WINDOW)
+                        .output();
+                }
+                #[cfg(not(windows))]
+                {
+                    let _ = Command::new("kill").args(["-9", &pid.to_string()]).output();
+                }
+                killed = true;
+            }
+        }
+        if killed {
+            let _ = fs::remove_file(Self::agent_dir().join("agent.lock"));
+            std::thread::sleep(Duration::from_millis(300));
+        }
+        killed
     }
 
     fn read_status_file() -> AgentStatusFile {
@@ -400,7 +560,8 @@ impl AgentSupervisor {
         }
     }
 
-    /// Start agent if authorized and not already healthy. Avoids duplicates.
+    /// Start agent if authorized. Always refreshes binary, kills foreign/stale
+    /// processes, and restarts when EMPLOYEE_ID or binary changed.
     pub fn ensure_running(&self) -> Result<AgentStatusReport, String> {
         {
             let inner = self.inner.lock();
@@ -412,20 +573,48 @@ impl AgentSupervisor {
             }
         }
 
-        if !Self::is_installed() {
-            self.install_from_candidates(&[])?;
+        let (_path, binary_replaced) = self.install_from_candidates_ex(&[])?;
+        let foreign_killed = Self::kill_foreign_agents();
+
+        let env_id = Self::read_env_employee_id().ok_or_else(|| {
+            "EMPLOYEE_ID missing in agent .env — employee must sign in so the agent can be configured."
+                .to_string()
+        })?;
+
+        let status = Self::read_status_file();
+        let id_mismatch = status
+            .employee_id
+            .as_ref()
+            .map(|s| s != &env_id)
+            .unwrap_or(false);
+        let installed_alive = Self::installed_agent_alive();
+        let needs_restart =
+            binary_replaced || foreign_killed || !installed_alive || id_mismatch;
+
+        if needs_restart {
+            if Self::process_is_alive() {
+                Self::force_kill_all_agents();
+                std::thread::sleep(Duration::from_millis(400));
+            }
+            let _ = fs::remove_file(Self::agent_dir().join("agent.lock"));
+            self.spawn_agent()?;
+            std::thread::sleep(Duration::from_millis(900));
         }
 
-        let current = self.refresh_status();
-        if current.process_alive {
-            return Ok(self.refresh_status());
-        }
-
-        self.spawn_agent()?;
-        // Brief wait for status file / process
-        std::thread::sleep(Duration::from_millis(800));
         let after = self.refresh_status();
-        if after.process_alive {
+        if Self::installed_agent_alive() {
+            // Confirm the live process is bound to the configured employee id
+            let file = Self::read_status_file();
+            if let Some(running_id) = file.employee_id.as_ref() {
+                if running_id != &env_id {
+                    let mut inner = self.inner.lock();
+                    inner.state = AgentLifecycleState::Error;
+                    inner.last_error = Some(format!(
+                        "Agent EMPLOYEE_ID mismatch: running={running_id}, configured={env_id}"
+                    ));
+                    return Err(inner.last_error.clone().unwrap());
+                }
+            }
             Ok(after)
         } else {
             let mut inner = self.inner.lock();
@@ -442,8 +631,13 @@ impl AgentSupervisor {
         if !exe.is_file() {
             return Err(format!("Agent binary missing at {}", exe.display()));
         }
-        if Self::process_is_alive() {
+        // Only skip spawn when the *installed* binary is already running
+        if Self::installed_agent_alive() {
             return Ok(());
+        }
+        if Self::process_is_alive() {
+            Self::force_kill_all_agents();
+            std::thread::sleep(Duration::from_millis(400));
         }
 
         {
@@ -580,30 +774,61 @@ impl AgentSupervisor {
 }
 
 fn find_process_running(exe_name: &str) -> bool {
+    !list_agent_processes_named(exe_name).is_empty()
+}
+
+fn list_agent_processes() -> Vec<(u32, PathBuf)> {
+    list_agent_processes_named(AGENT_EXE_NAME)
+}
+
+fn list_agent_processes_named(exe_name: &str) -> Vec<(u32, PathBuf)> {
     #[cfg(windows)]
     {
-        find_process_running_windows(exe_name)
+        list_agent_processes_windows(exe_name)
     }
     #[cfg(not(windows))]
     {
         let _ = exe_name;
-        false
+        Vec::new()
     }
 }
 
 #[cfg(windows)]
-fn find_process_running_windows(exe_name: &str) -> bool {
-    let output = Command::new("tasklist")
-        .args(["/FI", &format!("IMAGENAME eq {exe_name}"), "/NH"])
+fn list_agent_processes_windows(exe_name: &str) -> Vec<(u32, PathBuf)> {
+    let script = format!(
+        "Get-CimInstance Win32_Process -Filter \"Name='{exe_name}'\" | ForEach-Object {{ \"$($_.ProcessId)|$($_.ExecutablePath)\" }}"
+    );
+    let output = Command::new("powershell")
+        .args(["-NoProfile", "-NonInteractive", "-Command", &script])
         .creation_flags(CREATE_NO_WINDOW)
         .output();
-    match output {
-        Ok(out) => {
-            let text = String::from_utf8_lossy(&out.stdout).to_lowercase();
-            text.contains(&exe_name.to_lowercase())
+    let Ok(out) = output else {
+        // Fallback: name-only detection via tasklist
+        let fallback = Command::new("tasklist")
+            .args(["/FI", &format!("IMAGENAME eq {exe_name}"), "/NH"])
+            .creation_flags(CREATE_NO_WINDOW)
+            .output();
+        if let Ok(fo) = fallback {
+            let text = String::from_utf8_lossy(&fo.stdout).to_lowercase();
+            if text.contains(&exe_name.to_lowercase()) {
+                return vec![(0, PathBuf::from(exe_name))];
+            }
         }
-        Err(_) => false,
-    }
+        return Vec::new();
+    };
+    String::from_utf8_lossy(&out.stdout)
+        .lines()
+        .filter_map(|line| {
+            let line = line.trim();
+            if line.is_empty() {
+                return None;
+            }
+            let mut parts = line.splitn(2, '|');
+            let pid = parts.next()?.trim().parse::<u32>().ok()?;
+            let path = parts.next().unwrap_or("").trim();
+            Some((pid, PathBuf::from(path)))
+        })
+        .collect()
 }
 
 #[cfg(test)]

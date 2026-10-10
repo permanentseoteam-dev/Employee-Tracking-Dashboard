@@ -6,6 +6,7 @@ import { useAuth } from '../../context/AuthContext';
 import { MatrixHeatmap } from '../../components/telemetry/MatrixHeatmap';
 import { KeyboardActivityView } from '../../components/telemetry/KeyboardActivityView';
 import { formatCaptureDateTime, formatCaptureTime } from '../../utils/datetime';
+import { agentCommandEmployeeId } from '../../utils/agentEmployeeId';
 import type { ScreenshotItem, EmployeeRecord, ScreenRecordingItem } from '../../types/roles';
 import { FrameSequencePlayer } from '../../components/monitoring/FrameSequencePlayer';
 
@@ -120,7 +121,7 @@ export const AdminMonitoringPage: React.FC<AdminMonitoringPageProps> = ({ initia
     }, 1000);
 
     try {
-      const agentEmpId = emp.user_id || empId;
+      const agentEmpId = agentCommandEmployeeId(emp);
       const res = await dataService.triggerOnDemandScreenRecording(
         'admin',
         agentEmpId,
@@ -217,7 +218,7 @@ export const AdminMonitoringPage: React.FC<AdminMonitoringPageProps> = ({ initia
     setLiveFrameUrl(null);
     setLiveStatusText('Connecting to agent…');
     if (emp) {
-      await dataService.stopLiveSession(emp.user_id || emp.id, user?.name || 'Super Admin');
+      await dataService.stopLiveSession(agentCommandEmployeeId(emp), user?.name || 'Super Admin');
     }
   };
 
@@ -234,7 +235,7 @@ export const AdminMonitoringPage: React.FC<AdminMonitoringPageProps> = ({ initia
       user?.id
     );
     const res = await dataService.startLiveSession(
-      emp.user_id || emp.id,
+      agentCommandEmployeeId(emp),
       user?.name || 'Super Admin'
     );
     if (!res.success) {
@@ -245,7 +246,7 @@ export const AdminMonitoringPage: React.FC<AdminMonitoringPageProps> = ({ initia
   // Poll live frames while modal open; keepalive every 25s
   useEffect(() => {
     if (!selectedLiveEmployee) return;
-    const empId = selectedLiveEmployee.user_id || selectedLiveEmployee.id;
+    const empId = agentCommandEmployeeId(selectedLiveEmployee);
     let cancelled = false;
 
     const tick = async () => {

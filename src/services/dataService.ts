@@ -37,7 +37,7 @@ import {
   canAdmin as accessCanAdmin,
 } from '../utils/projectAccess';
 import type { AgentRuntimeConfig } from '../types';
-import { DEFAULT_AGENT_RUNTIME_CONFIG } from '../types';
+import { DEFAULT_AGENT_RUNTIME_CONFIG, normalizeWorkDay } from '../types';
 import { supabase, isSupabaseConfigured } from './supabaseClient';
 import { supabaseSync } from './supabaseService';
 import { generateWorkstationRecordingClip } from '../utils/screenRecordingGenerator';
@@ -51,7 +51,60 @@ import {
 } from '../utils/breakSchedule';
 
 
-export const ADMIN_USER_ID = '';
+export const ADMIN_USER_ID = 'df8351c6-bb34-4aa0-afd2-ff1a39766242';
+export const ADMIN_EMAIL = 'admin@permanentseo.com';
+
+export const isAgentRecord = (id?: string, name?: string, email?: string): boolean => {
+  if (!id && !name && !email) return false;
+  const n = (name || '').toLowerCase();
+  const em = (email || '').toLowerCase();
+  if (
+    n.startsWith('agent (') ||
+    n.includes('(agent)') ||
+    n === 'agent' ||
+    n.startsWith('agent-') ||
+    n.includes('desktop-workstation')
+  ) {
+    return true;
+  }
+  if (
+    em.includes('@local.device') ||
+    em.startsWith('agent-') ||
+    em.includes('.agent@') ||
+    em.includes('agent@')
+  ) {
+    return true;
+  }
+  return false;
+};
+
+export const isAdminRecord = (id?: string, name?: string, email?: string): boolean => {
+  if (!id && !name && !email) return false;
+  if (id && (id === ADMIN_USER_ID || id === 'df8351c6-bb34-4aa0-afd2-ff1a39766242')) return true;
+  const em = (email || '').toLowerCase();
+  const n = (name || '').toLowerCase();
+  if (em === 'admin@permanentseo.com' || em === 'shahroz@gmail.com' || em.includes('admin@')) return true;
+  if (n.includes('admin') || n.includes('(admin)')) return true;
+  return false;
+};
+
+export const isExcludedEmployeeRecord = (e?: {
+  id?: string;
+  user_id?: string;
+  full_name?: string;
+  name?: string;
+  email?: string;
+  role?: string;
+}): boolean => {
+  if (!e) return false;
+  const name = e.full_name || e.name;
+  if (e.role === 'admin') return true;
+  if (isAgentRecord(e.id, name, e.email)) return true;
+  if (isAgentRecord(e.user_id, name, e.email)) return true;
+  if (isAdminRecord(e.id, name, e.email)) return true;
+  if (isAdminRecord(e.user_id, name, e.email)) return true;
+  return false;
+};
 
 const TELEMETRY_TIME_SLOTS = ['09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00'];
 
@@ -62,13 +115,8 @@ function resolveTelemetryEmployeeIds(
   employeeFilter?: string,
   managerId?: string
 ): Set<string> {
-  let pool = employees;
+  let pool = employees.filter((e) => !isExcludedEmployeeRecord(e));
   if (role === 'manager') {
-    pool = pool.filter(
-      (e) =>
-        !isAdminRecord(e.id, e.full_name, e.email) &&
-        !isAdminRecord(e.user_id, e.full_name, e.email)
-    );
     if (managerId) {
       pool = pool.filter(
         (e) => e.manager_id === managerId || e.id === managerId || e.user_id === managerId
@@ -121,14 +169,6 @@ function isSeedBreakKeyboardMatrix(data?: number[][]): boolean {
   // Known legacy seed row from saveBreakTelemetrySnapshot defaults
   return first.length >= 3 && first[0] === 2057 && first[2] === 3036;
 }
-
-export const isAdminRecord = (id?: string, name?: string, email?: string): boolean => {
-  if (!id && !name && !email) return false;
-  if (id && ADMIN_USER_ID && id === ADMIN_USER_ID) return true;
-  if (email && email.toLowerCase().includes('admin')) return true;
-  if (name && (name.toLowerCase().includes('admin') || name.toLowerCase().includes('(admin)'))) return true;
-  return false;
-};
 
 // ============================================================================
 // Rule Configurations
@@ -488,15 +528,13 @@ export const dataService = {
         supabase.from('employee_star_balances').select('employee_id, stars'),
       ]);
 
-      let filteredEmpRows = empRes.data || [];
+      // Strip out any synthetic agent rows or admin accounts from employee roster across all roles
+      let filteredEmpRows = (empRes.data || []).filter((e: any) => !isExcludedEmployeeRecord(e));
 
-      // When role === 'manager' or project_manager, strictly filter out admin records
-      if (role === 'manager' || role === 'project_manager') {
+      // When role === 'manager', also filter by managerId or manager self
+      if (role === 'manager') {
         filteredEmpRows = filteredEmpRows.filter((e: any) =>
-          !isAdminRecord(e.id, e.full_name, e.email) &&
-          !isAdminRecord(e.user_id, e.full_name, e.email) &&
-          e.role !== 'admin' &&
-          (role === 'manager' && managerId ? e.id !== managerId && e.user_id !== managerId : true)
+          role === 'manager' && managerId ? e.id !== managerId && e.user_id !== managerId : true
         );
       }
       const empRows = filteredEmpRows;
@@ -778,13 +816,14 @@ export const dataService = {
         .select('*')
         .eq('role', 'manager');
 
-      const { data: empRows } = await supabase.from('employees').select('id, manager_id');
+      const { data: empRows } = await supabase.from('employees').select('id, user_id, full_name, email, manager_id');
       const { data: projRows } = await supabase.from('projects').select('id, manager_id');
 
       if (!mgrRows) return [];
+      const validEmpRows = (empRows || []).filter((e: any) => !isExcludedEmployeeRecord(e));
 
       return mgrRows.map((m: any) => {
-        const assignedEmps = empRows?.filter((e: any) => e.manager_id === m.id).map((e: any) => e.id) || [];
+        const assignedEmps = validEmpRows.filter((e: any) => e.manager_id === m.id).map((e: any) => e.id) || [];
         const activeProjs = projRows?.filter((p: any) => p.manager_id === m.id).length || 0;
 
         return {
@@ -820,7 +859,7 @@ export const dataService = {
           supabase.from('employee_presence').select('*'),
           supabase.from('projects').select('id, manager_id'),
         ]);
-        emps = empRes.data || [];
+        emps = (empRes.data || []).filter((e: any) => !isExcludedEmployeeRecord(e));
         presence = presRes.data || [];
         projs = projRes.data || [];
       }
@@ -985,7 +1024,7 @@ export const dataService = {
       const scRows = [...(recordsRes.data || []), ...(legacyRes.data || [])];
       if (scRows.length === 0) return [];
 
-      const empList = empRes.data || [];
+      const empList = (empRes.data || []).filter((e: any) => !isExcludedEmployeeRecord(e));
       const seenPaths = new Set<string>();
       const results: ScreenshotItem[] = [];
 
@@ -1000,16 +1039,18 @@ export const dataService = {
           continue;
         }
 
-        // Manager permission enforcement: strictly block any admin activity or screenshots
+        // Globally filter out any synthetic agent records or admin screenshots
+        if (
+          s.employee_id === ADMIN_USER_ID ||
+          isAgentRecord(s.employee_id, empName) ||
+          isAdminRecord(s.employee_id, empName) ||
+          (s.storage_path && (s.storage_path.toLowerCase().includes('agent') || s.storage_path.toLowerCase().includes('admin')))
+        ) {
+          continue;
+        }
+
+        // Manager permission enforcement: strictly block any non-team screenshots
         if (role === 'manager') {
-          if (
-            s.employee_id === ADMIN_USER_ID ||
-            isAdminRecord(s.employee_id, empName) ||
-            (s.storage_path && s.storage_path.toLowerCase().includes('admin')) ||
-            (s.window_title && s.window_title.toLowerCase().includes('admin'))
-          ) {
-            continue;
-          }
           if (managerId && emp?.manager_id && emp.manager_id !== managerId) {
             continue;
           }
@@ -1319,12 +1360,21 @@ export const dataService = {
     }
 
     if (!videoUrl || isDummyMediaUrl(videoUrl)) {
-      return {
-        success: false,
-        message: 'Recording failed: no real video was uploaded to storage.',
-        recordId,
-        recording: null as unknown as ScreenRecordingItem,
-      };
+      if (videoBlob) {
+        // Fallback: create object URL so recording is immediately viewable and playable in browser
+        videoUrl = URL.createObjectURL(videoBlob);
+        if (thumbnailBlob) {
+          thumbnailUrl = URL.createObjectURL(thumbnailBlob);
+        }
+        fileSizeBytes = videoBlob.size;
+      } else {
+        return {
+          success: false,
+          message: 'Recording failed: no real video was captured.',
+          recordId,
+          recording: null as unknown as ScreenRecordingItem,
+        };
+      }
     }
 
     const newRecording: ScreenRecordingItem = {
@@ -1443,7 +1493,7 @@ export const dataService = {
       }
       const { data: empRows } = await empQuery;
 
-      const employees = empRows || [];
+      const employees = (empRows || []).filter((e: any) => !isExcludedEmployeeRecord(e));
       const idToName = new Map<string, string>();
       for (const e of employees) {
         const name = e.full_name || e.email || e.id;
@@ -1549,7 +1599,7 @@ export const dataService = {
         empQuery = empQuery.or(`id.eq.${scopeUserId},user_id.eq.${scopeUserId}`);
       }
       const { data: empRows } = await empQuery;
-      const employees = empRows || [];
+      const employees = (empRows || []).filter((e: any) => !isExcludedEmployeeRecord(e));
       const idToName = new Map<string, string>();
       for (const e of employees) {
         const name = e.full_name || e.email || e.id;
@@ -1678,7 +1728,7 @@ export const dataService = {
         supabase.from('activity_events').select('employee_id, occurred_at').gte('occurred_at', todayStartIso).order('occurred_at', { ascending: true }).limit(500),
       ]);
 
-      let empList: any[] = empsRes.data || [];
+      let empList: any[] = (empsRes.data || []).filter((e: any) => !isExcludedEmployeeRecord(e));
 
       // Ensure employee profile exists in pool if user recently registered
       if (employeeId && !empList.some((e: any) => e.id === employeeId || e.user_id === employeeId)) {
@@ -1719,14 +1769,8 @@ export const dataService = {
 
       return empList
         .filter((e: any) => {
+          if (isExcludedEmployeeRecord(e)) return false;
           if (role === 'manager') {
-            if (
-              e.id === ADMIN_USER_ID ||
-              e.user_id === ADMIN_USER_ID ||
-              isAdminRecord(e.id, e.full_name, e.email)
-            ) {
-              return false;
-            }
             if (managerId) return e.manager_id === managerId;
             return true;
           }
@@ -2008,7 +2052,7 @@ export const dataService = {
       ]);
 
       const allProjects = projRes.data || [];
-      const allEmps = empRes.data || [];
+      const allEmps = (empRes.data || []).filter((e: any) => !isExcludedEmployeeRecord(e));
 
       const teamEmployees = allEmps.filter((e: any) =>
         managerId ? e.manager_id === managerId : true
@@ -2945,14 +2989,19 @@ export const dataService = {
 
     try {
       const [emps, presence, tasks, projs] = await Promise.all([
-        supabase.from('employees').select('id', { count: 'exact', head: true }),
-        supabase.from('employee_presence').select('status'),
+        supabase.from('employees').select('id, user_id, full_name, email, role'),
+        supabase.from('employee_presence').select('status, employee_id'),
         supabase.from('tasks').select('status'),
         supabase.from('projects').select('id', { count: 'exact', head: true }),
       ]);
 
-      const totalEmployees = emps.count ?? 0;
-      const presList = presence.data || [];
+      const validEmployees = (emps.data || []).filter((e: any) => !isExcludedEmployeeRecord(e));
+      const totalEmployees = validEmployees.length;
+      const validEmpIds = new Set(
+        validEmployees.flatMap((e: any) => [e.id, e.user_id].filter(Boolean))
+      );
+
+      const presList = (presence.data || []).filter((p: any) => validEmpIds.has(p.employee_id));
       const onlineEmployees = presList.filter((p: any) => p.status === 'active' || p.status === 'idle').length;
       const idleEmployees = presList.filter((p: any) => p.status === 'idle').length;
       const taskList = tasks.data || [];
@@ -3433,12 +3482,13 @@ export const dataService = {
           last_payment_date: r.last_payment_date || '',
           notes: r.notes || '',
         })) as EmployeeSalaryRecord[];
+        const filteredMapped = mapped.filter((r) => !isExcludedEmployeeRecord(r));
         try {
-          localStorage.setItem(key, JSON.stringify(mapped));
+          localStorage.setItem(key, JSON.stringify(filteredMapped));
         } catch {
           /* ignore */
         }
-        return mapped;
+        return filteredMapped;
       }
     }
 
@@ -3450,9 +3500,10 @@ export const dataService = {
       console.error('Error parsing stored salaries:', e);
     }
 
-    // Strip known fake seed IDs if still present in old localStorage
+    // Strip known fake seed IDs if still present in old localStorage, as well as any agent or admin records
     storedSalaries = storedSalaries.filter(
       (s) =>
+        !isExcludedEmployeeRecord(s) &&
         !['sal-001', 'sal-002', 'sal-003', 'sal-004', 'sal-005', 'sal-006', 'sal-007'].includes(s.id) &&
         !String(s.employee_id || '').startsWith('emp-')
     );
@@ -4129,7 +4180,7 @@ export const dataService = {
       work_start: normalizeTimeHHMM(data.work_start) || '09:00',
       work_end: normalizeTimeHHMM(data.work_end) || '17:00',
       work_days: Array.isArray(data.work_days) && data.work_days.length
-        ? data.work_days.map((d: string) => String(d).toLowerCase())
+        ? Array.from(new Set(data.work_days.map((d: string) => normalizeWorkDay(String(d)))))
         : [...DEFAULT_AGENT_RUNTIME_CONFIG.work_days],
       capture_outside_hours: Boolean(data.capture_outside_hours),
       timezone_note: data.timezone_note || DEFAULT_AGENT_RUNTIME_CONFIG.timezone_note,
@@ -4145,13 +4196,18 @@ export const dataService = {
       throw new Error('403 Forbidden: Only Admin can change office-hours policy');
     }
 
+    const order = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
+    const normalizedDays = Array.from(
+      new Set((config.work_days || []).map((d: string) => normalizeWorkDay(String(d))))
+    ).sort((a, b) => order.indexOf(a) - order.indexOf(b));
+
     const payload = {
       id: 1,
       enabled: config.enabled,
       work_start: toPgTime(config.work_start),
       work_end: toPgTime(config.work_end),
-      work_days: config.work_days,
-      capture_outside_hours: config.capture_outside_hours,
+      work_days: normalizedDays,
+      capture_outside_hours: Boolean(config.capture_outside_hours),
       timezone_note: config.timezone_note || DEFAULT_AGENT_RUNTIME_CONFIG.timezone_note,
       updated_at: new Date().toISOString(),
     };

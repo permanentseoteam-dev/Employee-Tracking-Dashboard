@@ -113,7 +113,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ dbStats }) => {
                 onChange={(e) =>
                   setConfig({
                     ...config,
-                    screenshot_interval_secs: parseInt(e.target.value) || 30,
+                    screenshot_interval_secs: parseInt(e.target.value) || 60,
                   })
                 }
               />

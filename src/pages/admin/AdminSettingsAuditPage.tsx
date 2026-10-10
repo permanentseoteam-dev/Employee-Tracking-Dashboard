@@ -18,7 +18,7 @@ import { api } from '../../services/tauriBridge';
 import { supabase } from '../../services/supabaseClient';
 import type { AuditLogItem } from '../../types/roles';
 import type { AgentRuntimeConfig, AppConfig } from '../../types';
-import { DEFAULT_AGENT_RUNTIME_CONFIG } from '../../types';
+import { DEFAULT_AGENT_RUNTIME_CONFIG, normalizeWorkDay } from '../../types';
 
 import { useAppRefresh } from '../../hooks/useAppRefresh';
 import { RefreshButton } from '../../components/common/RefreshButton';
@@ -57,6 +57,10 @@ export const AdminSettingsAuditPage: React.FC<AdminSettingsAuditPageProps> = ({ 
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
   const [hoursMessage, setHoursMessage] = useState<string | null>(null);
   const [lastSyncTime, setLastSyncTime] = useState<string>('');
+
+  const isHoursDirtyRef = React.useRef(false);
+  const isConfigDirtyRef = React.useRef(false);
+
   const [agentTelemetry, setAgentTelemetry] = useState<AgentTelemetryInfo>({
     deviceId: '—',
     deviceName: 'Awaiting agent…',
@@ -87,11 +91,11 @@ export const AdminSettingsAuditPage: React.FC<AdminSettingsAuditPageProps> = ({ 
     });
   };
 
-  const loadData = async () => {
+  const loadData = async (forceSettings = false) => {
     try {
       const [cfg, hours, logs, presenceRes, latestEventRes] = await Promise.all([
-        api.getAppConfig(),
-        dataService.getAgentRuntimeConfig(),
+        !isConfigDirtyRef.current || forceSettings ? api.getAppConfig() : Promise.resolve(null),
+        !isHoursDirtyRef.current || forceSettings ? dataService.getAgentRuntimeConfig() : Promise.resolve(null),
         dataService.getAuditLogs('admin'),
         supabase
           .from('employee_presence')
@@ -105,8 +109,17 @@ export const AdminSettingsAuditPage: React.FC<AdminSettingsAuditPageProps> = ({ 
           .limit(1),
       ]);
 
-      setConfig(cfg);
-      setOfficeHours(hours);
+      if (cfg && (!isConfigDirtyRef.current || forceSettings)) {
+        setConfig(cfg);
+        if (forceSettings) isConfigDirtyRef.current = false;
+      }
+      if (hours && (!isHoursDirtyRef.current || forceSettings)) {
+        setOfficeHours({
+          ...hours,
+          work_days: Array.from(new Set((hours.work_days || []).map(normalizeWorkDay))),
+        });
+        if (forceSettings) isHoursDirtyRef.current = false;
+      }
       setAuditLogs(logs);
 
       const now = new Date();
@@ -142,11 +155,11 @@ export const AdminSettingsAuditPage: React.FC<AdminSettingsAuditPageProps> = ({ 
     }
   };
 
-  useAppRefresh(loadData);
+  useAppRefresh(() => loadData(true));
 
   // Real-time synchronization: subscribe to Postgres changes & interval poll
   useEffect(() => {
-    loadData();
+    loadData(true);
 
     // 1. Subscribe to realtime events
     const unsubscribe = dataService.subscribeToRealtime((payload) => {
@@ -155,12 +168,12 @@ export const AdminSettingsAuditPage: React.FC<AdminSettingsAuditPageProps> = ({ 
         payload.table === 'employee_presence' ||
         payload.table === 'screenshots'
       ) {
-        loadData();
+        loadData(false);
       }
     });
 
     // 2. Poll every 4 seconds to guarantee timestamp synchronization with running agent
-    const interval = setInterval(loadData, 4000);
+    const interval = setInterval(() => loadData(false), 4000);
 
     return () => {
       unsubscribe();
@@ -174,6 +187,7 @@ export const AdminSettingsAuditPage: React.FC<AdminSettingsAuditPageProps> = ({ 
     setIsSaving(true);
     try {
       await api.updateAppConfig(config);
+      isConfigDirtyRef.current = false;
       dataService.logAction(
         'Super Admin',
         'admin',
@@ -183,7 +197,7 @@ export const AdminSettingsAuditPage: React.FC<AdminSettingsAuditPageProps> = ({ 
       );
       setSaveMessage('Organization monitoring settings saved & synced to agents.');
       setTimeout(() => setSaveMessage(null), 3000);
-      loadData();
+      loadData(true);
     } catch (err: any) {
       alert(err.message);
     } finally {
@@ -191,13 +205,16 @@ export const AdminSettingsAuditPage: React.FC<AdminSettingsAuditPageProps> = ({ 
     }
   };
 
-  const toggleWorkDay = (day: string) => {
+  const toggleWorkDay = (dayId: string) => {
+    const norm = normalizeWorkDay(dayId);
+    isHoursDirtyRef.current = true;
     setOfficeHours((prev) => {
-      const has = prev.work_days.includes(day);
-      const work_days = has
-        ? prev.work_days.filter((d) => d !== day)
-        : [...prev.work_days, day];
-      return { ...prev, work_days };
+      const current = Array.from(new Set((prev.work_days || []).map(normalizeWorkDay)));
+      const has = current.includes(norm);
+      const next = has ? current.filter((d) => d !== norm) : [...current, norm];
+      const order = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
+      next.sort((a, b) => order.indexOf(a) - order.indexOf(b));
+      return { ...prev, work_days: next };
     });
   };
 
@@ -209,14 +226,25 @@ export const AdminSettingsAuditPage: React.FC<AdminSettingsAuditPageProps> = ({ 
     }
     setIsSavingHours(true);
     try {
-      const saved = await dataService.updateAgentRuntimeConfig('admin', officeHours);
+      const order = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
+      const normalizedDays = Array.from(
+        new Set((officeHours.work_days || []).map(normalizeWorkDay))
+      ).sort((a, b) => order.indexOf(a) - order.indexOf(b));
+
+      const toSave: AgentRuntimeConfig = {
+        ...officeHours,
+        work_days: normalizedDays,
+      };
+
+      const saved = await dataService.updateAgentRuntimeConfig('admin', toSave);
+      isHoursDirtyRef.current = false;
       setOfficeHours(saved);
       window.dispatchEvent(new CustomEvent('stitch:office_hours_updated'));
       dataService.logAction(
         'Super Admin',
         'admin',
         'UPDATE_OFFICE_HOURS',
-        `${saved.work_start}–${saved.work_end} [${saved.work_days.join(',')}] enabled=${saved.enabled}`,
+        `${saved.work_start}–${saved.work_end} [${saved.work_days.join(',')}] enabled=${saved.enabled} override=${saved.capture_outside_hours}`,
         'Updated agent office-hours capture policy'
       );
       setHoursMessage('Office hours saved. Agents refresh this policy within ~5 minutes.');
@@ -326,9 +354,10 @@ export const AdminSettingsAuditPage: React.FC<AdminSettingsAuditPageProps> = ({ 
                   min="30"
                   className="stitch-input"
                   value={config.screenshot_interval_secs}
-                  onChange={(e) =>
-                    setConfig({ ...config, screenshot_interval_secs: parseInt(e.target.value) || 30 })
-                  }
+                  onChange={(e) => {
+                    isConfigDirtyRef.current = true;
+                    setConfig({ ...config, screenshot_interval_secs: parseInt(e.target.value) || 60 });
+                  }}
                 />
               </div>
 
@@ -340,9 +369,10 @@ export const AdminSettingsAuditPage: React.FC<AdminSettingsAuditPageProps> = ({ 
                   max="100"
                   className="stitch-input"
                   value={config.screenshot_quality}
-                  onChange={(e) =>
-                    setConfig({ ...config, screenshot_quality: parseInt(e.target.value) || 80 })
-                  }
+                  onChange={(e) => {
+                    isConfigDirtyRef.current = true;
+                    setConfig({ ...config, screenshot_quality: parseInt(e.target.value) || 80 });
+                  }}
                 />
               </div>
 
@@ -353,9 +383,10 @@ export const AdminSettingsAuditPage: React.FC<AdminSettingsAuditPageProps> = ({ 
                   min="10"
                   className="stitch-input"
                   value={config.idle_threshold_secs}
-                  onChange={(e) =>
-                    setConfig({ ...config, idle_threshold_secs: parseInt(e.target.value) || 180 })
-                  }
+                  onChange={(e) => {
+                    isConfigDirtyRef.current = true;
+                    setConfig({ ...config, idle_threshold_secs: parseInt(e.target.value) || 180 });
+                  }}
                 />
               </div>
 
@@ -401,7 +432,10 @@ export const AdminSettingsAuditPage: React.FC<AdminSettingsAuditPageProps> = ({ 
               <input
                 type="checkbox"
                 checked={officeHours.enabled}
-                onChange={(e) => setOfficeHours({ ...officeHours, enabled: e.target.checked })}
+                onChange={(e) => {
+                  isHoursDirtyRef.current = true;
+                  setOfficeHours({ ...officeHours, enabled: e.target.checked });
+                }}
               />
               <span>Enforce office hours (disable to capture 24/7)</span>
             </label>
@@ -413,7 +447,10 @@ export const AdminSettingsAuditPage: React.FC<AdminSettingsAuditPageProps> = ({ 
                   type="time"
                   className="stitch-input"
                   value={officeHours.work_start}
-                  onChange={(e) => setOfficeHours({ ...officeHours, work_start: e.target.value })}
+                  onChange={(e) => {
+                    isHoursDirtyRef.current = true;
+                    setOfficeHours({ ...officeHours, work_start: e.target.value });
+                  }}
                   disabled={!officeHours.enabled}
                 />
               </div>
@@ -423,7 +460,10 @@ export const AdminSettingsAuditPage: React.FC<AdminSettingsAuditPageProps> = ({ 
                   type="time"
                   className="stitch-input"
                   value={officeHours.work_end}
-                  onChange={(e) => setOfficeHours({ ...officeHours, work_end: e.target.value })}
+                  onChange={(e) => {
+                    isHoursDirtyRef.current = true;
+                    setOfficeHours({ ...officeHours, work_end: e.target.value });
+                  }}
                   disabled={!officeHours.enabled}
                 />
               </div>
@@ -433,7 +473,7 @@ export const AdminSettingsAuditPage: React.FC<AdminSettingsAuditPageProps> = ({ 
               <label className="stitch-label">Work days</label>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
                 {WORK_DAY_OPTIONS.map((d) => {
-                  const active = officeHours.work_days.includes(d.id);
+                  const active = (officeHours.work_days || []).map(normalizeWorkDay).includes(d.id);
                   return (
                     <button
                       key={d.id}
@@ -441,7 +481,17 @@ export const AdminSettingsAuditPage: React.FC<AdminSettingsAuditPageProps> = ({ 
                       className={`nav-pill-item ${active ? 'active' : ''}`}
                       onClick={() => toggleWorkDay(d.id)}
                       disabled={!officeHours.enabled}
-                      style={{ opacity: officeHours.enabled ? 1 : 0.5 }}
+                      style={{
+                        opacity: officeHours.enabled ? 1 : 0.45,
+                        cursor: officeHours.enabled ? 'pointer' : 'not-allowed',
+                        background: active ? 'var(--color-primary)' : 'transparent',
+                        color: active ? 'var(--color-on-primary)' : 'var(--text-secondary)',
+                        border: active ? '1px solid var(--color-primary)' : '1px solid var(--surface-border-subtle)',
+                        fontWeight: active ? 700 : 500,
+                        padding: '6px 14px',
+                        borderRadius: 'var(--radius-pill)',
+                        transition: 'all 0.15s ease',
+                      }}
                     >
                       {d.label}
                     </button>
@@ -450,17 +500,25 @@ export const AdminSettingsAuditPage: React.FC<AdminSettingsAuditPageProps> = ({ 
               </div>
             </div>
 
-            <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer', color: 'var(--text-primary)' }}>
-              <input
-                type="checkbox"
-                checked={officeHours.capture_outside_hours}
-                onChange={(e) =>
-                  setOfficeHours({ ...officeHours, capture_outside_hours: e.target.checked })
-                }
-                disabled={!officeHours.enabled}
-              />
-              <span>Still capture outside hours (override)</span>
-            </label>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: officeHours.enabled ? 'pointer' : 'not-allowed', color: 'var(--text-primary)' }}>
+                <input
+                  type="checkbox"
+                  checked={officeHours.capture_outside_hours}
+                  onChange={(e) => {
+                    isHoursDirtyRef.current = true;
+                    setOfficeHours({ ...officeHours, capture_outside_hours: e.target.checked });
+                  }}
+                  disabled={!officeHours.enabled}
+                />
+                <span style={{ fontWeight: 600 }}>Still capture outside hours (override)</span>
+              </label>
+              <span style={{ fontSize: 11, color: 'var(--text-muted)', marginLeft: 24, lineHeight: 1.45 }}>
+                {officeHours.capture_outside_hours
+                  ? '⚡ Active Override: Workstations will continuously capture screenshots 24/7 without pausing, while maintaining the scheduled office hours for attendance records & shift statistics.'
+                  : '🔒 Standard Policy: Workstations will automatically pause screenshot capture outside defined work hours and on unselected days.'}
+              </span>
+            </div>
 
             <div style={{ marginTop: 'auto', paddingTop: 8 }}>
               <button type="submit" className="btn-pill btn-pill-primary" disabled={isSavingHours} style={{ width: '100%' }}>

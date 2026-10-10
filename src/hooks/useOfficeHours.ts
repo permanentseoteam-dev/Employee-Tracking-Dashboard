@@ -1,15 +1,10 @@
 import { useEffect, useState, useCallback } from 'react';
 import { dataService } from '../services/dataService';
 import type { AgentRuntimeConfig } from '../types';
+import { normalizeWorkDay, DEFAULT_AGENT_RUNTIME_CONFIG } from '../types';
 
 export const DEFAULT_OFFICE_HOURS: AgentRuntimeConfig = {
-  id: 1,
-  enabled: true,
-  work_start: '09:00',
-  work_end: '17:00',
-  work_days: ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'],
-  capture_outside_hours: false,
-  timezone_note: 'Local device time',
+  ...DEFAULT_AGENT_RUNTIME_CONFIG,
 };
 
 export interface OfficeHoursState {
@@ -43,6 +38,7 @@ function evaluateShiftStatus(cfg: AgentRuntimeConfig, now = new Date()): {
   statusLabel: string;
   statusColor: 'success' | 'warning' | 'muted';
 } {
+  // If office hours enforcement is disabled, capture is active 24/7
   if (!cfg.enabled) {
     return {
       isWithin: true,
@@ -52,9 +48,36 @@ function evaluateShiftStatus(cfg: AgentRuntimeConfig, now = new Date()): {
     };
   }
 
-  const dayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
-  const currentDayName = dayNames[now.getDay()];
-  const isWorkDay = cfg.work_days.map((d) => d.toLowerCase()).includes(currentDayName);
+  const dayCodes = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+  const currentDayCode = dayCodes[now.getDay()];
+  const normalizedWorkDays = (cfg.work_days || []).map(normalizeWorkDay);
+  const isWorkDay = normalizedWorkDays.includes(currentDayCode);
+
+  const [startH, startM] = (cfg.work_start || '09:00').split(':').map(Number);
+  const [endH, endM] = (cfg.work_end || '17:00').split(':').map(Number);
+
+  const startMin = (startH || 0) * 60 + (startM || 0);
+  const endMin = (endH || 0) * 60 + (endM || 0);
+  const currentMin = now.getHours() * 60 + now.getMinutes();
+
+  const isShiftTime = startMin <= endMin
+    ? currentMin >= startMin && currentMin < endMin
+    : currentMin >= startMin || currentMin < endMin; // overnight window support
+
+  // When capture_outside_hours override is enabled:
+  // Capture is NEVER paused, even outside office hours or on weekends!
+  if (cfg.capture_outside_hours) {
+    return {
+      isWithin: true,
+      isWorkDay,
+      statusLabel: isWorkDay && isShiftTime
+        ? 'Within Office Hours (On Shift)'
+        : isWorkDay
+        ? 'Active (Outside Hours Override)'
+        : 'Active (Weekend Override)',
+      statusColor: 'success',
+    };
+  }
 
   if (!isWorkDay) {
     return {
@@ -64,13 +87,6 @@ function evaluateShiftStatus(cfg: AgentRuntimeConfig, now = new Date()): {
       statusColor: 'muted',
     };
   }
-
-  const [startH, startM] = (cfg.work_start || '09:00').split(':').map(Number);
-  const [endH, endM] = (cfg.work_end || '17:00').split(':').map(Number);
-
-  const startMin = (startH || 0) * 60 + (startM || 0);
-  const endMin = (endH || 0) * 60 + (endM || 0);
-  const currentMin = now.getHours() * 60 + now.getMinutes();
 
   if (currentMin < startMin) {
     return {
@@ -143,9 +159,18 @@ export function useOfficeHours(): OfficeHoursState {
   const workStartFormatted = formatHHMMTo12Hr(config.work_start);
   const workEndFormatted = formatHHMMTo12Hr(config.work_end);
 
-  const workDaysSummary = config.work_days.length === 5 && !config.work_days.includes('saturday') && !config.work_days.includes('sunday')
-    ? 'Mon – Fri'
-    : config.work_days.map((d) => d.slice(0, 3).toUpperCase()).join(', ');
+  const normDays = (config.work_days || []).map(normalizeWorkDay);
+  const hasMonToFri = ['mon', 'tue', 'wed', 'thu', 'fri'].every((d) => normDays.includes(d));
+  let workDaysSummary: string;
+  if (normDays.length === 5 && hasMonToFri && !normDays.includes('sat') && !normDays.includes('sun')) {
+    workDaysSummary = 'Mon – Fri';
+  } else if (normDays.length === 6 && hasMonToFri && normDays.includes('sat') && !normDays.includes('sun')) {
+    workDaysSummary = 'Mon – Sat';
+  } else if (normDays.length === 7) {
+    workDaysSummary = 'Everyday (Mon – Sun)';
+  } else {
+    workDaysSummary = normDays.map((d) => d.slice(0, 3).toUpperCase()).join(', ');
+  }
 
   return {
     config,

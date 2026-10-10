@@ -84,6 +84,18 @@ export const DEFAULT_AGENT_RUNTIME_CONFIG: AgentRuntimeConfig = {
   timezone_note: 'Uses each workstation local clock',
 };
 
+export function normalizeWorkDay(raw: string): string {
+  const s = String(raw || '').trim().toLowerCase();
+  if (s.startsWith('mon')) return 'mon';
+  if (s.startsWith('tue')) return 'tue';
+  if (s.startsWith('wed')) return 'wed';
+  if (s.startsWith('thu')) return 'thu';
+  if (s.startsWith('fri')) return 'fri';
+  if (s.startsWith('sat')) return 'sat';
+  if (s.startsWith('sun')) return 'sun';
+  return s;
+}
+
 export interface DbStats {
   schema_version: number;
   pending_outbox_count: number;

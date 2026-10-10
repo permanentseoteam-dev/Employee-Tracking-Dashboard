@@ -5,10 +5,9 @@ import {
   ChevronRight,
   Folder,
   FolderKanban,
-  FileText,
-  Table2,
-  Presentation,
   FileUp,
+  Globe,
+  ExternalLink,
   Plus,
   Search,
   Trash2,
@@ -47,30 +46,30 @@ interface ProjectExplorerProps {
 
 type CreateMenuKind = 'project' | 'folder' | 'file';
 
-const GOOGLE_CONNECTED = false; // No OAuth configured — never fake Google files
-
 function itemIcon(type: ProjectTreeItemType, size = 16) {
   switch (type) {
     case 'folder':
       return <Folder size={size} color="#f59e0b" />;
-    case 'document':
-      return <FileText size={size} color="#3b82f6" />;
-    case 'spreadsheet':
-      return <Table2 size={size} color="#10b981" />;
-    case 'presentation':
-      return <Presentation size={size} color="#a855f7" />;
+    case 'embed':
+      return <Globe size={size} color="#06b6d4" />;
     default:
       return <FileUp size={size} color="var(--text-muted)" />;
   }
 }
 
-function defaultContentFor(type: ProjectTreeItemType, name: string) {
-  if (type === 'document') return { body: `# ${name}\n\n`, format: 'internal_document' };
-  if (type === 'spreadsheet')
-    return { sheets: [{ name: 'Sheet1', rows: [['A', 'B'], ['', '']] }], format: 'internal_spreadsheet' };
-  if (type === 'presentation')
-    return { slides: [{ title: name, body: '' }], format: 'internal_presentation' };
-  return {};
+function normalizeUrl(url: string): string {
+  const trimmed = url.trim();
+  if (!trimmed) return '';
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  return `https://${trimmed}`;
+}
+
+function getEmbedUrl(item: ProjectTreeItem): string {
+  if (item.embed_url) return item.embed_url;
+  const content = item.content as any;
+  if (content?.embed_url) return content.embed_url;
+  if (item.data_url && /^https?:\/\//i.test(item.data_url)) return item.data_url;
+  return '';
 }
 
 export const ProjectExplorer: React.FC<ProjectExplorerProps> = ({ role, managerId }) => {
@@ -91,6 +90,12 @@ export const ProjectExplorer: React.FC<ProjectExplorerProps> = ({ role, managerI
     kind: CreateMenuKind;
     preferredType?: ProjectTreeItemType;
   } | null>(null);
+  const [createModalTab, setCreateModalTab] = useState<'embed' | 'upload'>('embed');
+  const [embedUrlDraft, setEmbedUrlDraft] = useState('');
+  const [embedViewerItem, setEmbedViewerItem] = useState<ProjectTreeItem | null>(null);
+  const [embedEditMode, setEmbedEditMode] = useState(false);
+  const [editEmbedUrlDraft, setEditEmbedUrlDraft] = useState('');
+  const [editEmbedNameDraft, setEditEmbedNameDraft] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -104,8 +109,6 @@ export const ProjectExplorer: React.FC<ProjectExplorerProps> = ({ role, managerI
     id: string;
     name: string;
   } | null>(null);
-  const [editorItem, setEditorItem] = useState<ProjectTreeItem | null>(null);
-  const [editorBody, setEditorBody] = useState('');
   const [moveTarget, setMoveTarget] = useState<{
     projectId: string;
     itemId: string;
@@ -306,49 +309,27 @@ export const ProjectExplorer: React.FC<ProjectExplorerProps> = ({ role, managerI
       return;
     }
     setCreateMenu({ projectId, parentId, kind, preferredType });
-    setNameDraft(
-      preferredType === 'spreadsheet'
-        ? 'Untitled Sheet'
-        : preferredType === 'presentation'
-          ? 'Untitled Deck'
-          : preferredType === 'document'
-            ? 'Untitled Document'
-            : ''
-    );
+    setNameDraft(kind === 'folder' ? 'New Folder' : '');
+    setEmbedUrlDraft('');
+    setCreateModalTab(preferredType === 'uploaded_file' ? 'upload' : 'embed');
     setFileMenuOpen(null);
   };
 
-  const handleCreateItem = async (itemType: ProjectTreeItemType) => {
+  const handleCreateFolder = async () => {
     if (!createMenu) return;
-    if (!canMutate(createMenu.projectId, createMenu.parentId)) {
-      showToast('err', 'View-only access');
-      return;
-    }
     const name = nameDraft.trim();
     if (!name) {
-      showToast('err', 'Name is required');
+      showToast('err', 'Folder name is required');
       return;
-    }
-    if (itemType !== 'folder' && itemType !== 'uploaded_file' && GOOGLE_CONNECTED === false) {
-      // Internal records only — never claim Google
     }
     setBusy(true);
     try {
-      const item = await dataService.createProjectItem({
+      await dataService.createProjectItem({
         projectId: createMenu.projectId,
         parentId: createMenu.parentId,
-        itemType,
+        itemType: 'folder',
         name,
-        content: defaultContentFor(itemType, name),
         createdBy: user.id,
-        mimeType:
-          itemType === 'document'
-            ? 'text/markdown'
-            : itemType === 'spreadsheet'
-              ? 'application/vnd.internal.sheet'
-              : itemType === 'presentation'
-                ? 'application/vnd.internal.presentation'
-                : null,
       });
       await loadItems(createMenu.projectId);
       if (createMenu.parentId) {
@@ -356,12 +337,90 @@ export const ProjectExplorer: React.FC<ProjectExplorerProps> = ({ role, managerI
       }
       setExpandedProjects((prev) => new Set(prev).add(createMenu.projectId));
       setCreateMenu(null);
-      showToast('ok', `${itemType === 'folder' ? 'Folder' : 'File'} “${item.name}” created`);
-      if (itemType === 'document' || itemType === 'spreadsheet' || itemType === 'presentation') {
-        openEditor(item);
-      }
+      setNameDraft('');
+      showToast('ok', `Folder “${name}” created`);
     } catch (err: any) {
-      showToast('err', err?.message || 'Create failed');
+      showToast('err', err?.message || 'Failed to create folder');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleCreateEmbed = async () => {
+    if (!createMenu) return;
+    const name = nameDraft.trim();
+    const rawUrl = embedUrlDraft.trim();
+    if (!name) {
+      showToast('err', 'Name is required');
+      return;
+    }
+    if (!rawUrl) {
+      showToast('err', 'Embed URL is required');
+      return;
+    }
+    const finalUrl = normalizeUrl(rawUrl);
+    setBusy(true);
+    try {
+      const item = await dataService.createProjectItem({
+        projectId: createMenu.projectId,
+        parentId: createMenu.parentId,
+        itemType: 'embed',
+        name,
+        embedUrl: finalUrl,
+        createdBy: user.id,
+      });
+      await loadItems(createMenu.projectId);
+      if (createMenu.parentId) {
+        setExpandedFolders((prev) => new Set(prev).add(createMenu.parentId!));
+      }
+      setExpandedProjects((prev) => new Set(prev).add(createMenu.projectId));
+      setCreateMenu(null);
+      setNameDraft('');
+      setEmbedUrlDraft('');
+      showToast('ok', `Embed link “${item.name}” added`);
+      openEditor(item);
+    } catch (err: any) {
+      showToast('err', err?.message || 'Failed to add embed');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleSaveEmbedEdit = async () => {
+    if (!embedViewerItem) return;
+    const newUrl = normalizeUrl(editEmbedUrlDraft.trim());
+    const newName = editEmbedNameDraft.trim() || embedViewerItem.name;
+    if (!newUrl) {
+      showToast('err', 'Valid embed URL is required');
+      return;
+    }
+    setBusy(true);
+    try {
+      await dataService.updateProjectItem(embedViewerItem.project_id, embedViewerItem.id, {
+        name: newName,
+        embed_url: newUrl,
+        content: {
+          ...(typeof embedViewerItem.content === 'object' && embedViewerItem.content !== null ? embedViewerItem.content : {}),
+          embed_url: newUrl,
+          format: 'embed',
+        },
+      });
+      await loadItems(embedViewerItem.project_id);
+      setEmbedViewerItem({
+        ...embedViewerItem,
+        name: newName,
+        embed_url: newUrl,
+        data_url: newUrl,
+        content: {
+          ...(typeof embedViewerItem.content === 'object' && embedViewerItem.content !== null ? embedViewerItem.content : {}),
+          embed_url: newUrl,
+          format: 'embed',
+        },
+      });
+      setEmbedEditMode(false);
+      showToast('ok', 'Embed updated successfully');
+    } catch (err: any) {
+      showToast('err', err?.message || 'Failed to update embed');
     } finally {
       setBusy(false);
     }
@@ -411,12 +470,6 @@ export const ProjectExplorer: React.FC<ProjectExplorerProps> = ({ role, managerI
   };
 
   const openEditor = (item: ProjectTreeItem) => {
-    if (item.item_type === 'embed') {
-      setEmbedViewerItem(item);
-      setEmbedEditMode(false);
-      setEditEmbedUrlDraft(getEmbedUrl(item));
-      return;
-    }
     if (item.item_type === 'uploaded_file') {
       downloadItem(item);
       return;
@@ -424,6 +477,7 @@ export const ProjectExplorer: React.FC<ProjectExplorerProps> = ({ role, managerI
     setEmbedViewerItem(item);
     setEmbedEditMode(false);
     setEditEmbedUrlDraft(getEmbedUrl(item));
+    setEditEmbedNameDraft(item.name);
   };
 
   const handleRename = async (e: React.FormEvent) => {
@@ -484,12 +538,14 @@ export const ProjectExplorer: React.FC<ProjectExplorerProps> = ({ role, managerI
   const handleDuplicate = async (projectId: string, item: ProjectTreeItem) => {
     setBusy(true);
     try {
+      const embedUrl = getEmbedUrl(item);
       await dataService.createProjectItem({
         projectId,
         parentId: item.parent_id,
         itemType: item.item_type,
         name: `${item.name} (copy)`,
-        content: (item.content as any) || defaultContentFor(item.item_type, item.name),
+        content: (item.content as any) || (embedUrl ? { embed_url: embedUrl, format: 'embed' } : {}),
+        embedUrl: embedUrl || undefined,
         dataUrl: item.data_url,
         mimeType: item.mime_type,
         createdBy: user.id,
@@ -523,6 +579,11 @@ export const ProjectExplorer: React.FC<ProjectExplorerProps> = ({ role, managerI
   };
 
   const downloadItem = (item: ProjectTreeItem) => {
+    if (item.item_type === 'embed') {
+      const url = getEmbedUrl(item);
+      if (url) window.open(url, '_blank', 'noopener,noreferrer');
+      return;
+    }
     if (item.data_url) {
       const a = document.createElement('a');
       a.href = item.data_url;
@@ -531,10 +592,7 @@ export const ProjectExplorer: React.FC<ProjectExplorerProps> = ({ role, managerI
       return;
     }
     const content = item.content as any;
-    let text = '';
-    if (item.item_type === 'document') text = content?.body || '';
-    else text = JSON.stringify(content ?? {}, null, 2);
-    const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+    const blob = new Blob([JSON.stringify(content ?? {}, null, 2)], { type: 'text/plain;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -874,7 +932,7 @@ export const ProjectExplorer: React.FC<ProjectExplorerProps> = ({ role, managerI
             Projects & Folders
           </h1>
           <p style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 4 }}>
-            Drive-style hierarchy — expand projects, nest folders, and create internal documents
+            Drive-style hierarchy — expand projects, nest folders, upload files, and manage embedded links
           </p>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
@@ -1412,9 +1470,9 @@ export const ProjectExplorer: React.FC<ProjectExplorerProps> = ({ role, managerI
         )}
       </AnimatePresence>
 
-      {/* Internal editor */}
+      {/* Embed Resource Viewer & Editor Modal */}
       <AnimatePresence>
-        {editorItem && (
+        {embedViewerItem && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -1422,59 +1480,297 @@ export const ProjectExplorer: React.FC<ProjectExplorerProps> = ({ role, managerI
             style={{
               position: 'fixed',
               inset: 0,
-              background: 'rgba(15,23,42,0.5)',
+              background: 'rgba(15,23,42,0.65)',
+              backdropFilter: 'blur(4px)',
               zIndex: 10000,
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              padding: 16,
+              padding: '1rem',
+            }}
+            onClick={() => {
+              setEmbedViewerItem(null);
+              setEmbedEditMode(false);
             }}
           >
             <div
               className="frosted-card"
-              style={{ width: '100%', maxWidth: 720, maxHeight: '85vh', display: 'flex', flexDirection: 'column', gap: 12 }}
+              onClick={(e) => e.stopPropagation()}
+              style={{
+                width: '100%',
+                maxWidth: 1040,
+                maxHeight: '92vh',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 12,
+                padding: '1.25rem',
+                borderRadius: 'var(--radius-card-lg)',
+                boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.35)',
+              }}
             >
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
-                  {itemIcon(editorItem.item_type, 18)}
-                  <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {editorItem.name}
-                  </h3>
-                  <span className="live-telemetry-badge">internal</span>
+              {/* Header */}
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  gap: 12,
+                  flexWrap: 'wrap',
+                  borderBottom: '1px solid var(--surface-border-subtle)',
+                  paddingBottom: 10,
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0, flex: 1 }}>
+                  <div
+                    style={{
+                      width: 34,
+                      height: 34,
+                      borderRadius: 8,
+                      background: 'rgba(6, 182, 212, 0.12)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      flexShrink: 0,
+                    }}
+                  >
+                    <Globe size={18} color="#06b6d4" />
+                  </div>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <h3
+                        style={{
+                          margin: 0,
+                          fontSize: 16,
+                          fontWeight: 800,
+                          color: 'var(--text-primary)',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        {embedViewerItem.name}
+                      </h3>
+                      <span className="live-telemetry-badge" style={{ background: 'rgba(6, 182, 212, 0.15)', color: '#0891b2' }}>
+                        Embed
+                      </span>
+                    </div>
+                    {getEmbedUrl(embedViewerItem) && (
+                      <span
+                        style={{
+                          fontSize: 11,
+                          color: 'var(--text-muted)',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap',
+                          display: 'block',
+                          maxWidth: 520,
+                        }}
+                      >
+                        {getEmbedUrl(embedViewerItem)}
+                      </span>
+                    )}
+                  </div>
                 </div>
-                <button type="button" className="btn-icon-circle" onClick={() => setEditorItem(null)} aria-label="Close editor">
-                  <X size={14} />
-                </button>
-              </div>
-              {editorItem.item_type === 'uploaded_file' ? (
-                <p style={{ fontSize: 13, color: 'var(--text-muted)' }}>
-                  Uploaded binary file. Use Download from the file menu to retrieve it.
-                </p>
-              ) : (
-                <textarea
-                  className="stitch-input"
-                  style={{ minHeight: 320, fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontSize: 12 }}
-                  value={editorBody}
-                  readOnly={!canMutate(editorItem.project_id, editorItem.id)}
-                  onChange={(e) => setEditorBody(e.target.value)}
-                  aria-label="File content editor"
-                />
-              )}
-              {editorItem.item_type === 'spreadsheet' && (
-                <p style={{ margin: 0, fontSize: 11, color: 'var(--text-muted)' }}>
-                  Edit as JSON 2D array, e.g. [["Name","Qty"],["Widget",3]]
-                </p>
-              )}
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-                <button type="button" className="btn-pill btn-pill-secondary" onClick={() => setEditorItem(null)}>
-                  {canMutate(editorItem.project_id, editorItem.id) ? 'Cancel' : 'Close'}
-                </button>
-                {editorItem.item_type !== 'uploaded_file' &&
-                  canMutate(editorItem.project_id, editorItem.id) && (
-                  <button type="button" className="btn-pill btn-pill-primary" disabled={busy} onClick={saveEditor}>
-                    Save
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  {getEmbedUrl(embedViewerItem) && (
+                    <>
+                      <button
+                        type="button"
+                        className="btn-pill btn-pill-secondary"
+                        style={{ padding: '6px 12px', fontSize: 12, gap: 6 }}
+                        onClick={() => {
+                          const url = getEmbedUrl(embedViewerItem);
+                          if (url) window.open(url, '_blank', 'noopener,noreferrer');
+                        }}
+                        title="Open embed in new browser tab"
+                      >
+                        <ExternalLink size={13} />
+                        <span>Open in Tab</span>
+                      </button>
+                      <button
+                        type="button"
+                        className="btn-pill btn-pill-secondary"
+                        style={{ padding: '6px 12px', fontSize: 12, gap: 6 }}
+                        onClick={() => {
+                          const url = getEmbedUrl(embedViewerItem);
+                          if (url) {
+                            navigator.clipboard?.writeText(url);
+                            showToast('ok', 'Link copied to clipboard');
+                          }
+                        }}
+                        title="Copy embed link"
+                      >
+                        <Copy size={13} />
+                        <span>Copy Link</span>
+                      </button>
+                    </>
+                  )}
+
+                  {canMutate(embedViewerItem.project_id, embedViewerItem.id) && (
+                    <button
+                      type="button"
+                      className="btn-pill btn-pill-secondary"
+                      style={{
+                        padding: '6px 12px',
+                        fontSize: 12,
+                        gap: 6,
+                        background: embedEditMode ? 'var(--color-primary)' : undefined,
+                        color: embedEditMode ? '#fff' : undefined,
+                      }}
+                      onClick={() => setEmbedEditMode(!embedEditMode)}
+                      title="Edit embed link or name"
+                    >
+                      <Pencil size={13} />
+                      <span>{embedEditMode ? 'Editing' : 'Edit Link'}</span>
+                    </button>
+                  )}
+
+                  <button
+                    type="button"
+                    className="btn-icon-circle"
+                    onClick={() => {
+                      setEmbedViewerItem(null);
+                      setEmbedEditMode(false);
+                    }}
+                    aria-label="Close embed modal"
+                  >
+                    <X size={15} />
                   </button>
+                </div>
+              </div>
+
+              {/* Inline Edit Form */}
+              {embedEditMode && canMutate(embedViewerItem.project_id, embedViewerItem.id) && (
+                <div
+                  style={{
+                    padding: '10px 14px',
+                    borderRadius: 10,
+                    background: 'var(--surface-subtle)',
+                    border: '1px solid var(--surface-border-subtle)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 10,
+                  }}
+                >
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: 10 }}>
+                    <div>
+                      <label className="stitch-label" style={{ fontSize: 11 }}>Item Name</label>
+                      <input
+                        className="stitch-input"
+                        value={editEmbedNameDraft}
+                        onChange={(e) => setEditEmbedNameDraft(e.target.value)}
+                        placeholder="Resource title"
+                      />
+                    </div>
+                    <div>
+                      <label className="stitch-label" style={{ fontSize: 11 }}>Embed URL</label>
+                      <input
+                        className="stitch-input"
+                        value={editEmbedUrlDraft}
+                        onChange={(e) => setEditEmbedUrlDraft(e.target.value)}
+                        placeholder="https://..."
+                      />
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+                    <button
+                      type="button"
+                      className="btn-pill btn-pill-secondary"
+                      style={{ padding: '5px 12px', fontSize: 12 }}
+                      onClick={() => setEmbedEditMode(false)}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      className="btn-pill btn-pill-primary"
+                      style={{ padding: '5px 14px', fontSize: 12 }}
+                      disabled={busy || !editEmbedUrlDraft.trim()}
+                      onClick={handleSaveEmbedEdit}
+                    >
+                      Save Changes
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Embed Iframe / Preview Container */}
+              <div
+                style={{
+                  flex: 1,
+                  minHeight: '52vh',
+                  maxHeight: '68vh',
+                  width: '100%',
+                  borderRadius: 10,
+                  overflow: 'hidden',
+                  background: '#ffffff',
+                  border: '1px solid var(--surface-border-subtle)',
+                  position: 'relative',
+                  display: 'flex',
+                  flexDirection: 'column',
+                }}
+              >
+                {getEmbedUrl(embedViewerItem) ? (
+                  <iframe
+                    src={getEmbedUrl(embedViewerItem)}
+                    title={embedViewerItem.name}
+                    sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-downloads allow-modals"
+                    allow="fullscreen; accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                    style={{
+                      width: '100%',
+                      height: '100%',
+                      minHeight: 440,
+                      border: 'none',
+                      flex: 1,
+                      borderRadius: 10,
+                    }}
+                  />
+                ) : (
+                  <div
+                    style={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      height: '100%',
+                      padding: 24,
+                      color: 'var(--text-muted)',
+                      gap: 8,
+                    }}
+                  >
+                    <Globe size={32} color="var(--text-muted)" />
+                    <p style={{ margin: 0, fontSize: 13 }}>No embed link configured for this item.</p>
+                  </div>
                 )}
+              </div>
+
+              {/* Security / X-Frame-Options notice */}
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: 12,
+                  fontSize: 11,
+                  color: 'var(--text-muted)',
+                  paddingTop: 4,
+                }}
+              >
+                <span>
+                  Tip: If the embedded page refuses to connect due to provider security (e.g. Google Docs login restrictions), click <strong>Open in Tab</strong>.
+                </span>
+                <button
+                  type="button"
+                  className="btn-pill btn-pill-secondary"
+                  style={{ padding: '5px 12px', fontSize: 11 }}
+                  onClick={() => {
+                    setEmbedViewerItem(null);
+                    setEmbedEditMode(false);
+                  }}
+                >
+                  Close
+                </button>
               </div>
             </div>
           </motion.div>

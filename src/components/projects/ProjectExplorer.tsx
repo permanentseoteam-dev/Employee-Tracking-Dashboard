@@ -657,7 +657,14 @@ export const ProjectExplorer: React.FC<ProjectExplorerProps> = ({ role, managerI
       return (
         <div key={item.id} style={{ marginLeft: Math.min(depth * 18, 72), display: 'flex', flexDirection: 'column', gap: 6 }}>
           <div
-            style={pillStyle}
+            style={{
+              ...pillStyle,
+              cursor: isFolder ? 'pointer' : 'default',
+              userSelect: 'none',
+            }}
+            onClick={() => {
+              if (isFolder) toggleFolder(item.id);
+            }}
             onMouseEnter={(e) => {
               e.currentTarget.style.background = 'var(--surface-frosted)';
               e.currentTarget.style.borderColor = 'var(--surface-border)';
@@ -670,7 +677,8 @@ export const ProjectExplorer: React.FC<ProjectExplorerProps> = ({ role, managerI
             <span style={{ display: 'inline-flex', flexShrink: 0 }}>{itemIcon(item.item_type)}</span>
             <button
               type="button"
-              onClick={() => {
+              onClick={(e) => {
+                e.stopPropagation();
                 if (isFolder) toggleFolder(item.id);
                 else if (item.item_type !== 'uploaded_file') openEditor(item);
                 else setFileMenuOpen(menuOpen ? null : item.id);
@@ -1005,7 +1013,14 @@ export const ProjectExplorer: React.FC<ProjectExplorerProps> = ({ role, managerI
             return (
               <div key={project.id} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 <div
-                  style={{ ...pillStyle, background: 'var(--surface-frosted)' }}
+                  style={{
+                    ...pillStyle,
+                    background: 'var(--surface-frosted)',
+                    cursor: 'pointer',
+                    userSelect: 'none',
+                  }}
+                  onClick={() => toggleProject(project.id)}
+                  title={open ? `Collapse ${project.name}` : `Expand ${project.name}`}
                   onMouseEnter={(e) => {
                     e.currentTarget.style.borderColor = 'var(--color-primary)';
                   }}
@@ -1024,6 +1039,7 @@ export const ProjectExplorer: React.FC<ProjectExplorerProps> = ({ role, managerI
                       overflow: 'hidden',
                       textOverflow: 'ellipsis',
                       whiteSpace: 'nowrap',
+                      cursor: 'pointer',
                     }}
                     title={project.name}
                   >
@@ -1055,7 +1071,10 @@ export const ProjectExplorer: React.FC<ProjectExplorerProps> = ({ role, managerI
                     title={open ? 'Collapse project' : 'Expand project'}
                     aria-label={open ? `Collapse ${project.name}` : `Expand ${project.name}`}
                     aria-expanded={open}
-                    onClick={() => toggleProject(project.id)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      toggleProject(project.id);
+                    }}
                   >
                     {open ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
                   </button>

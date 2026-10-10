@@ -45,7 +45,7 @@ impl AgentConfig {
 
         let employee_id = env::var("EMPLOYEE_ID")
             .or_else(|_| env::var("AGENT_EMPLOYEE_ID"))
-            .unwrap_or_else(|_| "d9b4bfb3-9953-522d-84af-3de709e7caa8".to_string());
+            .unwrap_or_else(|_| "304c14cc-995b-424e-a30f-a8e8418591cc".to_string());
 
         let device_id_override = env::var("DEVICE_ID").ok();
 

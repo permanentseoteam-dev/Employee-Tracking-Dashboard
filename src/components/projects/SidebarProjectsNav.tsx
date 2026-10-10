@@ -212,8 +212,16 @@ export const SidebarProjectsNav: React.FC<SidebarProjectsNavProps> = ({
               fontSize: 11,
               marginLeft: Math.min(depth, 3) * 8,
               gap: 4,
+              cursor: isFolder ? 'pointer' : 'default',
+              userSelect: 'none',
             }}
-            onClick={() => onNavigate(projectsRoute)}
+            onClick={(e) => {
+              if (isFolder) {
+                toggleFolderNode(e, item.id);
+              } else {
+                onNavigate(projectsRoute);
+              }
+            }}
             title={item.name}
           >
             <span style={{ flexShrink: 0 }}>{fileIcon(item.item_type)}</span>
@@ -236,7 +244,10 @@ export const SidebarProjectsNav: React.FC<SidebarProjectsNavProps> = ({
                 title="Create folder"
                 aria-label="Create folder"
                 disabled={busy}
-                onClick={(e) => handleCreateFolder(e, projectId, item.id)}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleCreateFolder(e, projectId, item.id);
+                }}
               >
                 <Plus size={12} />
               </button>
@@ -247,7 +258,10 @@ export const SidebarProjectsNav: React.FC<SidebarProjectsNavProps> = ({
                 style={iconBtn}
                 title={isOpen ? 'Collapse' : 'Expand'}
                 aria-label={isOpen ? 'Collapse folder' : 'Expand folder'}
-                onClick={(e) => toggleFolderNode(e, item.id)}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  toggleFolderNode(e, item.id);
+                }}
               >
                 {isOpen ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
               </button>
@@ -285,11 +299,23 @@ export const SidebarProjectsNav: React.FC<SidebarProjectsNavProps> = ({
           padding: '7px 8px 7px 12px',
           fontSize: 12,
           gap: 6,
+          cursor: 'pointer',
+          userSelect: 'none',
         }}
+        onClick={() => {
+          setExpanded((v) => !v);
+          if (!expanded) loadProjects();
+        }}
+        title={expanded ? 'Collapse Projects & Folders' : 'Expand Projects & Folders'}
       >
         <button
           type="button"
-          onClick={() => onNavigate(projectsRoute)}
+          onClick={(e) => {
+            e.stopPropagation();
+            setExpanded((v) => !v);
+            if (!expanded) loadProjects();
+            onNavigate(projectsRoute);
+          }}
           style={{
             display: 'inline-flex',
             alignItems: 'center',
@@ -325,7 +351,10 @@ export const SidebarProjectsNav: React.FC<SidebarProjectsNavProps> = ({
           title="Create project"
           aria-label="Create project"
           disabled={busy}
-          onClick={handleCreateProject}
+          onClick={(e) => {
+            e.stopPropagation();
+            handleCreateProject(e);
+          }}
         >
           <Plus size={14} />
         </button>
@@ -374,26 +403,23 @@ export const SidebarProjectsNav: React.FC<SidebarProjectsNavProps> = ({
                       fontSize: 11,
                       fontWeight: 600,
                       gap: 4,
+                      cursor: 'pointer',
+                      userSelect: 'none',
                     }}
+                    onClick={(e) => {
+                      toggleProjectNode(e, project.id);
+                    }}
+                    title={open ? `Collapse ${project.name}` : `Expand ${project.name}`}
                   >
-                    <button
-                      type="button"
-                      onClick={() => onNavigate(projectsRoute)}
+                    <div
                       style={{
                         display: 'inline-flex',
                         alignItems: 'center',
                         gap: 4,
                         flex: 1,
                         minWidth: 0,
-                        border: 'none',
-                        background: 'transparent',
-                        color: 'inherit',
                         cursor: 'pointer',
-                        padding: 0,
-                        font: 'inherit',
-                        textAlign: 'left',
                       }}
-                      title={project.name}
                     >
                       <FolderKanban size={13} color="var(--color-primary)" style={{ flexShrink: 0 }} />
                       <span
@@ -407,14 +433,17 @@ export const SidebarProjectsNav: React.FC<SidebarProjectsNavProps> = ({
                       >
                         {project.name}
                       </span>
-                    </button>
+                    </div>
                     <button
                       type="button"
                       style={iconBtn}
                       title="Create folder"
                       aria-label={`Create folder in ${project.name}`}
                       disabled={busy}
-                      onClick={(e) => handleCreateFolder(e, project.id, null)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleCreateFolder(e, project.id, null);
+                      }}
                     >
                       <Plus size={12} />
                     </button>
@@ -424,7 +453,10 @@ export const SidebarProjectsNav: React.FC<SidebarProjectsNavProps> = ({
                       title={open ? 'Collapse project' : 'Expand project'}
                       aria-label={open ? `Collapse ${project.name}` : `Expand ${project.name}`}
                       aria-expanded={open}
-                      onClick={(e) => toggleProjectNode(e, project.id)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleProjectNode(e, project.id);
+                      }}
                     >
                       {open ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
                     </button>

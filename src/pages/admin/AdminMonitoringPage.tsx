@@ -947,27 +947,42 @@ export const AdminMonitoringPage: React.FC<AdminMonitoringPageProps> = ({ initia
                 </span>
               )}
             </div>
-            <button
-              type="button"
-              className="btn-pill btn-pill-secondary"
-              style={{
-                padding: '6px 12px',
-                fontSize: 12,
-                opacity: screenshots.length === 0 || isDeletingScreenshots ? 0.55 : 1,
-                cursor: screenshots.length === 0 || isDeletingScreenshots ? 'not-allowed' : 'pointer',
-                pointerEvents: isDeletingScreenshots ? 'none' : 'auto',
-              }}
-              disabled={screenshots.length === 0 || isDeletingScreenshots}
-              aria-busy={isDeletingScreenshots}
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                void handleDeleteAllScreenshots();
-              }}
-            >
-              <Trash2 size={13} />
-              <span>{isDeletingScreenshots ? 'Deleting…' : 'Delete all screenshots'}</span>
-            </button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <button
+                type="button"
+                className="btn-pill btn-pill-secondary"
+                title="Copy Migration 020 SQL to allow direct database screenshot deletions in Supabase"
+                style={{ padding: '6px 12px', fontSize: 12 }}
+                onClick={() => {
+                  const sqlText = `-- Run in Supabase SQL Editor: https://supabase.com/dashboard/project/isywkcymfzpgjerfuors/sql/new\nALTER TABLE IF EXISTS public.screenshots ENABLE ROW LEVEL SECURITY;\nDROP POLICY IF EXISTS "Screenshots delete policy" ON public.screenshots;\nCREATE POLICY "Screenshots delete policy" ON public.screenshots FOR DELETE USING (true);\nDROP POLICY IF EXISTS "Screenshots full access" ON public.screenshots;\nCREATE POLICY "Screenshots full access" ON public.screenshots FOR ALL USING (true) WITH CHECK (true);\nDROP POLICY IF EXISTS "Legacy screenshots access" ON public.screenshot_records;\nCREATE POLICY "Legacy screenshots access" ON public.screenshot_records FOR ALL USING (true) WITH CHECK (true);\nDROP POLICY IF EXISTS "Screenshots Delete Access" ON storage.objects;\nCREATE POLICY "Screenshots Delete Access" ON storage.objects FOR DELETE USING (bucket_id = 'screenshots');\nTRUNCATE TABLE public.screenshots;\nNOTIFY pgrst, 'reload schema';`;
+                  navigator.clipboard?.writeText(sqlText);
+                  alert('Copied Migration 020 SQL to clipboard! You can paste and run it in Supabase SQL Editor to allow database deletions permanently.');
+                }}
+              >
+                <span>Copy Deletion SQL</span>
+              </button>
+              <button
+                type="button"
+                className="btn-pill btn-pill-secondary"
+                style={{
+                  padding: '6px 12px',
+                  fontSize: 12,
+                  opacity: screenshots.length === 0 || isDeletingScreenshots ? 0.55 : 1,
+                  cursor: screenshots.length === 0 || isDeletingScreenshots ? 'not-allowed' : 'pointer',
+                  pointerEvents: isDeletingScreenshots ? 'none' : 'auto',
+                }}
+                disabled={screenshots.length === 0 || isDeletingScreenshots}
+                aria-busy={isDeletingScreenshots}
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  void handleDeleteAllScreenshots();
+                }}
+              >
+                <Trash2 size={13} />
+                <span>{isDeletingScreenshots ? 'Deleting…' : 'Delete all screenshots'}</span>
+              </button>
+            </div>
           </div>
 
           {screenshots.length === 0 ? (

@@ -20,6 +20,7 @@ import {
   Check,
   Loader2,
   AlertCircle,
+  ShieldCheck,
 } from 'lucide-react';
 import { dataService } from '../../services/dataService';
 import { useAuth } from '../../context/AuthContext';
@@ -73,7 +74,7 @@ function defaultContentFor(type: ProjectTreeItemType, name: string) {
 }
 
 export const ProjectExplorer: React.FC<ProjectExplorerProps> = ({ role, managerId }) => {
-  const { user } = useAuth();
+  const { user, navigate } = useAuth();
   const isEmployee = role === 'employee';
   const isPrivileged = role === 'admin' || role === 'manager' || role === 'project_manager';
   const [projects, setProjects] = useState<ProjectItem[]>([]);
@@ -910,6 +911,17 @@ export const ProjectExplorer: React.FC<ProjectExplorerProps> = ({ role, managerI
             />
           </div>
           <RefreshButton onRefresh={refreshExplorer} title="Refresh projects tree" />
+          {role === 'manager' && (
+            <button
+              type="button"
+              className="btn-pill btn-pill-secondary"
+              onClick={() => navigate('/manager/allocations')}
+              title="Allocate projects & grant access to Project Managers"
+            >
+              <ShieldCheck size={14} color="var(--color-secondary)" />
+              <span>PM Allocations</span>
+            </button>
+          )}
           <button type="button" className="btn-pill btn-pill-primary" onClick={() => setNewProjectOpen(true)}>
             <Plus size={15} />
             <span>New Project</span>
@@ -1057,6 +1069,17 @@ export const ProjectExplorer: React.FC<ProjectExplorerProps> = ({ role, managerI
                             onClick={() => handleDeleteProject(project)}
                           >
                             Delete
+                          </button>
+                        )}
+                        {role === 'manager' && (
+                          <button
+                            type="button"
+                            className="btn-pill btn-pill-secondary"
+                            style={{ padding: '4px 10px', fontSize: 11, color: 'var(--color-secondary)' }}
+                            onClick={() => navigate('/manager/allocations')}
+                            title="Grant PM Access to this project"
+                          >
+                            <ShieldCheck size={13} /> Grant PM Access
                           </button>
                         )}
                       </div>

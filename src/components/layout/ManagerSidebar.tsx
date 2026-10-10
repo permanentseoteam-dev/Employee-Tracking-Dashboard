@@ -12,6 +12,7 @@ import {
   ChevronLeft,
   ChevronRight,
   ShieldCheck,
+  FolderKanban,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { SidebarProjectsNav } from '../projects/SidebarProjectsNav';
@@ -34,6 +35,7 @@ export const ManagerSidebar: React.FC<ManagerSidebarProps> = ({ currentRoute, on
     { label: 'Keyboard Activity', route: '/manager/monitoring/keyboard', icon: <Keyboard size={16} /> },
     { label: 'Screen Recordings', route: '/manager/monitoring/recordings', icon: <Video size={16} /> },
     { label: 'Team Attendance', route: '/manager/attendance', icon: <CalendarCheck size={16} /> },
+    { label: 'Project Allocations', route: '/manager/allocations', icon: <FolderKanban size={16} /> },
     { label: 'Performance & Stars', route: '/manager/performance', icon: <Award size={16} /> },
   ];
 

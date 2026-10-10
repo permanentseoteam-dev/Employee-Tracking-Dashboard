@@ -275,6 +275,10 @@ drop policy if exists "Screenshots insert policy" on public.screenshots;
 create policy "Screenshots insert policy" on public.screenshots for insert
 with check (true);
 
+drop policy if exists "Screenshots delete policy" on public.screenshots;
+create policy "Screenshots delete policy" on public.screenshots for delete
+using (true);
+
 -- EMPLOYEE ACTIVITY POLICIES:
 -- Admin -> Can see all activity
 -- Manager -> Can see assigned employees activity

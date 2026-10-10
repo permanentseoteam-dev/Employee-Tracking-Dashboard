@@ -445,6 +445,38 @@ function initGlobalRealtimeChannel() {
     });
 }
 
+const DELETED_SCREENSHOTS_KEY = 'sb_deleted_screenshots_blacklist';
+
+function getDeletedScreenshotBlacklist(): Set<string> {
+  if (typeof window === 'undefined') return new Set();
+  try {
+    const raw = window.localStorage?.getItem(DELETED_SCREENSHOTS_KEY);
+    if (!raw) return new Set();
+    const arr = JSON.parse(raw);
+    return new Set(Array.isArray(arr) ? arr : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function addToDeletedScreenshotBlacklist(items: (string | undefined | null)[]) {
+  if (typeof window === 'undefined') return;
+  try {
+    const current = getDeletedScreenshotBlacklist();
+    items.forEach((item) => {
+      if (item && typeof item === 'string') {
+        current.add(item);
+        const base = item.split('/').pop();
+        if (base) current.add(base);
+      }
+    });
+    const arr = Array.from(current).slice(-1500);
+    window.localStorage?.setItem(DELETED_SCREENSHOTS_KEY, JSON.stringify(arr));
+  } catch {
+    // ignore
+  }
+}
+
 // ============================================================================
 // Real-Time Data Service Connected Directly to Supabase
 // ============================================================================
@@ -1025,11 +1057,20 @@ export const dataService = {
       if (scRows.length === 0) return [];
 
       const empList = (empRes.data || []).filter((e: any) => !isExcludedEmployeeRecord(e));
+      const blacklist = getDeletedScreenshotBlacklist();
       const seenPaths = new Set<string>();
       const results: ScreenshotItem[] = [];
 
       for (const s of scRows) {
         if (!s.storage_path || seenPaths.has(s.storage_path)) continue;
+        const baseName = s.storage_path.split('/').pop();
+        if (
+          blacklist.has(s.id) ||
+          blacklist.has(s.storage_path) ||
+          (baseName && blacklist.has(baseName))
+        ) {
+          continue;
+        }
         seenPaths.add(s.storage_path);
 
         const emp = empList.find(
@@ -1111,6 +1152,12 @@ export const dataService = {
     }
     try {
       const path = screenshot.file_path;
+      const id = screenshot.id;
+
+      // Add to persistent blacklist immediately so UI stays completely clean
+      addToDeletedScreenshotBlacklist([id, path]);
+
+      // 1. Delete physical object from Supabase Storage
       if (path) {
         const { error: storageErr } = await supabase.storage.from('screenshots').remove([path]);
         if (storageErr) {
@@ -1118,16 +1165,20 @@ export const dataService = {
         }
       }
 
-      if (screenshot.id) {
-        await supabase.from('screenshot_records').delete().eq('id', screenshot.id);
-        await supabase.from('screenshots').delete().eq('id', screenshot.id);
+      // 2. Delete from both database tables by id and storage_path
+      const deletePromises: Promise<any>[] = [];
+      if (id) {
+        deletePromises.push(Promise.resolve(supabase.from('screenshot_records').delete().eq('id', id)));
+        deletePromises.push(Promise.resolve(supabase.from('screenshots').delete().eq('id', id)));
       }
       if (path) {
-        await supabase.from('screenshot_records').delete().eq('storage_path', path);
-        await supabase.from('screenshots').delete().eq('storage_path', path);
+        deletePromises.push(Promise.resolve(supabase.from('screenshot_records').delete().eq('storage_path', path)));
+        deletePromises.push(Promise.resolve(supabase.from('screenshots').delete().eq('storage_path', path)));
       }
 
-      return { success: true, message: 'Screenshot deleted.' };
+      await Promise.allSettled(deletePromises);
+
+      return { success: true, message: 'Screenshot deleted from database and storage.' };
     } catch (err: any) {
       console.error('deleteScreenshot failed:', err);
       return { success: false, message: err?.message || 'Failed to delete screenshot.' };
@@ -1157,29 +1208,43 @@ export const dataService = {
     const ids = [...new Set(items.map((s) => s.id).filter(Boolean))];
     const paths = [...new Set(items.map((s) => s.file_path).filter(Boolean) as string[])];
 
-    // Storage API accepts limited batches
+    // Immediately record in blacklist
+    addToDeletedScreenshotBlacklist([...ids, ...paths]);
+
+    // 1. Batch delete from Supabase Storage
     for (let i = 0; i < paths.length; i += 50) {
       const chunk = paths.slice(i, i + 50);
-      const { error: storageErr } = await supabase.storage.from('screenshots').remove(chunk);
-      if (storageErr) console.warn('Bulk storage delete warning:', storageErr.message);
+      try {
+        const { error: storageErr } = await supabase.storage.from('screenshots').remove(chunk);
+        if (storageErr) console.warn('Bulk storage delete warning:', storageErr.message);
+      } catch (err) {
+        console.warn('Storage delete batch failed:', err);
+      }
     }
 
-    // Batch row deletes (both table names used historically)
+    // 2. Batch row deletes from both database tables by id
     for (let i = 0; i < ids.length; i += 100) {
       const chunk = ids.slice(i, i + 100);
-      const [{ error: e1 }, { error: e2 }] = await Promise.all([
-        supabase.from('screenshot_records').delete().in('id', chunk),
-        supabase.from('screenshots').delete().in('id', chunk),
+      await Promise.allSettled([
+        Promise.resolve(supabase.from('screenshot_records').delete().in('id', chunk)),
+        Promise.resolve(supabase.from('screenshots').delete().in('id', chunk)),
       ]);
-      if (e1) console.warn('screenshot_records bulk delete:', e1.message);
-      if (e2) console.warn('screenshots bulk delete:', e2.message);
     }
 
+    // 3. Batch row deletes by storage_path
     for (let i = 0; i < paths.length; i += 100) {
       const chunk = paths.slice(i, i + 100);
-      await Promise.all([
-        supabase.from('screenshot_records').delete().in('storage_path', chunk),
-        supabase.from('screenshots').delete().in('storage_path', chunk),
+      await Promise.allSettled([
+        Promise.resolve(supabase.from('screenshot_records').delete().in('storage_path', chunk)),
+        Promise.resolve(supabase.from('screenshots').delete().in('storage_path', chunk)),
+      ]);
+    }
+
+    // 4. Also delete by employee_id if specific employee is selected
+    if (filterEmployeeId && filterEmployeeId !== 'all') {
+      await Promise.allSettled([
+        Promise.resolve(supabase.from('screenshot_records').delete().eq('employee_id', filterEmployeeId)),
+        Promise.resolve(supabase.from('screenshots').delete().eq('employee_id', filterEmployeeId)),
       ]);
     }
 
@@ -1187,7 +1252,7 @@ export const dataService = {
     return {
       success: true,
       deleted,
-      message: `Deleted ${deleted} screenshot${deleted === 1 ? '' : 's'}.`,
+      message: `Deleted ${deleted} screenshot${deleted === 1 ? '' : 's'} from database and storage.`,
     };
   },
 
@@ -2092,21 +2157,13 @@ export const dataService = {
             p.description?.toLowerCase().includes('admin only') ||
             p.description?.toLowerCase().includes('executive');
 
-          if (isAdminProj) {
-            return false;
-          }
-
-          const isManagerOwn = !!(managerId && p.manager_id === managerId);
-          const tasks = p.tasks || [];
-          const isEmployeeActivity = tasks.some((t: any) => teamEmpIds.has(t.assigned_to));
-
-          return isManagerOwn || isEmployeeActivity;
+          return !isAdminProj;
         });
       } else if (role === 'project_manager') {
         const assigns = loadAllProjectAssignments();
         const pmOwnedAssignIds = new Set(
           assigns
-            .filter((a) => (a as any).project_manager_id === managerId)
+            .filter((a) => (a as any).project_manager_id === managerId || a.employee_id === managerId)
             .map((a) => a.project_id)
         );
         projRows = allProjects.filter((p: any) => {
@@ -2852,6 +2909,174 @@ export const dataService = {
       throw new Error("403 Forbidden: Cannot revoke another PM's assignment");
     }
     saveAllProjectAssignments(all.filter((a) => a.id !== assignmentId));
+  },
+
+  getProjectManagers: async (): Promise<Array<{ id: string; name: string; email: string; role: string; department?: string }>> => {
+    const list: Array<{ id: string; name: string; email: string; role: string; department?: string }> = [];
+    const seen = new Set<string>();
+
+    if (isSupabaseConfigured()) {
+      try {
+        const [usersRes, empsRes] = await Promise.all([
+          supabase.from('users').select('id, full_name, email, role'),
+          supabase.from('employees').select('id, user_id, full_name, email, department, role'),
+        ]);
+
+        const pmUsers = (usersRes.data || []).filter((u: any) => u.role === 'project_manager');
+        for (const u of pmUsers) {
+          if (!seen.has(u.id)) {
+            seen.add(u.id);
+            list.push({
+              id: u.id,
+              name: u.full_name || u.email,
+              email: u.email,
+              role: 'project_manager',
+              department: 'Project Delivery',
+            });
+          }
+        }
+
+        const pmEmps = (empsRes.data || []).filter(
+          (e: any) => e.role === 'project_manager' || e.department?.toLowerCase().includes('project')
+        );
+        for (const e of pmEmps) {
+          const uid = e.user_id || e.id;
+          if (!seen.has(uid)) {
+            seen.add(uid);
+            list.push({
+              id: uid,
+              name: e.full_name || e.email,
+              email: e.email,
+              role: 'project_manager',
+              department: e.department || 'Project Delivery',
+            });
+          }
+        }
+      } catch (err) {
+        console.warn('getProjectManagers Supabase error:', err);
+      }
+    }
+
+    // Also check local project assignments for any recorded project_manager_id
+    const assigns = loadAllProjectAssignments();
+    for (const a of assigns) {
+      const pmId = a.project_manager_id || (a.employee_id && a.assigned_by?.includes('Manager') ? a.employee_id : null);
+      if (pmId && !seen.has(pmId)) {
+        seen.add(pmId);
+        list.push({
+          id: pmId,
+          name: a.employee_name || 'Project Manager',
+          email: a.employee_email || `${pmId.slice(0, 8)}@company.internal`,
+          role: 'project_manager',
+          department: 'Project Delivery',
+        });
+      }
+    }
+
+    return list;
+  },
+
+  createOrDesignateProjectManager: async (params: {
+    fullName: string;
+    email: string;
+    userId?: string;
+  }): Promise<{ id: string; name: string; email: string }> => {
+    const id = params.userId || `pm-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    const email = params.email.trim();
+    const fullName = params.fullName.trim();
+
+    if (isSupabaseConfigured()) {
+      await ensureProjectManagerUser({
+        id,
+        email,
+        fullName,
+        role: 'project_manager',
+      });
+      if (params.userId) {
+        try {
+          await supabase.from('users').update({ role: 'project_manager' }).eq('id', params.userId);
+        } catch {
+          /* ignore */
+        }
+      }
+    }
+
+    return { id, name: fullName, email };
+  },
+
+  grantProjectAccessToPM: async (params: {
+    managerId: string;
+    managerName: string;
+    projectId: string;
+    projectName: string;
+    projectManagerId: string;
+    projectManagerName: string;
+    projectManagerEmail?: string;
+    accessLevel: ProjectAccessLevel;
+    scope?: ProjectAccessScope;
+    resourceId?: string | null;
+    resourceName?: string;
+    resourcePath?: string;
+    includeDescendants?: boolean;
+    makeLeadManager?: boolean;
+  }): Promise<ProjectMemberAssignment> => {
+    if (params.makeLeadManager && isSupabaseConfigured()) {
+      try {
+        await ensureProjectManagerUser({
+          id: params.projectManagerId,
+          email: params.projectManagerEmail,
+          fullName: params.projectManagerName,
+          role: 'project_manager',
+        });
+        await supabase
+          .from('projects')
+          .update({ manager_id: params.projectManagerId })
+          .eq('id', params.projectId);
+      } catch (err) {
+        console.warn('Failed to update project manager_id in Supabase:', err);
+      }
+    }
+
+    const grant = await dataService.assignUserToProject({
+      projectId: params.projectId,
+      projectName: params.projectName,
+      employeeId: params.projectManagerId,
+      employeeName: params.projectManagerName,
+      employeeEmail: params.projectManagerEmail,
+      access: params.accessLevel,
+      scope: params.scope || 'project',
+      resourceId: params.resourceId || null,
+      resourceName: params.resourceName,
+      resourcePath: params.resourcePath,
+      includeDescendants: params.includeDescendants !== false,
+      assignedBy: `${params.managerName} (Manager)`,
+      projectManagerId: params.projectManagerId,
+    });
+
+    dataService.logAction(
+      params.managerName,
+      'manager',
+      'GRANT_PM_ACCESS',
+      params.projectManagerName,
+      `Granted ${params.accessLevel.toUpperCase()} access to ${params.projectName} (${params.scope || 'project'}${params.makeLeadManager ? ' - Lead Manager' : ''})`
+    );
+
+    return grant;
+  },
+
+  revokeProjectAccessFromPM: async (assignmentId: string, managerName?: string): Promise<void> => {
+    const all = loadAllProjectAssignments();
+    const target = all.find((a) => a.id === assignmentId);
+    await dataService.removeProjectAssignment(assignmentId);
+    if (target && managerName) {
+      dataService.logAction(
+        managerName,
+        'manager',
+        'REVOKE_PM_ACCESS',
+        target.employee_name || target.employee_id,
+        `Revoked access to ${target.project_name || target.project_id}`
+      );
+    }
   },
 
   /** True if employee may mutate items under a parent (or project root). */

@@ -29,6 +29,7 @@ import { ManagerTeamPage } from './pages/manager/ManagerTeamPage';
 import { ManagerMonitoringPage } from './pages/manager/ManagerMonitoringPage';
 import { ManagerAttendancePage } from './pages/manager/ManagerAttendancePage';
 import { ManagerPerformancePage } from './pages/manager/ManagerPerformancePage';
+import { ManagerProjectAccessPage } from './pages/manager/ManagerProjectAccessPage';
 
 import { ProjectManagerSidebar } from './components/layout/ProjectManagerSidebar';
 import { ProjectManagerDashboardPage } from './pages/project-manager/ProjectManagerDashboardPage';
@@ -382,6 +383,10 @@ export const App: React.FC = () => {
         case '/manager/documents':
         case '/manager/tasks':
           return <ProjectExplorer role="manager" managerId={user?.id} />;
+        case '/manager/allocations':
+        case '/manager/project-access':
+        case '/manager/access':
+          return <ManagerProjectAccessPage />;
         case '/manager/performance':
           return <ManagerPerformancePage />;
         default:

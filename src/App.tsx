@@ -7,7 +7,6 @@ import { ManagerSidebar } from './components/layout/ManagerSidebar';
 // Employee Pages (Untouched and preserved)
 import { DashboardPage } from './pages/DashboardPage';
 import { AttendancePage } from './pages/AttendancePage';
-import { TasksPage } from './pages/TasksPage';
 import { ProjectsPage } from './pages/ProjectsPage';
 import { PerformancePage } from './pages/PerformancePage';
 import { TimerPage } from './pages/TimerPage';
@@ -34,10 +33,8 @@ import { ManagerPerformancePage } from './pages/manager/ManagerPerformancePage';
 import { ProjectManagerSidebar } from './components/layout/ProjectManagerSidebar';
 import { ProjectManagerDashboardPage } from './pages/project-manager/ProjectManagerDashboardPage';
 import { ProjectAllocationsPage } from './pages/project-manager/ProjectAllocationsPage';
-import { ProjectManagerTasksPage } from './pages/project-manager/ProjectManagerTasksPage';
 
 // Project Workspace (Folders & File Embedding)
-import { ProjectWorkspace } from './components/projects/ProjectWorkspace';
 import { ProjectExplorer } from './components/projects/ProjectExplorer';
 
 import { api, isTauriEnvironment } from './services/tauriBridge';
@@ -55,7 +52,7 @@ export const App: React.FC = () => {
   // Employee State (Synchronized with URL route and browser history)
   const getEmployeeTab = (route: string): NavTab => {
     if (route.includes('/attendance')) return 'attendance';
-    if (route.includes('/tasks')) return 'tasks';
+    if (route.includes('/tasks')) return 'projects';
     if (route.includes('/projects')) return 'projects';
     if (route.includes('/performance')) return 'performance';
     if (route.includes('/timer')) return 'timer';
@@ -223,11 +220,6 @@ export const App: React.FC = () => {
     navigate(`/employee/${tab}`);
   };
 
-  const handleStartTask = (title: string) => {
-    setActiveTaskTitle(title);
-    navigate('/employee/timer');
-  };
-
   // =========================================================================
   // Role: ADMIN ROUTING & EXPERIENCE (Organization Control Center)
   // =========================================================================
@@ -264,9 +256,8 @@ export const App: React.FC = () => {
         case '/admin/break-schedule':
           return <AdminBreakSchedulePage />;
         case '/admin/projects':
-          return <ProjectExplorer role="admin" managerId={user?.id} />;
         case '/admin/tasks':
-          return <ProjectWorkspace role="admin" />;
+          return <ProjectExplorer role="admin" managerId={user?.id} />;
         case '/admin/finance':
           return <AdminFinancePage />;
         case '/admin/performance':
@@ -323,10 +314,9 @@ export const App: React.FC = () => {
           return <ProjectExplorer role="project_manager" managerId={user?.id} />;
         case '/project-manager/allocations':
         case '/project_manager/allocations':
-          return <ProjectAllocationsPage />;
         case '/project-manager/tasks':
         case '/project_manager/tasks':
-          return <ProjectManagerTasksPage />;
+          return <ProjectAllocationsPage />;
         default:
           return <ProjectManagerDashboardPage onNavigate={navigate} />;
       }
@@ -390,9 +380,8 @@ export const App: React.FC = () => {
           return <ManagerAttendancePage />;
         case '/manager/projects':
         case '/manager/documents':
-          return <ProjectExplorer role="manager" managerId={user?.id} />;
         case '/manager/tasks':
-          return <ProjectWorkspace role="manager" managerId={user?.id} />;
+          return <ProjectExplorer role="manager" managerId={user?.id} />;
         case '/manager/performance':
           return <ManagerPerformancePage />;
         default:
@@ -445,7 +434,6 @@ export const App: React.FC = () => {
       case 'attendance':
         return <AttendancePage status={status} />;
       case 'tasks':
-        return <TasksPage onStartTask={handleStartTask} />;
       case 'projects':
         return <ProjectsPage />;
       case 'performance':

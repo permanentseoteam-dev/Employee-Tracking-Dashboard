@@ -58,8 +58,26 @@ export const api = {
     if (isTauriEnvironment()) {
       return await invoke<AppConfig>('get_app_config');
     }
+    const saved = typeof window !== 'undefined' ? localStorage.getItem('stitch_app_config') : null;
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        return {
+          screenshot_interval_secs: parsed.screenshot_interval_secs || 60,
+          screenshot_quality: parsed.screenshot_quality || 80,
+          screenshot_width: parsed.screenshot_width || 1920,
+          screenshot_height: parsed.screenshot_height || 1080,
+          idle_threshold_secs: parsed.idle_threshold_secs || 180,
+          track_keyboard: parsed.track_keyboard ?? true,
+          track_mouse: parsed.track_mouse ?? true,
+          track_screenshots: parsed.track_screenshots ?? true,
+          server_url: parsed.server_url || 'http://localhost:8080',
+          version: parsed.version || 1,
+        };
+      } catch {}
+    }
     return {
-      screenshot_interval_secs: 300,
+      screenshot_interval_secs: 60,
       screenshot_quality: 80,
       screenshot_width: 1920,
       screenshot_height: 1080,
@@ -75,6 +93,9 @@ export const api = {
   updateAppConfig: async (config: AppConfig): Promise<AppConfig> => {
     if (isTauriEnvironment()) {
       return await invoke<AppConfig>('update_app_config', { newConfig: config });
+    }
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('stitch_app_config', JSON.stringify(config));
     }
     return config;
   },

@@ -19,7 +19,7 @@ pub struct AppConfig {
 impl Default for AppConfig {
     fn default() -> Self {
         Self {
-            screenshot_interval_secs: 300,
+            screenshot_interval_secs: 60,
             screenshot_quality: 80,
             screenshot_width: 1920,
             screenshot_height: 1080,
@@ -99,7 +99,7 @@ mod tests {
     fn test_default_config_is_valid() {
         let config = AppConfig::default();
         assert!(config.validate().is_ok());
-        assert_eq!(config.screenshot_interval_secs, 300);
+        assert_eq!(config.screenshot_interval_secs, 60);
         assert_eq!(config.idle_threshold_secs, 180);
     }
 

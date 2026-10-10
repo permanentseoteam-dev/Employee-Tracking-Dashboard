@@ -116,14 +116,6 @@ export const ProjectManagerDashboardPage: React.FC<ProjectManagerDashboardPagePr
               <UserPlus size={15} />
               <span>Allocate Users</span>
             </button>
-            <button
-              type="button"
-              className="btn-pill btn-pill-secondary"
-              onClick={() => onNavigate('/project-manager/tasks')}
-            >
-              <ListTodo size={15} />
-              <span>Manage Tasks</span>
-            </button>
           </div>
         </div>
       </div>

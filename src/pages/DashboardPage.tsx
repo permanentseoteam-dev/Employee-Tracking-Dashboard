@@ -148,10 +148,10 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
             <button
               type="button"
               className="btn-pill btn-pill-secondary"
-              onClick={() => onNavigateToTab('tasks')}
+              onClick={() => onNavigateToTab('projects')}
             >
               <CheckSquare size={15} />
-              <span>View Assigned Tasks</span>
+              <span>Projects Workspace</span>
             </button>
             <button type="button" className="btn-pill btn-pill-secondary">
               <Calendar size={15} color="var(--text-muted)" />
@@ -353,13 +353,6 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
         <div className="frosted-card" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-muted)' }}>Daily Tasks</span>
-            <button
-              type="button"
-              className="btn-icon-circle accent"
-              onClick={() => onNavigateToTab('tasks')}
-            >
-              <ArrowUpRight size={16} />
-            </button>
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8, margin: 'auto 0' }}>

@@ -2,7 +2,6 @@ import React from 'react';
 import {
   LayoutDashboard,
   CalendarCheck,
-  CheckSquare,
   Award,
   Timer,
 } from 'lucide-react';
@@ -23,7 +22,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const navItems: { id: NavTab; label: string; icon: React.ReactNode }[] = [
     { id: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard size={17} /> },
     { id: 'attendance', label: 'Attendance', icon: <CalendarCheck size={17} /> },
-    { id: 'tasks', label: 'My Tasks', icon: <CheckSquare size={17} /> },
     { id: 'performance', label: 'Performance', icon: <Award size={17} /> },
     { id: 'timer', label: 'Timer & Activity', icon: <Timer size={17} /> },
   ];
@@ -73,7 +71,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 {item.icon}
                 <span>{item.label}</span>
               </button>
-              {item.id === 'tasks' && (
+              {item.id === 'attendance' && (
                 <SidebarProjectsNav
                   role="employee"
                   projectsRoute="projects"

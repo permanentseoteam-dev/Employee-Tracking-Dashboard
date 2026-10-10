@@ -110,7 +110,13 @@ export const AdminMonitoringPage: React.FC<AdminMonitoringPageProps> = ({ initia
     setRecordingSuccessMessage(null);
 
     // Call Supabase on-demand recording trigger
-    await dataService.triggerOnDemandScreenRecording('admin', empId, user?.name || 'Super Admin');
+    await dataService.triggerOnDemandScreenRecording(
+      'admin',
+      empId,
+      user?.name || 'Super Admin',
+      emp.name,
+      emp.active_window
+    );
 
     // Live Recording Progress Timer (8-second recording session)
     let secs = 0;

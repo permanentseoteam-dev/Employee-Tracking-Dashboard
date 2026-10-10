@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import {
   LayoutDashboard,
   UserPlus,
-  ListTodo,
   ChevronLeft,
   ChevronRight,
   Briefcase,
@@ -25,7 +24,6 @@ export const ProjectManagerSidebar: React.FC<ProjectManagerSidebarProps> = ({
   const navItems = [
     { label: 'PM Dashboard', route: '/project-manager/dashboard', icon: <LayoutDashboard size={16} /> },
     { label: 'User Allocation', route: '/project-manager/allocations', icon: <UserPlus size={16} /> },
-    { label: 'Project Tasks', route: '/project-manager/tasks', icon: <ListTodo size={16} /> },
   ];
 
   return (

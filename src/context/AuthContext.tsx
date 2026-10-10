@@ -31,6 +31,7 @@ interface AuthContextType {
   switchRole: (role: UserRole) => void;
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (email: string, password: string, fullName: string, role?: UserRole, department?: string) => Promise<void>;
+  resendConfirmationEmail: (email: string) => Promise<void>;
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
   /** Update editable profile fields for the current user (persists to profiles + avatars bucket). */
@@ -286,6 +287,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const resendConfirmationEmail = async (email: string) => {
+    await supabaseAuth.resendConfirmationEmail(email);
+  };
+
   const signOut = async () => {
     setIsLoading(true);
     try {
@@ -413,6 +418,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         switchRole,
         signIn,
         signUp,
+        resendConfirmationEmail,
         signOut,
         refreshProfile,
         updateProfile,

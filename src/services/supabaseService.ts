@@ -144,6 +144,35 @@ export const supabaseAuth = {
       }
     }
 
+    // If session was not returned by signUp (e.g. email confirm required or trigger fired),
+    // attempt immediate signInWithPassword so the user doesn't have to re-enter credentials
+    if (!data.session) {
+      try {
+        const loginAttempt = await supabase.auth.signInWithPassword({
+          email: cleanEmail,
+          password,
+        });
+        if (loginAttempt.data?.session) {
+          return loginAttempt.data;
+        }
+      } catch {
+        // If still pending email confirmation, return the original signUp response
+      }
+    }
+
+    return data;
+  },
+
+  resendConfirmationEmail: async (email: string) => {
+    if (!isSupabaseConfigured()) {
+      throw new Error('Supabase is not configured.');
+    }
+    const cleanEmail = email.trim();
+    const { data, error } = await supabase.auth.resend({
+      type: 'signup',
+      email: cleanEmail,
+    });
+    if (error) throw error;
     return data;
   },
 

@@ -68,8 +68,8 @@ export const AdminTeamsPage: React.FC = () => {
       await dataService.addTeam('admin', {
         name: teamName.trim(),
         department: teamDept,
-        manager_id: mgr?.id || 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
-        manager_name: mgr?.name || 'Manager',
+        manager_id: mgr?.id || '',
+        manager_name: mgr?.name || 'Unassigned',
       });
 
       setIsAddTeamModalOpen(false);
@@ -436,7 +436,7 @@ export const AdminTeamsPage: React.FC = () => {
                     </option>
                   ))}
                   {managers.length === 0 && (
-                    <option value="bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb">Manager</option>
+                    <option value="" disabled>No registered managers found</option>
                   )}
                 </select>
               </div>
@@ -519,7 +519,7 @@ export const AdminTeamsPage: React.FC = () => {
                     </option>
                   ))}
                   {managers.length === 0 && (
-                    <option value="bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb">Manager</option>
+                    <option value="" disabled>No registered managers found</option>
                   )}
                 </select>
               </div>

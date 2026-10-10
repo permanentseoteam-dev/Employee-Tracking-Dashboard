@@ -23,7 +23,6 @@ import { useAuth } from '../../context/AuthContext';
 import { dataService } from '../../services/dataService';
 import { EditProfileModal } from '../profile/EditProfileModal';
 import type { AgentStatusDto, DbStats } from '../../types';
-import type { UserRole } from '../../types/roles';
 
 interface TopBarProps {
   status: AgentStatusDto;
@@ -50,7 +49,7 @@ export const TopBar: React.FC<TopBarProps> = ({
   onSearchChange,
 }) => {
   const { theme, toggleTheme } = useTheme();
-  const { user, role, switchRole, signOut, isAuthenticated } = useAuth();
+  const { user, role, signOut } = useAuth();
   const [imgError, setImgError] = useState(false);
 
   // Popover States
@@ -242,61 +241,39 @@ export const TopBar: React.FC<TopBarProps> = ({
       {/* Controls: Role Switcher, Realtime Telemetry, Theme, Notification, Profile */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
         {/* Role switcher — demo only when not signed in. Authenticated users stay on profile role. */}
+        {/* Authenticated Role Indicator Badge */}
         <div
           style={{
             display: 'flex',
             alignItems: 'center',
+            gap: 6,
             background: 'var(--surface-frosted-subdued)',
-            padding: 3,
+            padding: '4px 12px',
             borderRadius: 'var(--radius-pill)',
             border: '1px solid var(--surface-border-subtle)',
-            gap: 3,
-            opacity: isAuthenticated ? 0.85 : 1,
+            fontSize: 12,
+            fontWeight: 700,
           }}
-          title={
-            isAuthenticated
-              ? `Signed in as ${role} — role switch locked`
-              : 'Demo: switch console view (not available when signed in)'
-          }
+          title={`Authenticated Role: ${role}`}
         >
-          {(['admin', 'manager', 'project_manager', 'employee'] as UserRole[]).map((r) => {
-            const isSelected = role === r;
-            const lockedOut = isAuthenticated && r !== role;
-            const label =
-              r === 'project_manager' ? 'PM' : r === 'admin' ? 'Admin' : r === 'manager' ? 'Manager' : 'Employee';
-            return (
-              <button
-                key={r}
-                type="button"
-                disabled={lockedOut}
-                onClick={() => switchRole(r)}
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: 4,
-                  padding: '4px 10px',
-                  fontSize: 12,
-                  fontWeight: isSelected ? 700 : 500,
-                  borderRadius: 'var(--radius-pill)',
-                  border: 'none',
-                  cursor: lockedOut ? 'not-allowed' : 'pointer',
-                  textTransform: 'capitalize',
-                  background: isSelected ? 'var(--color-primary)' : 'transparent',
-                  color: isSelected ? 'var(--color-on-primary)' : 'var(--text-secondary)',
-                  boxShadow: isSelected ? 'var(--shadow-pill)' : 'none',
-                  transition: 'all 0.2s ease',
-                  opacity: lockedOut ? 0.4 : 1,
-                }}
-                title={r === 'project_manager' ? 'Project Manager' : label}
-              >
-                {r === 'admin' && <Shield size={12} />}
-                {r === 'manager' && <Users size={12} />}
-                {r === 'project_manager' && <Briefcase size={12} />}
-                {r === 'employee' && <User size={12} />}
-                {label}
-              </button>
-            );
-          })}
+          {role === 'admin' && <Shield size={13} color="#4c6bff" />}
+          {role === 'manager' && <Users size={13} color="#10b981" />}
+          {role === 'project_manager' && <Briefcase size={13} color="#8b5cf6" />}
+          {role === 'employee' && <User size={13} color="#06b6d4" />}
+          <span style={{ textTransform: 'capitalize', color: 'var(--text-primary)' }}>
+            {role === 'project_manager' ? 'Project Manager' : role}
+          </span>
+          <span
+            style={{
+              display: 'inline-block',
+              width: 6,
+              height: 6,
+              borderRadius: '50%',
+              backgroundColor: '#10b981',
+              boxShadow: '0 0 4px #10b981',
+              marginLeft: 2,
+            }}
+          />
         </div>
 
         {/* Theme Toggle Button */}

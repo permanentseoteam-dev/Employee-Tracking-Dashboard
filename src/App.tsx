@@ -47,6 +47,7 @@ import type { AgentStatusDto, DbStats, NavTab, SystemInfoDto } from './types';
 
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { LoginPage } from './pages/LoginPage';
+import { supabase } from './services/supabaseClient';
 
 export const App: React.FC = () => {
   const { user, role, currentRoute, navigate, isAuthenticated, isLoading, isConfigured } = useAuth();
@@ -158,6 +159,44 @@ export const App: React.FC = () => {
     };
   }, [isAuthenticated, role, user?.id, fetchState]);
 
+  // Real-time Employee Presence Tracking to Supabase
+  useEffect(() => {
+    if (!isAuthenticated || role !== 'employee' || !user?.id || !isConfigured) return;
+
+    const deviceIdentifier = systemInfo.hostname || 'WORKSTATION-CLIENT';
+
+    const sendPresence = async (presenceStatus: 'active' | 'offline' = 'active') => {
+      try {
+        const now = new Date().toISOString();
+        await supabase.from('employee_presence').upsert([
+          {
+            employee_id: user.id,
+            device_id: deviceIdentifier,
+            status: presenceStatus,
+            last_activity_at: now,
+            updated_at: now,
+          },
+        ]);
+      } catch (err) {
+        console.warn('Presence update error:', err);
+      }
+    };
+
+    sendPresence('active');
+    const interval = setInterval(() => sendPresence('active'), 30000);
+
+    const onUnload = () => {
+      sendPresence('offline');
+    };
+    window.addEventListener('beforeunload', onUnload);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('beforeunload', onUnload);
+      sendPresence('offline');
+    };
+  }, [isAuthenticated, role, user?.id, isConfigured, systemInfo.hostname]);
+
   if (isLoading) {
     return (
       <div
@@ -175,8 +214,8 @@ export const App: React.FC = () => {
     );
   }
 
-  // Require Supabase sign-in — no more demo bypass when backend is configured
-  if (isConfigured && !isAuthenticated) {
+  // Require Supabase sign-in — authentication is strictly enforced
+  if (!isAuthenticated) {
     return <LoginPage />;
   }
 

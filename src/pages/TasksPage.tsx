@@ -67,7 +67,7 @@ export const TasksPage: React.FC<TasksPageProps> = ({ onStartTask }) => {
         project_name: 'Desktop Agent v2',
         employee_id: user.id,
         employee_name: user.name,
-        manager_id: user.assigned_manager_id || 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
+        manager_id: user.assigned_manager_id || '',
         priority: 'medium',
         status: 'in_progress',
         due_date: new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0],

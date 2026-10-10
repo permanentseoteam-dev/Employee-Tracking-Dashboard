@@ -6,82 +6,15 @@ import type { DisplayNamePref, UserProfile, UserRole } from '../types/roles';
 import { roleFromPath, rolePathPrefix } from '../types/roles';
 import { formatDisplayName, normalizeDisplayNamePref } from '../utils/displayName';
 
-/** Per-role local edits key — keeps admin/manager/PM/employee profiles separate. */
-function demoProfileKey(role: UserRole, id: string) {
-  return `stitch_profile_edit_${role}_${id}`;
-}
-
-function withDemoProfileEdits(base: UserProfile): UserProfile {
-  try {
-    const raw = localStorage.getItem(demoProfileKey(base.role, base.id));
-    if (!raw) return base;
-    const saved = JSON.parse(raw);
-    const pref = normalizeDisplayNamePref(saved.display_name_pref || base.display_name_pref);
-    const fullName = saved.name || base.full_name || base.name;
-    return {
-      ...base,
-      full_name: fullName,
-      name: formatDisplayName(fullName, pref, base.name),
-      email: saved.email || base.email,
-      department: saved.department || base.department,
-      team_name: saved.team_name || base.team_name,
-      phone: saved.phone || base.phone,
-      avatar: saved.avatar || base.avatar,
-      display_name_pref: pref,
-    };
-  } catch {
-    return base;
-  }
-}
-
-/** Fallback profiles only when Supabase is not configured (dev). */
-const DEFAULT_PROFILES: Record<UserRole, UserProfile> = {
-  admin: {
-    id: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
-    name: 'Admin',
-    full_name: 'Admin User',
-    email: 'admin@company.com',
-    role: 'admin',
-    avatar: 'AD',
-    department: 'Management',
-    display_name_pref: 'first',
-  },
-  manager: {
-    id: 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
-    name: 'Manager',
-    full_name: 'Manager User',
-    email: 'manager@company.com',
-    role: 'manager',
-    avatar: 'MG',
-    department: 'Engineering',
-    team_id: 'team-backend',
-    team_name: 'Core Backend Team',
-    display_name_pref: 'first',
-  },
-  project_manager: {
-    // Dedicated id — must exist in public.users (projects.manager_id FK).
-    id: 'eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee',
-    name: 'Project',
-    full_name: 'Project Manager',
-    email: 'project.manager@company.com',
-    role: 'project_manager',
-    avatar: 'PM',
-    department: 'Delivery',
-    display_name_pref: 'first',
-  },
-  employee: {
-    id: 'cccccccc-cccc-cccc-cccc-cccccccccccc',
-    name: 'Employee',
-    full_name: 'Employee User',
-    email: 'employee@company.com',
-    role: 'employee',
-    avatar: 'EM',
-    department: 'Engineering',
-    team_id: 'team-backend',
-    team_name: 'Core Backend Team',
-    assigned_manager_id: 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
-    display_name_pref: 'first',
-  },
+const EMPTY_PROFILE: UserProfile = {
+  id: '',
+  name: '',
+  full_name: '',
+  email: '',
+  role: 'employee',
+  avatar: '',
+  department: '',
+  display_name_pref: 'first',
 };
 
 interface AuthContextType {
@@ -91,16 +24,16 @@ interface AuthContextType {
   session: Session | null;
   isLoading: boolean;
   isConfigured: boolean;
-  /** True when signed in via Supabase — role switching is locked to the profile role. */
+  /** True only when signed in via Supabase with active session. */
   isAuthenticated: boolean;
   currentRoute: string;
   navigate: (path: string) => void;
   switchRole: (role: UserRole) => void;
   signIn: (email: string, password: string) => Promise<void>;
-  signUp: (email: string, password: string, fullName: string, role?: UserRole) => Promise<void>;
+  signUp: (email: string, password: string, fullName: string, role?: UserRole, department?: string) => Promise<void>;
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
-  /** Update editable profile fields for the current user (any role). Persists to profiles + avatars bucket when configured. */
+  /** Update editable profile fields for the current user (persists to profiles + avatars bucket). */
   updateProfile: (patch: {
     name?: string;
     email?: string;
@@ -137,9 +70,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const initialRole = getRoleFromPath(initialRoute);
 
   const [role, setRole] = useState<UserRole>(initialRole);
-  const [user, setUser] = useState<UserProfile>(() =>
-    withDemoProfileEdits(DEFAULT_PROFILES[initialRole])
-  );
+  const [user, setUser] = useState<UserProfile>(EMPTY_PROFILE);
   const [supabaseUser, setSupabaseUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
@@ -167,14 +98,30 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (!sUser || !isConfigured) return;
 
     try {
-      const p = await supabaseAuth.getProfile(sUser.id);
+      let p = await supabaseAuth.getProfile(sUser.id);
+
+      // Auto-provision profile and users / employees tables if first time logging in
+      if (!p) {
+        const metaRole = (sUser.user_metadata?.role as UserRole) || 'employee';
+        const metaName = sUser.user_metadata?.full_name || sUser.email?.split('@')[0] || 'User';
+        const metaDept = sUser.user_metadata?.department || 'General';
+
+        p = await supabaseAuth.upsertProfile({
+          id: sUser.id,
+          email: sUser.email || '',
+          full_name: metaName,
+          role: metaRole,
+          department: metaDept,
+        });
+      }
+
       if (p) {
         const uRole = p.role as UserRole;
         const pref = normalizeDisplayNamePref((p as { display_name_pref?: string }).display_name_pref);
         const fullName = p.full_name || sUser.email?.split('@')[0] || 'User';
         profileRoleRef.current = uRole;
         setRole(uRole);
-        setUser({
+        const authedProfile: UserProfile = {
           id: p.id,
           name: formatDisplayName(fullName, pref, 'User'),
           full_name: fullName,
@@ -188,7 +135,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           team_name: p.team_name || undefined,
           phone: p.phone || undefined,
           display_name_pref: pref,
-        });
+        };
+        setUser(authedProfile);
+        userRef.current = authedProfile;
+
         const safeRoute = clampRouteToRole(getRouteFromHash(), uRole);
         setCurrentRoute(safeRoute);
         if (window.location.hash !== `#${safeRoute}`) {
@@ -204,34 +154,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     const syncRouteFromLocation = () => {
       let route = getRouteFromHash();
-      const lockedRole = sessionRef.current?.user ? profileRoleRef.current : null;
+      const currentRole = profileRoleRef.current;
 
-      if (lockedRole) {
-        route = clampRouteToRole(route, lockedRole);
-        setRole(lockedRole);
+      if (sessionRef.current?.user && currentRole) {
+        route = clampRouteToRole(route, currentRole);
+        setRole(currentRole);
         if (window.location.hash !== `#${route}`) {
           window.location.hash = route;
         }
-      } else {
-        const targetRole = getRoleFromPath(route);
-        setRole((prevRole) => {
-          if (prevRole !== targetRole) {
-            setUser(withDemoProfileEdits(DEFAULT_PROFILES[targetRole]));
-            return targetRole;
-          }
-          return prevRole;
-        });
       }
-
       setCurrentRoute(route);
     };
 
     window.addEventListener('hashchange', syncRouteFromLocation);
     window.addEventListener('popstate', syncRouteFromLocation);
 
-    if (!window.location.hash) {
-      window.location.hash = initialRoute;
-    } else {
+    if (window.location.hash) {
       syncRouteFromLocation();
     }
 
@@ -252,9 +190,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       sessionRef.current = sess;
       setSupabaseUser(sess?.user ?? null);
       if (sess?.user) {
-        syncSupabaseProfile(sess.user);
+        syncSupabaseProfile(sess.user).finally(() => setIsLoading(false));
+      } else {
+        setIsLoading(false);
       }
-      setIsLoading(false);
     });
 
     const { data: authListener } = supabase.auth.onAuthStateChange(
@@ -266,6 +205,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           await syncSupabaseProfile(currentSession.user);
         } else {
           profileRoleRef.current = null;
+          setUser(EMPTY_PROFILE);
+          userRef.current = EMPTY_PROFILE;
         }
         setIsLoading(false);
       }
@@ -277,11 +218,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [isConfigured]);
 
   const switchRole = (newRole: UserRole) => {
-    // Authenticated users cannot escalate / switch roles — only demo mode may.
+    // Authenticated users are locked to their authorized Supabase role
     if (sessionRef.current?.user && profileRoleRef.current) {
       const locked = profileRoleRef.current;
       if (newRole !== locked) {
-        console.warn(`Role switch blocked: authenticated as ${locked}`);
+        console.warn(`Role switch blocked: authenticated strictly as ${locked}`);
         return;
       }
       const defaultRoute = `/${rolePathPrefix(locked)}/dashboard`;
@@ -291,26 +232,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
       return;
     }
-
-    setRole(newRole);
-    setUser(withDemoProfileEdits(DEFAULT_PROFILES[newRole]));
-    const defaultRoute = `/${rolePathPrefix(newRole)}/dashboard`;
-    setCurrentRoute(defaultRoute);
-    if (window.location.hash !== `#${defaultRoute}`) {
-      window.location.hash = defaultRoute;
-    }
   };
 
   const navigate = (path: string) => {
     const normalized = path.startsWith('/') ? path : `/${path}`;
     const lockedRole = sessionRef.current?.user ? profileRoleRef.current : null;
     const safePath = lockedRole ? clampRouteToRole(normalized, lockedRole) : normalized;
-    const targetRole = getRoleFromPath(safePath);
 
-    if (!lockedRole && targetRole !== role) {
-      setRole(targetRole);
-      setUser(withDemoProfileEdits(DEFAULT_PROFILES[targetRole]));
-    } else if (lockedRole) {
+    if (lockedRole) {
       setRole(lockedRole);
     }
 
@@ -321,7 +250,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const signIn = async (email: string, password: string) => {
-    // Do not flip global isLoading — that unmounts LoginPage and looks like a blank reload.
     const { user: authedUser, session: newSession } = await supabaseAuth.signIn(email, password);
     setSupabaseUser(authedUser);
     setSession(newSession);
@@ -335,7 +263,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     email: string,
     password: string,
     fullName: string,
-    userRole: UserRole = 'employee'
+    userRole: UserRole = 'employee',
+    department: string = 'General'
   ) => {
     setIsLoading(true);
     try {
@@ -343,7 +272,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         email,
         password,
         fullName,
-        userRole
+        userRole,
+        department
       );
       setSupabaseUser(newUser);
       setSession(newSession);
@@ -366,7 +296,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setSession(null);
       sessionRef.current = null;
       profileRoleRef.current = null;
-      setUser(withDemoProfileEdits(DEFAULT_PROFILES[role]));
+      setUser(EMPTY_PROFILE);
+      userRef.current = EMPTY_PROFILE;
+      setRole('employee');
+      window.location.hash = '';
     } finally {
       setIsLoading(false);
     }
@@ -390,7 +323,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     display_name_pref?: DisplayNamePref;
   }) => {
     const current = userRef.current;
-    // Edit form "Full name" maps to full_name; UI `name` is derived from preference.
     const nextFullName = (patch.name ?? current.full_name ?? current.name).trim();
     const nextEmail = (patch.email ?? current.email).trim();
     const nextDept = (patch.department ?? current.department).trim();
@@ -416,7 +348,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       throw new Error('Sign in to change your password');
     }
 
-    // Prefer uploading photo to avatars bucket whenever Supabase is configured
     if (isConfigured && (patch.avatarFile || (nextAvatar && nextAvatar.startsWith('data:')))) {
       try {
         nextAvatar = await supabaseAuth.uploadAvatar(
@@ -424,7 +355,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           patch.avatarFile || nextAvatar
         );
       } catch (e: any) {
-        // Keep data-URL locally if bucket missing; still save profile row
         console.warn('Avatar upload failed, keeping local preview:', e?.message || e);
       }
     }
@@ -463,34 +393,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setUser(updated);
     userRef.current = updated;
 
-    try {
-      localStorage.setItem(
-        demoProfileKey(updated.role, updated.id),
-        JSON.stringify({
-          name: updated.full_name,
-          email: updated.email,
-          department: updated.department,
-          team_name: updated.team_name,
-          phone: updated.phone,
-          avatar: updated.avatar,
-          display_name_pref: updated.display_name_pref,
-        })
-      );
-    } catch {
-      /* ignore */
-    }
-
     if (signedIn && supabaseUser) {
       await syncSupabaseProfile(supabaseUser);
-      setUser((prev) => ({
-        ...prev,
-        avatar: nextAvatar || prev.avatar,
-        team_name: nextTeam || prev.team_name,
-        phone: nextPhone || prev.phone,
-        display_name_pref: nextPref,
-        full_name: nextFullName,
-        name: formatDisplayName(nextFullName, nextPref, prev.name),
-      }));
     }
   };
 

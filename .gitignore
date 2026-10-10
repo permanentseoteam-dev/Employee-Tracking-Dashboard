@@ -8,11 +8,18 @@ dist-ssr/
 *.local
 *.exe
 *.zip
+release/
 
 # Tauri / Rust
 src-tauri/target/
 src-tauri/gen/
 agent/target/
+target-employee-agent/
+employee-agent/target/
+
+# Supabase temp & scratch
+supabase/.temp/
+_env_keys.cjs
 
 # Logs & temp
 *.log

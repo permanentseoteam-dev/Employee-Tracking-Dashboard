@@ -61,21 +61,89 @@ export const supabaseAuth = {
     return data;
   },
 
-  signUp: async (email: string, password: string, fullName: string, role: UserRole = 'employee') => {
+  signUp: async (
+    email: string,
+    password: string,
+    fullName: string,
+    role: UserRole = 'employee',
+    department: string = 'General'
+  ) => {
     if (!isSupabaseConfigured()) {
       throw new Error('Supabase is not configured. Please set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in your .env file.');
     }
+    const cleanEmail = email.trim();
+    const cleanName = fullName.trim();
     const { data, error } = await supabase.auth.signUp({
-      email,
+      email: cleanEmail,
       password,
       options: {
         data: {
-          full_name: fullName,
+          full_name: cleanName,
           role,
+          department,
         },
       },
     });
     if (error) throw error;
+
+    // Auto-provision database records immediately if user object is returned
+    if (data?.user?.id) {
+      const uid = data.user.id;
+      const now = new Date().toISOString();
+      try {
+        await supabase.from('profiles').upsert(
+          {
+            id: uid,
+            email: cleanEmail,
+            full_name: cleanName,
+            role,
+            department: department || 'General',
+            updated_at: now,
+          },
+          { onConflict: 'id' }
+        );
+      } catch (e) {
+        console.warn('Auto-provision profiles on signup:', e);
+      }
+
+      try {
+        await supabase.from('users').upsert(
+          {
+            id: uid,
+            organization_id: '00000000-0000-0000-0000-000000000001',
+            email: cleanEmail,
+            full_name: cleanName,
+            role,
+            department: department || 'General',
+            updated_at: now,
+          },
+          { onConflict: 'id' }
+        );
+      } catch (e) {
+        console.warn('Auto-provision users on signup:', e);
+      }
+
+      if (role === 'employee') {
+        try {
+          await supabase.from('employees').upsert(
+            {
+              id: uid,
+              user_id: uid,
+              organization_id: '00000000-0000-0000-0000-000000000001',
+              full_name: cleanName,
+              email: cleanEmail,
+              department: department || 'General',
+              status: 'active',
+              updated_at: now,
+            },
+            { onConflict: 'id' }
+          );
+        } catch (e) {
+          console.warn('Auto-provision employees on signup:', e);
+        }
+      }
+    }
+
     return data;
   },
 
@@ -261,13 +329,9 @@ export const supabaseAuth = {
 
 export const resolveSafeEmployeeId = (employeeId?: string): string => {
   if (!employeeId || employeeId.trim() === '' || employeeId === 'undefined' || employeeId === 'null') {
-    return 'cccccccc-cccc-cccc-cccc-cccccccccccc';
+    return '';
   }
-  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-  if (!uuidRegex.test(employeeId)) {
-    return 'cccccccc-cccc-cccc-cccc-cccccccccccc';
-  }
-  return employeeId;
+  return employeeId.trim();
 };
 
 export const supabaseSync = {

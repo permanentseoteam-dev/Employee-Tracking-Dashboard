@@ -129,8 +129,7 @@ export const KeyboardActivityView: React.FC<KeyboardActivityViewProps> = ({
       if (emps && emps.length > 0) {
         const validEmps = emps.filter((e) =>
           role === 'manager'
-            ? e.id !== 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa' &&
-              !e.name?.toLowerCase().includes('admin') &&
+            ? !e.name?.toLowerCase().includes('admin') &&
               !e.email?.toLowerCase().includes('admin')
             : true
         );

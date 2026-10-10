@@ -51,7 +51,7 @@ import {
 } from '../utils/breakSchedule';
 
 
-export const ADMIN_USER_ID = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
+export const ADMIN_USER_ID = '';
 
 const TELEMETRY_TIME_SLOTS = ['09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00'];
 
@@ -124,8 +124,8 @@ function isSeedBreakKeyboardMatrix(data?: number[][]): boolean {
 
 export const isAdminRecord = (id?: string, name?: string, email?: string): boolean => {
   if (!id && !name && !email) return false;
-  if (id === ADMIN_USER_ID) return true;
-  if (email && (email.toLowerCase().includes('admin') || email.toLowerCase() === 'arsal.admin@company.com')) return true;
+  if (id && ADMIN_USER_ID && id === ADMIN_USER_ID) return true;
+  if (email && email.toLowerCase().includes('admin')) return true;
   if (name && (name.toLowerCase().includes('admin') || name.toLowerCase().includes('(admin)'))) return true;
   return false;
 };
@@ -207,11 +207,7 @@ async function ensureProjectManagerUser(params: {
     .maybeSingle();
   if (existing?.id) return;
 
-  const email =
-    params.email ||
-    (params.role === 'project_manager'
-      ? 'project.manager@company.com'
-      : `${params.id.slice(0, 8)}@local.users`);
+  const email = params.email || `${params.id.slice(0, 8)}@company.internal`;
 
   // Live DB may still reject project_manager on users_role_check — fall back to manager.
   const attempts: Array<'project_manager' | 'manager' | 'employee' | 'admin'> =
@@ -331,10 +327,10 @@ let customTeamsStore: TeamRecord[] = [
     id: 'team-backend',
     name: 'Core Backend Team',
     department: 'Engineering',
-    manager_id: 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
-    manager_name: 'Manager',
-    member_count: 1,
-    active_count: 1,
+    manager_id: '',
+    manager_name: 'Unassigned',
+    member_count: 0,
+    active_count: 0,
     attendance_rate: 100,
     project_ids: ['proj-01'],
   },
@@ -342,10 +338,10 @@ let customTeamsStore: TeamRecord[] = [
     id: 'team-frontend',
     name: 'UI & Web Architecture',
     department: 'Frontend',
-    manager_id: 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
-    manager_name: 'Manager',
-    member_count: 1,
-    active_count: 1,
+    manager_id: '',
+    manager_name: 'Unassigned',
+    member_count: 0,
+    active_count: 0,
     attendance_rate: 100,
     project_ids: ['proj-02'],
   },
@@ -353,10 +349,10 @@ let customTeamsStore: TeamRecord[] = [
     id: 'team-mobile',
     name: 'Mobile & Cloud Infrastructure',
     department: 'Mobile',
-    manager_id: 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
-    manager_name: 'Manager',
-    member_count: 1,
-    active_count: 1,
+    manager_id: '',
+    manager_name: 'Unassigned',
+    member_count: 0,
+    active_count: 0,
     attendance_rate: 100,
     project_ids: ['proj-03'],
   },
@@ -755,7 +751,7 @@ export const dataService = {
       team_id: employeeData.team_id || 'team-backend',
       team_name: employeeData.team_name || `${employeeData.department} Team`,
       manager_id: employeeData.manager_id,
-      manager_name: employeeData.manager_name || 'Alex Vance',
+      manager_name: employeeData.manager_name || 'Manager',
       status: 'offline',
       attendance_status: 'absent',
       first_activity: '--:--',
@@ -1682,10 +1678,7 @@ export const dataService = {
         })
         .map((e: any) => {
           const isMatchingEmp = (candId?: string) =>
-            candId === e.id ||
-            candId === e.user_id ||
-            (e.full_name?.toLowerCase().includes('arsal') &&
-              (candId === 'cccccccc-cccc-cccc-cccc-cccccccccccc' || candId === 'd9b4bfb3-9953-522d-84af-3de709e7caa8'));
+            !!candId && (candId === e.id || candId === e.user_id);
           const presList = presence?.filter((p: any) => isMatchingEmp(p.employee_id)) || [];
           const activePres = presList.find((p: any) => p.status === 'active');
           const pres = activePres || presList[0];
@@ -1699,8 +1692,8 @@ export const dataService = {
             id: `att-${e.id}`,
             employee_id: e.id,
             employee_name: e.full_name || 'Employee',
-            team_name: 'Core Backend Team',
-            manager_name: 'Alex Vance',
+            team_name: e.team_name || 'Engineering',
+            manager_name: 'Manager',
             date: todayStr,
             scheduled_start: '09:00 AM',
             first_activity_at: firstAct,
@@ -1935,8 +1928,7 @@ export const dataService = {
             const isAdminFile =
               upBy.includes('super admin') ||
               upBy.includes('admin user') ||
-              upBy === 'admin' ||
-              upBy.includes('arsal (admin)');
+              upBy === 'admin';
             return !isAdminFile;
           }),
         }));
@@ -2291,7 +2283,7 @@ export const dataService = {
       if ((role === 'manager' || role === 'project_manager') && managerId) {
         query = query.eq('projects.manager_id', managerId);
       } else if (role === 'employee' && employeeId) {
-        query = query.or(`assigned_to.eq.${employeeId},assigned_to.eq.cccccccc-cccc-cccc-cccc-cccccccccccc`);
+        query = query.or(`assigned_to.eq.${employeeId}`);
       }
 
       const { data: taskRows, error } = await query;
@@ -2301,7 +2293,6 @@ export const dataService = {
       let cleanTaskRows = taskRows;
       if (role === 'manager' || role === 'project_manager') {
         cleanTaskRows = taskRows.filter((t: any) =>
-          t.assigned_to !== ADMIN_USER_ID &&
           !isAdminRecord(t.assigned_to, t.employees?.full_name, t.employees?.email)
         );
       }
@@ -2315,11 +2306,11 @@ export const dataService = {
         return {
           id: t.id,
           title: t.title,
-          project_id: t.project_id || '44444444-4444-4444-4444-444444444444',
-          project_name: t.projects?.name || 'Desktop Agent v2',
-          employee_id: t.assigned_to || 'cccccccc-cccc-cccc-cccc-cccccccccccc',
+          project_id: t.project_id || '',
+          project_name: t.projects?.name || 'Project',
+          employee_id: t.assigned_to || '',
           employee_name: t.employees?.full_name || 'Employee',
-          manager_id: t.projects?.manager_id || managerId || 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
+          manager_id: t.projects?.manager_id || managerId || '',
           priority: (t.priority as any) || 'medium',
           status,
           tracked_seconds: (t.estimated_hours || 8) * 3600,
@@ -2342,10 +2333,10 @@ export const dataService = {
     }
 
     const newTask = {
-      project_id: task.project_id || '44444444-4444-4444-4444-444444444444',
+      project_id: task.project_id || null,
       title: task.title,
       description: '',
-      assigned_to: task.employee_id || 'cccccccc-cccc-cccc-cccc-cccccccccccc',
+      assigned_to: task.employee_id || null,
       status: task.status === 'todo' ? 'pending' : task.status,
       priority: task.priority,
       estimated_hours: 8,
@@ -2614,7 +2605,8 @@ export const dataService = {
     actorRole: UserRole,
     action: string,
     target: string,
-    details: string
+    details: string,
+    actorId?: string
   ): void => {
     const d = new Date();
     const pad = (n: number) => n.toString().padStart(2, '0');
@@ -2634,11 +2626,12 @@ export const dataService = {
 
     // Also persist to activity_events table if connected
     if (isSupabaseConfigured()) {
+      const isUuid = !!actorId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(actorId);
       supabase
         .from('activity_events')
         .insert([
           {
-            employee_id: 'cccccccc-cccc-cccc-cccc-cccccccccccc',
+            ...(isUuid ? { employee_id: actorId } : {}),
             device_id: 'WIN-CLIENT',
             event_type: action.toLowerCase(),
             occurred_at: new Date().toISOString(),
@@ -3399,7 +3392,7 @@ export const dataService = {
     timeSlot?: string;
     deviceId?: string;
   }): Promise<BreakTelemetrySnapshot> => {
-    const employeeId = params.employeeId || 'cccccccc-cccc-cccc-cccc-cccccccccccc';
+    const employeeId = params.employeeId || '';
     const employeeName = params.employeeName || 'Employee';
     const breakType = params.breakType;
 
@@ -3529,7 +3522,7 @@ export const dataService = {
     additionalKeys?: number;
     additionalHeatmapPct?: number;
   }): Promise<BreakTelemetrySnapshot | null> => {
-    const employeeId = params.employeeId || 'cccccccc-cccc-cccc-cccc-cccccccccccc';
+    const employeeId = params.employeeId || '';
     const employeeName = params.employeeName || 'Employee';
 
     // Retrieve active snapshot

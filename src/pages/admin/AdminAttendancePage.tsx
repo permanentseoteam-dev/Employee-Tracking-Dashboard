@@ -29,6 +29,27 @@ export const AdminAttendancePage: React.FC = () => {
 
   useEffect(() => {
     loadData();
+    const unsubscribe = dataService.subscribeToRealtime((payload) => {
+      if (
+        payload.table === 'attendance_records' ||
+        payload.table === 'employee_presence' ||
+        payload.table === 'activity_aggregates' ||
+        payload.table === 'attendance_rule_config' ||
+        payload.table === 'agent_runtime_config'
+      ) {
+        loadData();
+      }
+    });
+
+    const handleOfficeHoursUpdated = () => {
+      loadData();
+    };
+    window.addEventListener('stitch:office_hours_updated', handleOfficeHoursUpdated);
+
+    return () => {
+      unsubscribe();
+      window.removeEventListener('stitch:office_hours_updated', handleOfficeHoursUpdated);
+    };
   }, []);
 
   const handleSaveRules = async (e: React.FormEvent) => {
@@ -44,6 +65,8 @@ export const AdminAttendancePage: React.FC = () => {
         `Start: ${rules.work_start_time}, Grace: ${rules.grace_period_minutes}m`,
         'Configured organizational shift schedule'
       );
+      window.dispatchEvent(new CustomEvent('stitch:office_hours_updated'));
+      await loadData();
       setSaveMessage('Attendance shift and grace period updated.');
       setTimeout(() => setSaveMessage(null), 3000);
     } catch (err: any) {

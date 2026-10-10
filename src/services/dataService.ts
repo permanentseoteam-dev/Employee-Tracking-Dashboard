@@ -1653,10 +1653,10 @@ export const dataService = {
     if (!isSupabaseConfigured()) return [];
 
     try {
-      const todayStart = new Date();
-      todayStart.setHours(0, 0, 0, 0);
+      const now = new Date();
+      const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
       const todayStartIso = todayStart.toISOString();
-      const todayStr = new Date().toISOString().split('T')[0];
+      const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
 
       const [
         empsRes,
@@ -1664,14 +1664,18 @@ export const dataService = {
         attRecordsRes,
         aggRes,
         rulesRes,
+        agentCfgRes,
         usersRes,
+        eventsRes,
       ] = await Promise.all([
         supabase.from('employees').select('*'),
         supabase.from('employee_presence').select('*').order('updated_at', { ascending: false }),
         supabase.from('attendance_records').select('*').gte('check_in', todayStartIso).order('check_in', { ascending: false }),
-        supabase.from('activity_aggregates').select('*').gte('window_start', todayStartIso),
+        supabase.from('activity_aggregates').select('*').gte('window_start', todayStartIso).order('window_start', { ascending: true }),
         supabase.from('attendance_rule_config').select('*').eq('id', 1).maybeSingle(),
-        supabase.from('users').select('id, full_name, email, role, department'),
+        supabase.from('agent_runtime_config').select('*').eq('id', 1).maybeSingle(),
+        supabase.from('users').select('id, full_name, email, role, department, team_name'),
+        supabase.from('activity_events').select('employee_id, occurred_at').gte('occurred_at', todayStartIso).order('occurred_at', { ascending: true }).limit(500),
       ]);
 
       let empList: any[] = empsRes.data || [];
@@ -1686,21 +1690,32 @@ export const dataService = {
             full_name: matchedUser.full_name || matchedUser.email,
             email: matchedUser.email,
             department: matchedUser.department || 'Engineering',
-            team_name: 'Engineering',
+            team_name: matchedUser.team_name || 'Engineering',
           });
         }
       }
 
       if (empList.length === 0) return [];
 
-      const shiftStart = rulesRes.data?.work_start_time || '09:00';
-      const graceMinutes = Number(rulesRes.data?.grace_period_minutes) || 15;
+      const shiftStart = rulesRes.data?.work_start_time || normalizeTimeHHMM(agentCfgRes.data?.work_start) || '09:00';
+      const graceMinutes = Number(rulesRes.data?.grace_period_minutes ?? 15);
       const [shiftH, shiftM] = shiftStart.split(':').map(Number);
-      const graceDeadlineMs = new Date(todayStart).setHours(shiftH, shiftM + graceMinutes, 0, 0);
+      const shiftStartDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), shiftH, shiftM || 0, 0, 0);
+      const shiftStartMs = shiftStartDate.getTime();
+      const graceDeadlineMs = shiftStartMs + graceMinutes * 60 * 1000;
+
+      const formatShiftLabel = (hhmm: string) => {
+        const [h, m] = hhmm.split(':').map(Number);
+        const period = h >= 12 ? 'PM' : 'AM';
+        const displayH = h % 12 || 12;
+        return `${String(displayH).padStart(2, '0')}:${String(m || 0).padStart(2, '0')} ${period}`;
+      };
 
       const presenceRows = presenceRes.data || [];
       const attRows = attRecordsRes.data || [];
       const aggRows = aggRes.data || [];
+      const eventRows = eventsRes.data || [];
+      const usersList = usersRes.data || [];
 
       return empList
         .filter((e: any) => {
@@ -1727,26 +1742,66 @@ export const dataService = {
           const pres = activePres || empPresenceList[0];
 
           const empAtts = attRows.filter((r: any) => isMatchingEmp(r.employee_id));
-          const latestAtt = empAtts[0];
-
           const empAggs = aggRows.filter((a: any) => isMatchingEmp(a.employee_id));
-          const totalActiveSecs = empAggs.reduce((acc: number, a: any) => acc + (Number(a.active_seconds) || 0), 0);
-          const totalIdleSecs = empAggs.reduce((acc: number, a: any) => acc + (Number(a.idle_seconds) || 0), 0);
+          const empEvents = eventRows.filter((ev: any) => isMatchingEmp(ev.employee_id));
+
+          const todayMs = todayStart.getTime();
+          const activityTimestamps: number[] = [];
+
+          for (const att of empAtts) {
+            if (att.check_in) {
+              const t = new Date(att.check_in).getTime();
+              if (t >= todayMs) activityTimestamps.push(t);
+            }
+          }
+
+          for (const agg of empAggs) {
+            if (agg.window_start) {
+              const t = new Date(agg.window_start).getTime();
+              if (t >= todayMs) activityTimestamps.push(t);
+            }
+          }
+
+          for (const ev of empEvents) {
+            if (ev.occurred_at) {
+              const t = new Date(ev.occurred_at).getTime();
+              if (t >= todayMs) activityTimestamps.push(t);
+            }
+          }
+
+          if (pres?.last_activity_at) {
+            const t = new Date(pres.last_activity_at).getTime();
+            if (t >= todayMs) activityTimestamps.push(t);
+          }
 
           let firstAct = '--';
           let firstActMs = 0;
+          let lastActMs = 0;
 
-          if (latestAtt?.check_in) {
-            const d = new Date(latestAtt.check_in);
-            firstAct = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-            firstActMs = d.getTime();
-          } else if (pres?.last_activity_at) {
-            const d = new Date(pres.last_activity_at);
-            if (d.getTime() >= todayStart.getTime()) {
-              firstAct = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-              firstActMs = d.getTime();
+          if (activityTimestamps.length > 0) {
+            firstActMs = Math.min(...activityTimestamps);
+            lastActMs = Math.max(...activityTimestamps);
+            firstAct = new Date(firstActMs).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+          }
+
+          let status: 'on_time' | 'late' | 'absent' = 'absent';
+          let lateMinutes = 0;
+
+          if (firstActMs === 0) {
+            status = 'absent';
+            lateMinutes = 0;
+          } else {
+            if (firstActMs <= graceDeadlineMs) {
+              status = 'on_time';
+              lateMinutes = 0;
+            } else {
+              status = 'late';
+              lateMinutes = Math.max(1, Math.round((firstActMs - shiftStartMs) / 60000));
             }
           }
+
+          const totalActiveSecs = empAggs.reduce((acc: number, a: any) => acc + (Number(a.active_seconds) || 0), 0);
+          const totalIdleSecs = empAggs.reduce((acc: number, a: any) => acc + (Number(a.idle_seconds) || 0), 0);
 
           let activeHours = 0;
           let idleHours = 0;
@@ -1754,39 +1809,29 @@ export const dataService = {
           if (totalActiveSecs > 0) {
             activeHours = Number((totalActiveSecs / 3600).toFixed(1));
             idleHours = Number((totalIdleSecs / 3600).toFixed(1));
-          } else if (firstActMs > 0 && (pres?.status === 'active' || pres?.status === 'idle')) {
-            const elapsedSecs = Math.max(0, Math.floor((Date.now() - firstActMs) / 1000));
-            const liveSecs = Math.min(elapsedSecs, 8 * 3600);
-            activeHours = Number((liveSecs / 3600).toFixed(1));
-            idleHours = 0;
-          }
-
-          let status: 'on_time' | 'late' | 'absent' = 'absent';
-          let lateMinutes = 0;
-
-          if (latestAtt?.status) {
-            status = latestAtt.status === 'late' ? 'late' : 'on_time';
           } else if (firstActMs > 0) {
-            if (firstActMs > graceDeadlineMs) {
-              status = 'late';
-              lateMinutes = Math.max(1, Math.round((firstActMs - graceDeadlineMs) / 60000));
+            const isOnline = pres?.status === 'active' || pres?.status === 'idle';
+            if (isOnline) {
+              const liveSecs = Math.max(0, Math.floor((Date.now() - firstActMs) / 1000));
+              activeHours = Number(Math.min(liveSecs / 3600, 12).toFixed(1));
             } else {
-              status = 'on_time';
-              lateMinutes = 0;
+              const durationSecs = Math.max(0, Math.floor((lastActMs - firstActMs) / 1000));
+              activeHours = Number(Math.min(durationSecs / 3600, 12).toFixed(1));
             }
-          } else if (pres?.status === 'active' || pres?.status === 'idle') {
-            status = 'on_time';
-            lateMinutes = 0;
+            if (activeHours === 0) activeHours = 0.1;
           }
+
+          const matchedUser = usersList.find((u: any) => isMatchingEmp(u.id));
+          const teamName = e.team_name || matchedUser?.team_name || e.department || matchedUser?.department || 'Engineering';
 
           return {
             id: `att-${e.id}`,
             employee_id: e.id,
             employee_name: formatDisplayName(e.full_name || e.email, normalizeDisplayNamePref(e.display_name_pref), 'Employee'),
-            team_name: e.team_name || e.department || 'Engineering',
+            team_name: teamName,
             manager_name: 'Assigned Manager',
             date: todayStr,
-            scheduled_start: `${shiftStart} AM`,
+            scheduled_start: formatShiftLabel(shiftStart),
             first_activity_at: firstAct,
             status,
             late_minutes: lateMinutes,
@@ -3074,6 +3119,15 @@ export const dataService = {
         },
         { onConflict: 'id' }
       );
+      await supabase.from('agent_runtime_config').upsert(
+        {
+          id: 1,
+          work_start: toPgTime(newRules.work_start_time),
+          work_end: toPgTime(newRules.work_end_time),
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'id' }
+      );
     }
     return attendanceRulesStore;
   },
@@ -4114,6 +4168,20 @@ export const dataService = {
           ? 'Run supabase/migrations/006_agent_office_hours.sql in the Supabase SQL editor first.'
           : error.message
       );
+    }
+
+    try {
+      await supabase.from('attendance_rule_config').upsert(
+        {
+          id: 1,
+          work_start_time: normalizeTimeHHMM(config.work_start) || '09:00',
+          work_end_time: normalizeTimeHHMM(config.work_end) || '17:00',
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'id' }
+      );
+    } catch {
+      /* ignore if column schema differs */
     }
 
     return {

@@ -560,12 +560,15 @@ export const supabaseSync = {
     const publicUrl = pubUrlData?.publicUrl || '';
 
     // 3. Insert record in database (screenshot_records)
+    const safeDeviceId = deviceId?.trim() || 'WIN-WORKSTATION';
+    const isUuidDevice = typeof deviceId === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(deviceId.trim());
+
     const { data, error: dbError } = await supabase
       .from('screenshot_records')
       .insert([
         {
           employee_id: safeEmpId,
-          device_id: deviceId,
+          device_id: safeDeviceId,
           captured_at: capturedAt,
           storage_path: filePath,
           file_size_bytes: fileBlob.size,
@@ -585,7 +588,7 @@ export const supabaseSync = {
       await supabase.from('screenshots').insert([
         {
           employee_id: safeEmpId,
-          device_id: deviceId,
+          device_id: isUuidDevice ? deviceId?.trim() : null,
           captured_at: capturedAt,
           storage_path: filePath,
           file_size_bytes: fileBlob.size,

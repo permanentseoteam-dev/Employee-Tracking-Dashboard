@@ -3359,7 +3359,7 @@ export const dataService = {
       try {
         const [usersRes, empsRes] = await Promise.all([
           supabase.from('users').select('id, full_name, email, role'),
-          supabase.from('employees').select('id, user_id, full_name, email, department, role'),
+          supabase.from('employees').select('id, user_id, full_name, email, department'),
         ]);
 
         const pmUsers = (usersRes.data || []).filter((u: any) => u.role === 'project_manager');
@@ -3674,7 +3674,7 @@ export const dataService = {
 
     try {
       const [emps, presence, tasks, projs] = await Promise.all([
-        supabase.from('employees').select('id, user_id, full_name, email, role'),
+        supabase.from('employees').select('id, user_id, full_name, email'),
         supabase.from('employee_presence').select('status, employee_id'),
         supabase.from('tasks').select('status'),
         supabase.from('projects').select('id', { count: 'exact', head: true }),

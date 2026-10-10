@@ -1049,9 +1049,32 @@ export const AdminMonitoringPage: React.FC<AdminMonitoringPageProps> = ({ initia
                 title="Copy Migration 020 SQL to allow direct database screenshot deletions in Supabase"
                 style={{ padding: '6px 12px', fontSize: 12 }}
                 onClick={() => {
-                  const sqlText = `-- Run in Supabase SQL Editor: https://supabase.com/dashboard/project/isywkcymfzpgjerfuors/sql/new\nALTER TABLE IF EXISTS public.screenshots ENABLE ROW LEVEL SECURITY;\nDROP POLICY IF EXISTS "Screenshots delete policy" ON public.screenshots;\nCREATE POLICY "Screenshots delete policy" ON public.screenshots FOR DELETE USING (true);\nDROP POLICY IF EXISTS "Screenshots full access" ON public.screenshots;\nCREATE POLICY "Screenshots full access" ON public.screenshots FOR ALL USING (true) WITH CHECK (true);\nDROP POLICY IF EXISTS "Legacy screenshots access" ON public.screenshot_records;\nCREATE POLICY "Legacy screenshots access" ON public.screenshot_records FOR ALL USING (true) WITH CHECK (true);\nDROP POLICY IF EXISTS "Screenshots Delete Access" ON storage.objects;\nCREATE POLICY "Screenshots Delete Access" ON storage.objects FOR DELETE USING (bucket_id = 'screenshots');\nTRUNCATE TABLE public.screenshots;\nNOTIFY pgrst, 'reload schema';`;
+                  const sqlText = `-- Run in Supabase SQL Editor: https://supabase.com/dashboard/project/isywkcymfzpgjerfuors/sql/new
+-- 1. Ensure public.employees has role column
+ALTER TABLE IF EXISTS public.employees ADD COLUMN IF NOT EXISTS role text DEFAULT 'employee';
+UPDATE public.employees e SET role = COALESCE(u.role, p.role, 'employee') FROM public.users u FULL OUTER JOIN public.profiles p ON p.id = u.id WHERE (e.user_id = u.id OR e.id = u.id OR e.email = u.email);
+
+-- 2. Ensure screenshot_records and screenshots device_id is nullable
+ALTER TABLE IF EXISTS public.screenshot_records ALTER COLUMN device_id DROP NOT NULL;
+ALTER TABLE IF EXISTS public.screenshot_records ALTER COLUMN device_id SET DEFAULT 'WIN-WORKSTATION';
+ALTER TABLE IF EXISTS public.screenshots ALTER COLUMN device_id DROP NOT NULL;
+ALTER TABLE IF EXISTS public.screenshot_records DROP CONSTRAINT IF EXISTS screenshot_records_device_id_fkey;
+ALTER TABLE IF EXISTS public.screenshot_records DROP CONSTRAINT IF EXISTS screenshot_records_employee_id_fkey;
+
+-- 3. Enable RLS and full permissions for deletions
+ALTER TABLE IF EXISTS public.screenshots ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Screenshots delete policy" ON public.screenshots;
+CREATE POLICY "Screenshots delete policy" ON public.screenshots FOR DELETE USING (true);
+DROP POLICY IF EXISTS "Screenshots full access" ON public.screenshots;
+CREATE POLICY "Screenshots full access" ON public.screenshots FOR ALL USING (true) WITH CHECK (true);
+DROP POLICY IF EXISTS "Legacy screenshots access" ON public.screenshot_records;
+CREATE POLICY "Legacy screenshots access" ON public.screenshot_records FOR ALL USING (true) WITH CHECK (true);
+DROP POLICY IF EXISTS "Screenshots Delete Access" ON storage.objects;
+CREATE POLICY "Screenshots Delete Access" ON storage.objects FOR DELETE USING (bucket_id = 'screenshots');
+
+NOTIFY pgrst, 'reload schema';`;
                   navigator.clipboard?.writeText(sqlText);
-                  alert('Copied Migration 020 SQL to clipboard! You can paste and run it in Supabase SQL Editor to allow database deletions permanently.');
+                  alert('Copied Database Fix SQL to clipboard! You can paste and run it in Supabase SQL Editor to resolve all schema constraints.');
                 }}
               >
                 <span>Copy Deletion SQL</span>

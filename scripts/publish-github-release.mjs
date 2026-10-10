@@ -12,8 +12,12 @@ const root = join(import.meta.dirname, '..');
 const conf = JSON.parse(readFileSync(join(root, 'src-tauri/tauri.conf.json'), 'utf8'));
 const version = conf.version;
 const tag = `v${version}`;
-const nsisDir = join(root, 'target-employee-agent/release/bundle/nsis');
+const nsisCandidates = [
+  join(root, 'src-tauri/target/release/bundle/nsis'),
+  join(root, 'target-employee-agent/release/bundle/nsis'),
+];
 const setupName = `Employee Tracking App_${version}_x64-setup.exe`;
+const nsisDir = nsisCandidates.find((d) => existsSync(join(d, setupName))) || nsisCandidates[0];
 const setup = join(nsisDir, setupName);
 const sigPath = `${setup}.sig`;
 

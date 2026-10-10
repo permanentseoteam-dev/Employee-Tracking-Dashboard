@@ -65,12 +65,29 @@ export const ManagerSidebar: React.FC<ManagerSidebarProps> = ({ currentRoute, on
             borderBottom: '1px solid var(--surface-border-subtle)',
           }}
         >
-          {!collapsed && (
-            <div>
-              <div style={{ fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-primary)' }}>
-                Team Management
+          {collapsed ? (
+            <div
+              className="stitch-brand-icon"
+              style={{ width: 28, height: 28, borderRadius: 8, cursor: 'pointer' }}
+              onClick={() => setCollapsed(false)}
+              title="Expand Team Management"
+            >
+              <img src="/app-icon-192.png" alt="Team Management" width={28} height={28} />
+            </div>
+          ) : (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div
+                className="stitch-brand-icon"
+                style={{ width: 28, height: 28, borderRadius: 8 }}
+              >
+                <img src="/app-icon-192.png" alt="Team Management" width={28} height={28} />
               </div>
-              <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>Operations Lead</div>
+              <div>
+                <div style={{ fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-primary)' }}>
+                  Team Management
+                </div>
+                <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>Operations Lead</div>
+              </div>
             </div>
           )}
           <button

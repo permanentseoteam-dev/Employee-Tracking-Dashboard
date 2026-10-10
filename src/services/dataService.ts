@@ -315,13 +315,19 @@ function saveLocalProjectItems(projectId: string, items: ProjectTreeItem[]) {
 }
 
 function mapDbProjectItem(row: any): ProjectTreeItem {
+  const content = row.content ?? null;
+  const embedUrl = row.embed_url || content?.embed_url || (row.item_type === 'embed' ? row.data_url : null);
   return {
     id: row.id,
     project_id: row.project_id,
     parent_id: row.parent_id ?? null,
-    item_type: row.item_type,
+    item_type:
+      row.item_type === 'document' || row.item_type === 'spreadsheet' || row.item_type === 'presentation'
+        ? 'embed'
+        : row.item_type,
     name: row.name,
-    content: row.content ?? null,
+    content: content ?? null,
+    embed_url: embedUrl ?? null,
     storage_path: row.storage_path ?? null,
     data_url: row.data_url ?? null,
     mime_type: row.mime_type ?? null,
@@ -2453,6 +2459,7 @@ export const dataService = {
     itemType: ProjectTreeItemType;
     name: string;
     content?: Record<string, unknown> | string | null;
+    embedUrl?: string | null;
     dataUrl?: string | null;
     mimeType?: string | null;
     createdBy?: string | null;
@@ -2475,15 +2482,18 @@ export const dataService = {
     }
 
     const now = new Date().toISOString();
+    const effectiveEmbedUrl = params.embedUrl || (params.content as any)?.embed_url || (params.itemType === 'embed' ? params.dataUrl : null);
     const defaultContent =
       params.content ??
-      (params.itemType === 'document'
-        ? { body: '', format: 'internal_document' }
-        : params.itemType === 'spreadsheet'
-          ? { sheets: [{ name: 'Sheet1', rows: [['', ''], ['', '']] }], format: 'internal_spreadsheet' }
-          : params.itemType === 'presentation'
-            ? { slides: [{ title: name, body: '' }], format: 'internal_presentation' }
-            : null);
+      (params.itemType === 'embed'
+        ? { embed_url: effectiveEmbedUrl || '', format: 'embed' }
+        : params.itemType === 'document'
+          ? { body: '', format: 'internal_document' }
+          : params.itemType === 'spreadsheet'
+            ? { sheets: [{ name: 'Sheet1', rows: [['', ''], ['', '']] }], format: 'internal_spreadsheet' }
+            : params.itemType === 'presentation'
+              ? { slides: [{ title: name, body: '' }], format: 'internal_presentation' }
+              : null);
 
     if (isSupabaseConfigured()) {
       try {
@@ -2496,8 +2506,8 @@ export const dataService = {
               item_type: params.itemType,
               name,
               content: defaultContent ?? {},
-              data_url: params.dataUrl || null,
-              mime_type: params.mimeType || null,
+              data_url: params.dataUrl || effectiveEmbedUrl || null,
+              mime_type: params.mimeType || (params.itemType === 'embed' ? 'text/uri-list' : null),
               created_by: params.createdBy || null,
               updated_at: now,
             },
@@ -2530,8 +2540,9 @@ export const dataService = {
       item_type: params.itemType,
       name,
       content: defaultContent,
-      data_url: params.dataUrl || null,
-      mime_type: params.mimeType || null,
+      embed_url: effectiveEmbedUrl || null,
+      data_url: params.dataUrl || effectiveEmbedUrl || null,
+      mime_type: params.mimeType || (params.itemType === 'embed' ? 'text/uri-list' : null),
       external_provider: null,
       external_file_id: null,
       created_by: params.createdBy || null,
@@ -2546,7 +2557,7 @@ export const dataService = {
   updateProjectItem: async (
     projectId: string,
     itemId: string,
-    patch: Partial<Pick<ProjectTreeItem, 'name' | 'parent_id' | 'content' | 'data_url' | 'mime_type'>>
+    patch: Partial<Pick<ProjectTreeItem, 'name' | 'parent_id' | 'content' | 'data_url' | 'mime_type' | 'embed_url'>>
   ): Promise<ProjectTreeItem> => {
     const items = await fetchProjectItemsRaw(projectId);
     const current = items.find((i: ProjectTreeItem) => i.id === itemId);

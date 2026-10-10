@@ -41,18 +41,20 @@ export const Sidebar: React.FC<SidebarProps> = ({
       }}
     >
       <nav style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-        <span
-          style={{
-            fontSize: 10,
-            fontWeight: 700,
-            textTransform: 'uppercase',
-            letterSpacing: '0.06em',
-            color: 'var(--text-muted)',
-            padding: '4px 10px',
-          }}
-        >
-          Workstation Navigation
-        </span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '0 6px 10px 6px', borderBottom: '1px solid var(--surface-border-subtle)', marginBottom: 4 }}>
+          <div
+            className="stitch-brand-icon"
+            style={{ width: 28, height: 28, borderRadius: 8 }}
+          >
+            <img src="/app-icon-192.png" alt="Workstation" width={28} height={28} />
+          </div>
+          <div>
+            <div style={{ fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-primary)' }}>
+              Workstation
+            </div>
+            <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>Employee Navigation</div>
+          </div>
+        </div>
         {navItems.map((item) => {
           const isActive = currentTab === item.id;
           return (

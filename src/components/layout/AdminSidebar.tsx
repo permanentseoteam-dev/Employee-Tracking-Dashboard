@@ -100,12 +100,29 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({ currentRoute, onNavi
             borderBottom: '1px solid var(--surface-border-subtle)',
           }}
         >
-          {!collapsed && (
-            <div>
-              <div style={{ fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-primary)' }}>
-                Admin Operations
+          {collapsed ? (
+            <div
+              className="stitch-brand-icon"
+              style={{ width: 28, height: 28, borderRadius: 8, cursor: 'pointer' }}
+              onClick={() => setCollapsed(false)}
+              title="Expand Admin Operations"
+            >
+              <img src="/app-icon-192.png" alt="Admin Operations" width={28} height={28} />
+            </div>
+          ) : (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div
+                className="stitch-brand-icon"
+                style={{ width: 28, height: 28, borderRadius: 8 }}
+              >
+                <img src="/app-icon-192.png" alt="Admin Operations" width={28} height={28} />
               </div>
-              <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>Enterprise Control</div>
+              <div>
+                <div style={{ fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-primary)' }}>
+                  Admin Operations
+                </div>
+                <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>Enterprise Control</div>
+              </div>
             </div>
           )}
           <button

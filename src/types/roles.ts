@@ -185,10 +185,11 @@ export interface ProjectFolder {
 /** Nested Drive-style project tree node (folders & files). */
 export type ProjectTreeItemType =
   | 'folder'
+  | 'embed'
+  | 'uploaded_file'
   | 'document'
   | 'spreadsheet'
-  | 'presentation'
-  | 'uploaded_file';
+  | 'presentation';
 
 export interface ProjectTreeItem {
   id: string;
@@ -197,6 +198,7 @@ export interface ProjectTreeItem {
   item_type: ProjectTreeItemType;
   name: string;
   content?: Record<string, unknown> | string | null;
+  embed_url?: string | null;
   storage_path?: string | null;
   data_url?: string | null;
   mime_type?: string | null;

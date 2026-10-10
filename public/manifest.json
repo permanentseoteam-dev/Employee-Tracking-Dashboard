@@ -1,0 +1,34 @@
+{
+  "short_name": "Tracking App",
+  "name": "Employee Tracking App",
+  "description": "Enterprise Employee & Workforce Telemetry Tracking Dashboard",
+  "icons": [
+    {
+      "src": "/favicon.png",
+      "type": "image/png",
+      "sizes": "32x32"
+    },
+    {
+      "src": "/favicon-48.png",
+      "type": "image/png",
+      "sizes": "48x48"
+    },
+    {
+      "src": "/app-icon-192.png",
+      "type": "image/png",
+      "sizes": "192x192",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/app-icon-512.png",
+      "type": "image/png",
+      "sizes": "512x512",
+      "purpose": "any maskable"
+    }
+  ],
+  "start_url": "/",
+  "background_color": "#0a0f1d",
+  "theme_color": "#345df7",
+  "display": "standalone",
+  "orientation": "portrait-primary"
+}

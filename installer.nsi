@@ -15,6 +15,8 @@ RequestExecutionLevel admin
 
 ; UI Configuration
 !define MUI_ABORTWARNING
+!define MUI_ICON "src-tauri\icons\icon.ico"
+!define MUI_UNICON "src-tauri\icons\icon.ico"
 !define MUI_WELCOMEPAGE_TITLE "Welcome to Employee Tracking Agent Setup"
 !define MUI_WELCOMEPAGE_TEXT "This wizard will install the Employee Tracking Background Agent on this computer.$\r$\n$\r$\nThe agent will automatically register with Windows Startup and begin monitoring authorized activity in the background."
 
@@ -53,10 +55,15 @@ Section "MainSection" SEC01
   File "release\employee-agent-windows\install-service.bat"
   File "release\employee-agent-windows\README.md"
   
+  File /oname=icon.ico "src-tauri\icons\icon.ico"
+  
   ; 5. Create uninstaller
   WriteUninstaller "$INSTDIR\uninstall.exe"
   
-  ; 6. Register in Windows Programs & Features (Control Panel)
+  ; 6. Desktop & Start Menu Shortcuts
+  CreateShortCut "$DESKTOP\Employee Tracking Agent.lnk" "$INSTDIR\employee-agent.exe" "" "$INSTDIR\icon.ico" 0
+  
+  ; 7. Register in Windows Programs & Features (Control Panel)
   WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\EmployeeTrackingAgent" "DisplayName" "Employee Tracking Agent"
   WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\EmployeeTrackingAgent" "UninstallString" '"$INSTDIR\uninstall.exe"'
   WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\EmployeeTrackingAgent" "DisplayVersion" "0.1.0"
@@ -79,6 +86,8 @@ Section "Uninstall"
   ExecWait 'schtasks /delete /tn "EmployeeTrackingAgent" /f'
   
   ; 3. Delete installed files
+  Delete "$DESKTOP\Employee Tracking Agent.lnk"
+  Delete "$INSTDIR\icon.ico"
   Delete "$INSTDIR\employee-agent.exe"
   Delete "$INSTDIR\run-agent.bat"
   Delete "$INSTDIR\install-service.bat"

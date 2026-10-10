@@ -411,53 +411,19 @@ export const ProjectExplorer: React.FC<ProjectExplorerProps> = ({ role, managerI
   };
 
   const openEditor = (item: ProjectTreeItem) => {
-    setEditorItem(item);
-    const content = item.content as any;
-    if (item.item_type === 'document') setEditorBody(content?.body || '');
-    else if (item.item_type === 'spreadsheet')
-      setEditorBody(JSON.stringify(content?.sheets?.[0]?.rows || [['']], null, 2));
-    else if (item.item_type === 'presentation')
-      setEditorBody(content?.slides?.[0]?.body || '');
-    else setEditorBody(item.data_url ? '(Binary upload — download to view)' : '');
-  };
-
-  const saveEditor = async () => {
-    if (!editorItem) return;
-    if (!canMutate(editorItem.project_id, editorItem.id)) {
-      showToast('err', 'View-only access');
+    if (item.item_type === 'embed') {
+      setEmbedViewerItem(item);
+      setEmbedEditMode(false);
+      setEditEmbedUrlDraft(getEmbedUrl(item));
       return;
     }
-    setBusy(true);
-    try {
-      let content = editorItem.content as any;
-      if (editorItem.item_type === 'document') {
-        content = { ...(content || {}), body: editorBody, format: 'internal_document' };
-      } else if (editorItem.item_type === 'spreadsheet') {
-        let rows: string[][] = [['']];
-        try {
-          rows = JSON.parse(editorBody);
-        } catch {
-          throw new Error('Spreadsheet JSON must be a 2D array');
-        }
-        content = {
-          sheets: [{ name: 'Sheet1', rows }],
-          format: 'internal_spreadsheet',
-        };
-      } else if (editorItem.item_type === 'presentation') {
-        content = {
-          slides: [{ title: editorItem.name, body: editorBody }],
-          format: 'internal_presentation',
-        };
-      }
-      await dataService.updateProjectItem(editorItem.project_id, editorItem.id, { content });
-      await loadItems(editorItem.project_id);
-      setEditorItem(null);
-      showToast('ok', 'Saved');
-    } catch (err: any) {
-      showToast('err', err?.message || 'Save failed');
-    } finally {
-      setBusy(false);
+    if (item.item_type === 'uploaded_file') {
+      downloadItem(item);
+      return;
     }
+    setEmbedViewerItem(item);
+    setEmbedEditMode(false);
+    setEditEmbedUrlDraft(getEmbedUrl(item));
   };
 
   const handleRename = async (e: React.FormEvent) => {
@@ -753,34 +719,13 @@ export const ProjectExplorer: React.FC<ProjectExplorerProps> = ({ role, managerI
                 type="button"
                 className="nav-pill-item"
                 style={{ justifyContent: 'flex-start' }}
-                onClick={() => openCreate(projectId, item.id, 'file', 'document')}
+                onClick={() => openCreate(projectId, item.id, 'file', 'embed')}
               >
-                <FileText size={14} /> New document
-              </button>
-              <button
-                type="button"
-                className="nav-pill-item"
-                style={{ justifyContent: 'flex-start' }}
-                onClick={() => openCreate(projectId, item.id, 'file', 'spreadsheet')}
-              >
-                <Table2 size={14} /> New spreadsheet
-              </button>
-              <button
-                type="button"
-                className="nav-pill-item"
-                style={{ justifyContent: 'flex-start' }}
-                onClick={() => openCreate(projectId, item.id, 'file', 'presentation')}
-              >
-                <Presentation size={14} /> New presentation
+                <Globe size={14} color="#06b6d4" /> Add embed link
               </button>
               <button type="button" className="nav-pill-item" style={{ justifyContent: 'flex-start' }} onClick={() => triggerUpload(projectId, item.id)}>
                 <FileUp size={14} /> Upload file
               </button>
-              {!GOOGLE_CONNECTED && (
-                <div style={{ fontSize: 10, color: 'var(--text-muted)', padding: '4px 8px' }}>
-                  Google Docs/Sheets/Slides not connected — creating internal files only.
-                </div>
-              )}
               <div style={{ height: 1, background: 'var(--surface-border-subtle)', margin: '4px 0' }} />
               <button
                 type="button"
@@ -807,8 +752,40 @@ export const ProjectExplorer: React.FC<ProjectExplorerProps> = ({ role, managerI
               style={{ marginLeft: 12, padding: 8, display: 'flex', flexDirection: 'column', gap: 4 }}
             >
               <button type="button" className="nav-pill-item" style={{ justifyContent: 'flex-start' }} onClick={() => { openEditor(item); setFileMenuOpen(null); }}>
-                Open
+                {item.item_type === 'embed' ? <Globe size={14} color="#06b6d4" /> : null}
+                {item.item_type === 'embed' ? 'Open Embed' : 'Open'}
               </button>
+              {item.item_type === 'embed' && (
+                <>
+                  <button
+                    type="button"
+                    className="nav-pill-item"
+                    style={{ justifyContent: 'flex-start' }}
+                    onClick={() => {
+                      const url = getEmbedUrl(item);
+                      if (url) window.open(url, '_blank', 'noopener,noreferrer');
+                      setFileMenuOpen(null);
+                    }}
+                  >
+                    <ExternalLink size={14} /> Open in New Tab
+                  </button>
+                  <button
+                    type="button"
+                    className="nav-pill-item"
+                    style={{ justifyContent: 'flex-start' }}
+                    onClick={() => {
+                      const url = getEmbedUrl(item);
+                      if (url) {
+                        navigator.clipboard?.writeText(url);
+                        showToast('ok', 'Link copied to clipboard');
+                      }
+                      setFileMenuOpen(null);
+                    }}
+                  >
+                    <Copy size={14} /> Copy Embed Link
+                  </button>
+                </>
+              )}
               {writable && (
                 <>
                   <button
@@ -840,9 +817,11 @@ export const ProjectExplorer: React.FC<ProjectExplorerProps> = ({ role, managerI
                   </button>
                 </>
               )}
-              <button type="button" className="nav-pill-item" style={{ justifyContent: 'flex-start' }} onClick={() => downloadItem(item)}>
-                <Download size={14} /> Download
-              </button>
+              {item.item_type !== 'embed' && (
+                <button type="button" className="nav-pill-item" style={{ justifyContent: 'flex-start' }} onClick={() => downloadItem(item)}>
+                  <Download size={14} /> Download
+                </button>
+              )}
               <div style={{ fontSize: 10, color: 'var(--text-muted)', padding: '4px 8px' }}>
                 Type: {item.item_type}
                 {item.external_provider ? ` · ${item.external_provider}` : ' · internal'}
@@ -949,16 +928,6 @@ export const ProjectExplorer: React.FC<ProjectExplorerProps> = ({ role, managerI
         </div>
       )}
 
-      {!GOOGLE_CONNECTED && (
-        <div
-          className="frosted-card frosted-card-sm"
-          style={{ padding: '10px 14px', fontSize: 12, color: 'var(--text-secondary)' }}
-        >
-          Google Workspace is not connected. Document / spreadsheet / presentation actions create{' '}
-          <strong>internal</strong> files only (not Google Docs/Sheets/Slides).
-        </div>
-      )}
-
       <div className="frosted-card" style={{ display: 'flex', flexDirection: 'column', gap: 10, minHeight: 280 }}>
         {loading ? (
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--text-muted)', fontSize: 13 }}>
@@ -1044,9 +1013,24 @@ export const ProjectExplorer: React.FC<ProjectExplorerProps> = ({ role, managerI
                     >
                       <div style={{ display: 'flex', gap: 6, marginLeft: 8, flexWrap: 'wrap' }}>
                         {projWritable && (
-                          <button type="button" className="btn-pill btn-pill-secondary" style={{ padding: '4px 10px', fontSize: 11 }} onClick={() => openCreate(project.id, null, 'file')}>
-                            + File at root
-                          </button>
+                          <>
+                            <button
+                              type="button"
+                              className="btn-pill btn-pill-secondary"
+                              style={{ padding: '4px 10px', fontSize: 11 }}
+                              onClick={() => openCreate(project.id, null, 'file', 'embed')}
+                            >
+                              <Globe size={13} color="#06b6d4" /> + Embed Link
+                            </button>
+                            <button
+                              type="button"
+                              className="btn-pill btn-pill-secondary"
+                              style={{ padding: '4px 10px', fontSize: 11 }}
+                              onClick={() => triggerUpload(project.id, null)}
+                            >
+                              <FileUp size={13} /> + Upload File
+                            </button>
+                          </>
                         )}
                         {projWritable && (
                           <button
@@ -1187,63 +1171,163 @@ export const ProjectExplorer: React.FC<ProjectExplorerProps> = ({ role, managerI
             >
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800 }}>
-                  {createMenu.kind === 'folder' ? 'New Folder' : 'New File'}
+                  {createMenu.kind === 'folder' ? 'New Folder' : 'New Resource'}
                 </h3>
                 <button type="button" className="btn-icon-circle" onClick={() => setCreateMenu(null)} aria-label="Close">
                   <X size={14} />
                 </button>
               </div>
-              <div className="stitch-form-group">
-                <label className="stitch-label">Name</label>
-                <input
-                  className="stitch-input"
-                  value={nameDraft}
-                  onChange={(e) => setNameDraft(e.target.value)}
-                  placeholder={createMenu.kind === 'folder' ? 'Marketing' : 'Project Brief'}
-                  autoFocus
-                />
-              </div>
+
               {createMenu.kind === 'folder' ? (
-                <button type="button" className="btn-pill btn-pill-primary" disabled={busy} onClick={() => handleCreateItem('folder')}>
-                  Create Folder
-                </button>
-              ) : createMenu.preferredType && createMenu.preferredType !== 'uploaded_file' ? (
-                <button
-                  type="button"
-                  className="btn-pill btn-pill-primary"
-                  disabled={busy}
-                  onClick={() => handleCreateItem(createMenu.preferredType!)}
-                >
-                  Create {createMenu.preferredType === 'document' ? 'Document' : createMenu.preferredType === 'spreadsheet' ? 'Spreadsheet' : 'Presentation'}
-                </button>
-              ) : (
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                  <button type="button" className="btn-pill btn-pill-secondary" disabled={busy} onClick={() => handleCreateItem('document')}>
-                    <FileText size={14} /> Document
-                  </button>
-                  <button type="button" className="btn-pill btn-pill-secondary" disabled={busy} onClick={() => handleCreateItem('spreadsheet')}>
-                    <Table2 size={14} /> Spreadsheet
-                  </button>
-                  <button type="button" className="btn-pill btn-pill-secondary" disabled={busy} onClick={() => handleCreateItem('presentation')}>
-                    <Presentation size={14} /> Presentation
-                  </button>
+                <>
+                  <div className="stitch-form-group">
+                    <label className="stitch-label">Folder Name</label>
+                    <input
+                      className="stitch-input"
+                      value={nameDraft}
+                      onChange={(e) => setNameDraft(e.target.value)}
+                      placeholder="e.g. Marketing Deliverables"
+                      autoFocus
+                    />
+                  </div>
                   <button
                     type="button"
-                    className="btn-pill btn-pill-secondary"
-                    disabled={busy}
-                    onClick={() => {
-                      const ctx = createMenu;
-                      setCreateMenu(null);
-                      triggerUpload(ctx.projectId, ctx.parentId);
+                    className="btn-pill btn-pill-primary"
+                    disabled={busy || !nameDraft.trim()}
+                    onClick={handleCreateFolder}
+                  >
+                    Create Folder
+                  </button>
+                </>
+              ) : (
+                <>
+                  <div
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: '1fr 1fr',
+                      gap: 8,
+                      padding: 4,
+                      background: 'var(--surface-subtle)',
+                      borderRadius: 'var(--radius-card-sm)',
                     }}
                   >
-                    <FileUp size={14} /> Upload
-                  </button>
-                </div>
+                    <button
+                      type="button"
+                      onClick={() => setCreateModalTab('embed')}
+                      style={{
+                        padding: '8px 12px',
+                        borderRadius: 'var(--radius-card-sm)',
+                        border: 'none',
+                        background: createModalTab === 'embed' ? 'var(--color-primary)' : 'transparent',
+                        color: createModalTab === 'embed' ? '#ffffff' : 'var(--text-secondary)',
+                        fontSize: 12,
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: 6,
+                        transition: 'all 0.15s ease',
+                      }}
+                    >
+                      <Globe size={14} />
+                      <span>Embed Link</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setCreateModalTab('upload')}
+                      style={{
+                        padding: '8px 12px',
+                        borderRadius: 'var(--radius-card-sm)',
+                        border: 'none',
+                        background: createModalTab === 'upload' ? 'var(--color-primary)' : 'transparent',
+                        color: createModalTab === 'upload' ? '#ffffff' : 'var(--text-secondary)',
+                        fontSize: 12,
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: 6,
+                        transition: 'all 0.15s ease',
+                      }}
+                    >
+                      <FileUp size={14} />
+                      <span>Upload File</span>
+                    </button>
+                  </div>
+
+                  {createModalTab === 'embed' ? (
+                    <form
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        void handleCreateEmbed();
+                      }}
+                      style={{ display: 'flex', flexDirection: 'column', gap: 12 }}
+                    >
+                      <div className="stitch-form-group">
+                        <label className="stitch-label">
+                          Name <span style={{ color: '#ef4444' }}>*</span>
+                        </label>
+                        <input
+                          className="stitch-input"
+                          value={nameDraft}
+                          onChange={(e) => setNameDraft(e.target.value)}
+                          placeholder="e.g. Project Brief / Figma / Loom Demo"
+                          autoFocus
+                          required
+                        />
+                      </div>
+
+                      <div className="stitch-form-group">
+                        <label className="stitch-label">
+                          Embed Link / URL <span style={{ color: '#ef4444' }}>*</span>
+                        </label>
+                        <input
+                          type="text"
+                          className="stitch-input"
+                          value={embedUrlDraft}
+                          onChange={(e) => setEmbedUrlDraft(e.target.value)}
+                          placeholder="https://docs.google.com/... or https://figma.com/..."
+                          required
+                        />
+                        <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                          Paste any embed link, Figma prototype, Google Docs/Sheets/Slides, Loom, YouTube or web URL.
+                        </span>
+                      </div>
+
+                      <button
+                        type="submit"
+                        className="btn-pill btn-pill-primary"
+                        disabled={busy || !nameDraft.trim() || !embedUrlDraft.trim()}
+                        style={{ marginTop: 4, justifyContent: 'center' }}
+                      >
+                        <Globe size={15} />
+                        <span>Add Embed Link</span>
+                      </button>
+                    </form>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 12, alignItems: 'center', padding: '1.25rem 0' }}>
+                      <p style={{ margin: 0, fontSize: 12, color: 'var(--text-secondary)', textAlign: 'center' }}>
+                        Upload documents, PDFs, images or any file from your computer.
+                      </p>
+                      <button
+                        type="button"
+                        className="btn-pill btn-pill-primary"
+                        onClick={() => {
+                          const ctx = createMenu;
+                          setCreateMenu(null);
+                          triggerUpload(ctx.projectId, ctx.parentId);
+                        }}
+                        style={{ padding: '9px 18px', gap: 8 }}
+                      >
+                        <FileUp size={15} />
+                        <span>Select File to Upload</span>
+                      </button>
+                    </div>
+                  )}
+                </>
               )}
-              <p style={{ margin: 0, fontSize: 11, color: 'var(--text-muted)' }}>
-                Internal editors only unless Google Workspace is connected.
-              </p>
             </motion.div>
           </motion.div>
         )}

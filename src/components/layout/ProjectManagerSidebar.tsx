@@ -51,20 +51,37 @@ export const ProjectManagerSidebar: React.FC<ProjectManagerSidebarProps> = ({
             borderBottom: '1px solid var(--surface-border-subtle)',
           }}
         >
-          {!collapsed && (
-            <div>
+          {collapsed ? (
+            <div
+              className="stitch-brand-icon"
+              style={{ width: 28, height: 28, borderRadius: 8, cursor: 'pointer' }}
+              onClick={() => setCollapsed(false)}
+              title="Expand Project Delivery"
+            >
+              <img src="/app-icon-192.png" alt="Project Delivery" width={28} height={28} />
+            </div>
+          ) : (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <div
-                style={{
-                  fontSize: 11,
-                  fontWeight: 800,
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.06em',
-                  color: 'var(--text-primary)',
-                }}
+                className="stitch-brand-icon"
+                style={{ width: 28, height: 28, borderRadius: 8 }}
               >
-                Project Delivery
+                <img src="/app-icon-192.png" alt="Project Delivery" width={28} height={28} />
               </div>
-              <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>Access & Allocation</div>
+              <div>
+                <div
+                  style={{
+                    fontSize: 11,
+                    fontWeight: 800,
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.06em',
+                    color: 'var(--text-primary)',
+                  }}
+                >
+                  Project Delivery
+                </div>
+                <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>Access & Allocation</div>
+              </div>
             </div>
           )}
           <button

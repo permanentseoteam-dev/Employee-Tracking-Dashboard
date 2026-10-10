@@ -5,10 +5,8 @@ import {
   Folder,
   FolderKanban,
   Plus,
-  FileText,
-  Table2,
-  Presentation,
   FileUp,
+  ExternalLink,
 } from 'lucide-react';
 import { dataService } from '../../services/dataService';
 import { useAuth } from '../../context/AuthContext';
@@ -44,12 +42,8 @@ function fileIcon(type: ProjectTreeItemType) {
   switch (type) {
     case 'folder':
       return <Folder size={13} color="#f59e0b" />;
-    case 'document':
-      return <FileText size={13} color="#3b82f6" />;
-    case 'spreadsheet':
-      return <Table2 size={13} color="#10b981" />;
-    case 'presentation':
-      return <Presentation size={13} color="#a855f7" />;
+    case 'embed':
+      return <ExternalLink size={13} color="#06b6d4" />;
     default:
       return <FileUp size={13} color="var(--text-muted)" />;
   }

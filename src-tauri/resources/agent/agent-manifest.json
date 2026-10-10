@@ -2,7 +2,7 @@
   "source": "F:\\TrackingDashboard\\target-employee-agent\\release\\employee-agent.exe",
   "dest": "F:\\TrackingDashboard\\src-tauri\\resources\\agent\\employee-agent.exe",
   "size_bytes": 14626693,
-  "sha256": "7a9e54a4a97e8a385107ca1ce624d12b4cbfd84b004be074a233390967a64f98",
-  "bundled_at": "2026-10-10T10:46:26.239Z",
+  "sha256": "09657ca79df922018c9c6573993a516a68c644baa30ea7557a830383714c90e6",
+  "bundled_at": "2026-10-10T12:14:37.546Z",
   "version": "0.1.0"
 }

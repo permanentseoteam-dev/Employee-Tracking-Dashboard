@@ -39,6 +39,19 @@
   CopyFiles /SILENT "$INSTDIR\resources\agent\agent-manifest.json" "$LOCALAPPDATA\EmployeeTracking\agent\agent-manifest.json"
   skip_manifest:
 
+  ; Copy MSVC runtime DLLs if bundled so other machines run without VCRUNTIME140.dll errors
+  IfFileExists "$INSTDIR\resources\agent\vcruntime140.dll" 0 skip_vcruntime
+  CopyFiles /SILENT "$INSTDIR\resources\agent\vcruntime140.dll" "$LOCALAPPDATA\EmployeeTracking\agent\vcruntime140.dll"
+  CopyFiles /SILENT "$INSTDIR\resources\agent\msvcp140.dll" "$LOCALAPPDATA\EmployeeTracking\agent\msvcp140.dll"
+  CopyFiles /SILENT "$INSTDIR\resources\agent\vcruntime140_1.dll" "$LOCALAPPDATA\EmployeeTracking\agent\vcruntime140_1.dll"
+  skip_vcruntime:
+  IfFileExists "$INSTDIR\agent\vcruntime140.dll" 0 skip_vcruntime_alt
+  CopyFiles /SILENT "$INSTDIR\agent\vcruntime140.dll" "$LOCALAPPDATA\EmployeeTracking\agent\vcruntime140.dll"
+  CopyFiles /SILENT "$INSTDIR\agent\msvcp140.dll" "$LOCALAPPDATA\EmployeeTracking\agent\msvcp140.dll"
+  CopyFiles /SILENT "$INSTDIR\agent\vcruntime140_1.dll" "$LOCALAPPDATA\EmployeeTracking\agent\vcruntime140_1.dll"
+  skip_vcruntime_alt:
+
+
   ; User-visible Task Scheduler entry (on logon) — least privilege, no service
   DetailPrint "Registering agent for user logon startup..."
   nsExec::ExecToLog 'schtasks /Create /TN "EmployeeTrackingAgent" /TR "\"$LOCALAPPDATA\EmployeeTracking\agent\employee-agent.exe\"" /SC ONLOGON /RL LIMITED /F'

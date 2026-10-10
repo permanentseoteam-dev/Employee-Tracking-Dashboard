@@ -235,6 +235,16 @@ impl AgentSupervisor {
             let _ = fs::remove_file(Self::agent_dir().join("agent.lock"));
             fs::copy(&src, &dest).map_err(|e| format!("Failed to install agent binary: {e}"))?;
             replaced = true;
+
+            // Also copy VC runtime DLLs if bundled alongside the source binary
+            if let Some(src_parent) = src.parent() {
+                for dll in &["vcruntime140.dll", "msvcp140.dll", "vcruntime140_1.dll"] {
+                    let dll_src = src_parent.join(dll);
+                    if dll_src.exists() {
+                        let _ = fs::copy(&dll_src, dest_dir.join(dll));
+                    }
+                }
+            }
         }
 
         let meta = fs::metadata(&dest).map_err(|e| format!("Agent install verify failed: {e}"))?;

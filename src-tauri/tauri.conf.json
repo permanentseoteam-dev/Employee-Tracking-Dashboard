@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Employee Tracking App",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "identifier": "com.employeetracking.agent",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -41,7 +41,10 @@
     "resources": {
       "resources/agent/employee-agent.exe": "agent/employee-agent.exe",
       "resources/agent/agent-manifest.json": "agent/agent-manifest.json",
-      "resources/agent/agent.env.template": "agent/agent.env.template"
+      "resources/agent/agent.env.template": "agent/agent.env.template",
+      "resources/agent/vcruntime140.dll": "agent/vcruntime140.dll",
+      "resources/agent/msvcp140.dll": "agent/msvcp140.dll",
+      "resources/agent/vcruntime140_1.dll": "agent/vcruntime140_1.dll"
     },
     "windows": {
       "nsis": {

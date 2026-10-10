@@ -52,6 +52,18 @@ OFFICE_HOURS_ENABLED=true
 `;
 fs.writeFileSync(path.join(destDir, 'agent.env.template'), envTemplate);
 
+// Copy MSVC runtime DLLs if available so target machines without VC++ redistributable run without error
+const system32 = path.join(process.env.SystemRoot || 'C:\\Windows', 'System32');
+const runtimeDlls = ['vcruntime140.dll', 'msvcp140.dll', 'vcruntime140_1.dll'];
+for (const dll of runtimeDlls) {
+  const dllSrc = path.join(system32, dll);
+  if (fs.existsSync(dllSrc)) {
+    const dllDest = path.join(destDir, dll);
+    fs.copyFileSync(dllSrc, dllDest);
+    console.log(`  bundled runtime: ${dll}`);
+  }
+}
+
 console.log('Bundled agent OK');
 console.log('  from:', src);
 console.log('  to:  ', dest);

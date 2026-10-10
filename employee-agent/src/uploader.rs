@@ -42,6 +42,7 @@ pub struct DeviceRegisterRecord {
 pub struct SupabaseUploader {
     client: Client,
     base_url: String,
+    #[allow(dead_code)]
     auth: AuthManager,
 }
 

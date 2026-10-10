@@ -9,6 +9,7 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{GetCursorPos, GetForegroundWin
 
 #[derive(Debug, Clone)]
 pub struct InputActivitySnapshot {
+    #[allow(dead_code)]
     pub idle_duration_seconds: u64,
     pub is_user_idle: bool,
     pub active_window_title: String,

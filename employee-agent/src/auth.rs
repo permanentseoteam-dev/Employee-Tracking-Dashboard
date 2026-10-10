@@ -31,6 +31,7 @@ impl AuthManager {
         Ok(headers)
     }
 
+    #[allow(dead_code)]
     pub fn anon_key(&self) -> &str {
         &self.anon_key
     }

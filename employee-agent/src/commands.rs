@@ -11,6 +11,7 @@ use tokio::time::sleep;
 use uuid::Uuid;
 
 #[derive(Debug, Clone, Deserialize)]
+#[allow(dead_code)]
 pub struct AgentCommandRow {
     pub id: String,
     pub employee_id: String,

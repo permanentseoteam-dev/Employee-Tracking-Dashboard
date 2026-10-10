@@ -55,6 +55,7 @@ pub fn now_rfc3339() -> String {
     Utc::now().to_rfc3339()
 }
 
+#[allow(dead_code)]
 pub fn parse_optional_rfc3339(s: &Option<String>) -> Option<DateTime<Utc>> {
     s.as_ref()
         .and_then(|v| DateTime::parse_from_rfc3339(v).ok())

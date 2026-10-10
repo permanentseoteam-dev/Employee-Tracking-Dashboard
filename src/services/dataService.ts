@@ -458,34 +458,75 @@ function initGlobalRealtimeChannel() {
 }
 
 const DELETED_SCREENSHOTS_KEY = 'sb_deleted_screenshots_blacklist';
+const inMemoryDeletedScreenshotBlacklist = new Set<string>();
 
-function getDeletedScreenshotBlacklist(): Set<string> {
-  if (typeof window === 'undefined') return new Set();
-  try {
-    const raw = window.localStorage?.getItem(DELETED_SCREENSHOTS_KEY);
-    if (!raw) return new Set();
-    const arr = JSON.parse(raw);
-    return new Set(Array.isArray(arr) ? arr : []);
-  } catch {
-    return new Set();
+export function getDeletedScreenshotBlacklist(): Set<string> {
+  const result = new Set<string>(inMemoryDeletedScreenshotBlacklist);
+  if (typeof window !== 'undefined') {
+    try {
+      const raw = window.localStorage?.getItem(DELETED_SCREENSHOTS_KEY);
+      if (raw) {
+        const arr = JSON.parse(raw);
+        if (Array.isArray(arr)) {
+          arr.forEach((k) => {
+            if (k && typeof k === 'string') {
+              result.add(k);
+              result.add(k.toLowerCase());
+            }
+          });
+        }
+      }
+    } catch {
+      // ignore
+    }
   }
+  return result;
 }
 
-function addToDeletedScreenshotBlacklist(items: (string | undefined | null)[]) {
-  if (typeof window === 'undefined') return;
-  try {
-    const current = getDeletedScreenshotBlacklist();
-    items.forEach((item) => {
-      if (item && typeof item === 'string') {
-        current.add(item);
-        const base = item.split('/').pop();
-        if (base) current.add(base);
+export function addToDeletedScreenshotBlacklist(items: (string | undefined | null)[]) {
+  items.forEach((item) => {
+    if (!item || typeof item !== 'string') return;
+    const trimmed = item.trim();
+    if (!trimmed) return;
+
+    inMemoryDeletedScreenshotBlacklist.add(trimmed);
+    inMemoryDeletedScreenshotBlacklist.add(trimmed.toLowerCase());
+
+    // Clean storage path variations (remove leading slashes, full URLs, bucket prefix)
+    const clean = trimmed
+      .replace(/^https?:\/\/[^/]+\/storage\/v1\/object\/public\/screenshots\//i, '')
+      .replace(/^screenshots\//i, '')
+      .replace(/^\//, '')
+      .trim();
+
+    if (clean) {
+      inMemoryDeletedScreenshotBlacklist.add(clean);
+      inMemoryDeletedScreenshotBlacklist.add(clean.toLowerCase());
+      inMemoryDeletedScreenshotBlacklist.add(`screenshots/${clean}`);
+    }
+
+    // Filename / basename
+    const base = clean.split('/').pop() || trimmed.split('/').pop();
+    if (base) {
+      inMemoryDeletedScreenshotBlacklist.add(base);
+      inMemoryDeletedScreenshotBlacklist.add(base.toLowerCase());
+      try {
+        const decoded = decodeURIComponent(base);
+        inMemoryDeletedScreenshotBlacklist.add(decoded);
+        inMemoryDeletedScreenshotBlacklist.add(decoded.toLowerCase());
+      } catch {
+        // ignore
       }
-    });
-    const arr = Array.from(current).slice(-1500);
-    window.localStorage?.setItem(DELETED_SCREENSHOTS_KEY, JSON.stringify(arr));
-  } catch {
-    // ignore
+    }
+  });
+
+  if (typeof window !== 'undefined') {
+    try {
+      const arr = Array.from(inMemoryDeletedScreenshotBlacklist).slice(-3000);
+      window.localStorage?.setItem(DELETED_SCREENSHOTS_KEY, JSON.stringify(arr));
+    } catch {
+      // ignore
+    }
   }
 }
 
@@ -1081,15 +1122,29 @@ export const dataService = {
 
       for (const s of scRows) {
         if (!s.storage_path || seenPaths.has(s.storage_path)) continue;
-        const baseName = s.storage_path.split('/').pop();
+
+        const cleanPath = s.storage_path
+          .replace(/^https?:\/\/[^/]+\/storage\/v1\/object\/public\/screenshots\//i, '')
+          .replace(/^screenshots\//i, '')
+          .replace(/^\//, '')
+          .trim();
+        const baseName = cleanPath.split('/').pop() || s.storage_path.split('/').pop() || '';
+        const baseLower = baseName.toLowerCase();
+
         if (
           blacklist.has(s.id) ||
+          blacklist.has(s.id?.toLowerCase()) ||
           blacklist.has(s.storage_path) ||
-          (baseName && blacklist.has(baseName))
+          blacklist.has(s.storage_path?.toLowerCase()) ||
+          blacklist.has(cleanPath) ||
+          blacklist.has(cleanPath.toLowerCase()) ||
+          (baseName && (blacklist.has(baseName) || blacklist.has(baseLower)))
         ) {
           continue;
         }
+
         seenPaths.add(s.storage_path);
+        if (cleanPath) seenPaths.add(cleanPath);
 
         const emp = empList.find(
           (e: any) => e.id === s.employee_id || e.user_id === s.employee_id
@@ -1134,7 +1189,7 @@ export const dataService = {
           }
         }
 
-        const { data: pubUrl } = supabase.storage.from('screenshots').getPublicUrl(s.storage_path);
+        const { data: pubUrl } = supabase.storage.from('screenshots').getPublicUrl(cleanPath || s.storage_path);
         const capturedRaw = s.captured_at || s.created_at || null;
         const capturedDate = parseCaptureDate(capturedRaw);
         const capturedIso = capturedDate ? capturedDate.toISOString() : (capturedRaw || new Date().toISOString());
@@ -1145,7 +1200,7 @@ export const dataService = {
           employee_name: empName,
           team_name: emp?.department ? `${emp.department} Team` : '—',
           captured_at: capturedIso,
-          file_path: s.storage_path,
+          file_path: cleanPath || s.storage_path,
           thumbnail_url: pubUrl?.publicUrl || '',
           high_res_url: pubUrl?.publicUrl || '',
           file_size_bytes: Number(s.file_size_bytes) || 0,
@@ -1175,34 +1230,93 @@ export const dataService = {
       return { success: false, message: 'Supabase is not configured.' };
     }
     try {
-      const path = screenshot.file_path;
+      const rawPath = screenshot.file_path || '';
       const id = screenshot.id;
+      const cleanPath = rawPath
+        .replace(/^https?:\/\/[^/]+\/storage\/v1\/object\/public\/screenshots\//i, '')
+        .replace(/^screenshots\//i, '')
+        .replace(/^\//, '')
+        .trim();
+      const baseName = cleanPath.split('/').pop() || rawPath.split('/').pop() || '';
 
-      // Add to persistent blacklist immediately so UI stays completely clean
-      addToDeletedScreenshotBlacklist([id, path]);
+      // 1. Immediately blacklist in-memory and in localStorage
+      addToDeletedScreenshotBlacklist([id, rawPath, cleanPath, baseName]);
 
-      // 1. Delete physical object from Supabase Storage
-      if (path) {
-        const { error: storageErr } = await supabase.storage.from('screenshots').remove([path]);
-        if (storageErr) {
-          console.warn('Storage delete warning:', storageErr.message);
+      // 2. Discover ALL matching rows in both tables (so we catch differing UUIDs & path variations)
+      const candidatePaths = new Set<string>();
+      if (cleanPath) candidatePaths.add(cleanPath);
+      if (rawPath) candidatePaths.add(rawPath);
+      const candidateIds = new Set<string>();
+      if (id) candidateIds.add(id);
+
+      try {
+        let qRecords = supabase.from('screenshot_records').select('id, storage_path');
+        let qLegacy = supabase.from('screenshots').select('id, storage_path');
+
+        if (baseName && baseName.length >= 8) {
+          qRecords = qRecords.or(`id.eq.${id},storage_path.eq.${cleanPath},storage_path.ilike.%${baseName}%`);
+          qLegacy = qLegacy.or(`id.eq.${id},storage_path.eq.${cleanPath},storage_path.ilike.%${baseName}%`);
+        } else if (cleanPath) {
+          qRecords = qRecords.or(`id.eq.${id},storage_path.eq.${cleanPath}`);
+          qLegacy = qLegacy.or(`id.eq.${id},storage_path.eq.${cleanPath}`);
+        } else if (id) {
+          qRecords = qRecords.eq('id', id);
+          qLegacy = qLegacy.eq('id', id);
+        }
+
+        const [rRes, lRes] = await Promise.all([qRecords, qLegacy]);
+        const matched = [...(rRes.data || []), ...(lRes.data || [])];
+        matched.forEach((r) => {
+          if (r.id) {
+            candidateIds.add(r.id);
+            addToDeletedScreenshotBlacklist([r.id]);
+          }
+          if (r.storage_path) {
+            candidatePaths.add(r.storage_path);
+            addToDeletedScreenshotBlacklist([r.storage_path]);
+          }
+        });
+      } catch (err) {
+        console.warn('Pre-delete discovery note:', err);
+      }
+
+      // 3. Delete physical object from Supabase Storage 'screenshots' bucket
+      const pathsToRemove = Array.from(candidatePaths).filter(Boolean);
+      if (pathsToRemove.length > 0) {
+        try {
+          const { error: storageErr } = await supabase.storage.from('screenshots').remove(pathsToRemove);
+          if (storageErr) {
+            console.warn('Storage delete warning:', storageErr.message);
+          }
+        } catch (err) {
+          console.warn('Storage delete caught:', err);
         }
       }
 
-      // 2. Delete from both database tables by id and storage_path
-      const deletePromises: Promise<any>[] = [];
-      if (id) {
-        deletePromises.push(Promise.resolve(supabase.from('screenshot_records').delete().eq('id', id)));
-        deletePromises.push(Promise.resolve(supabase.from('screenshots').delete().eq('id', id)));
+      // 4. Permanently delete from both tables by IDs, storage_path, and basename
+      const deleteOps: Promise<any>[] = [];
+      const idsArray = Array.from(candidateIds);
+      if (idsArray.length > 0) {
+        deleteOps.push(Promise.resolve(supabase.from('screenshot_records').delete().in('id', idsArray)));
+        deleteOps.push(Promise.resolve(supabase.from('screenshots').delete().in('id', idsArray)));
       }
-      if (path) {
-        deletePromises.push(Promise.resolve(supabase.from('screenshot_records').delete().eq('storage_path', path)));
-        deletePromises.push(Promise.resolve(supabase.from('screenshots').delete().eq('storage_path', path)));
+      for (const p of pathsToRemove) {
+        deleteOps.push(Promise.resolve(supabase.from('screenshot_records').delete().eq('storage_path', p)));
+        deleteOps.push(Promise.resolve(supabase.from('screenshots').delete().eq('storage_path', p)));
+      }
+      if (baseName && baseName.length >= 8) {
+        deleteOps.push(Promise.resolve(supabase.from('screenshot_records').delete().ilike('storage_path', `%${baseName}%`)));
+        deleteOps.push(Promise.resolve(supabase.from('screenshots').delete().ilike('storage_path', `%${baseName}%`)));
       }
 
-      await Promise.allSettled(deletePromises);
+      const results = await Promise.allSettled(deleteOps);
+      for (const res of results) {
+        if (res.status === 'fulfilled' && (res.value as any)?.error) {
+          console.warn('Database screenshot delete error:', (res.value as any).error);
+        }
+      }
 
-      return { success: true, message: 'Screenshot deleted from database and storage.' };
+      return { success: true, message: 'Screenshot deleted forever from database and storage.' };
     } catch (err: any) {
       console.error('deleteScreenshot failed:', err);
       return { success: false, message: err?.message || 'Failed to delete screenshot.' };
@@ -1213,71 +1327,107 @@ export const dataService = {
     role: UserRole,
     managerId?: string,
     filterEmployeeId?: string,
-    /** Prefer the visible gallery list so UI and DB stay in sync */
     itemsOverride?: ScreenshotItem[]
   ): Promise<{ success: boolean; deleted: number; message: string }> => {
     if (!isSupabaseConfigured()) {
       return { success: false, deleted: 0, message: 'Supabase is not configured.' };
     }
 
-    const items =
-      itemsOverride && itemsOverride.length > 0
-        ? itemsOverride
-        : await dataService.getScreenshots(role, managerId, filterEmployeeId);
+    try {
+      // 1. Query ALL screenshot rows for this scope (NOT limited to 60)
+      let qRecords = supabase.from('screenshot_records').select('id, storage_path, employee_id');
+      let qLegacy = supabase.from('screenshots').select('id, storage_path, employee_id');
 
-    if (items.length === 0) {
-      return { success: true, deleted: 0, message: 'No screenshots to delete.' };
-    }
-
-    const ids = [...new Set(items.map((s) => s.id).filter(Boolean))];
-    const paths = [...new Set(items.map((s) => s.file_path).filter(Boolean) as string[])];
-
-    // Immediately record in blacklist
-    addToDeletedScreenshotBlacklist([...ids, ...paths]);
-
-    // 1. Batch delete from Supabase Storage
-    for (let i = 0; i < paths.length; i += 50) {
-      const chunk = paths.slice(i, i + 50);
-      try {
-        const { error: storageErr } = await supabase.storage.from('screenshots').remove(chunk);
-        if (storageErr) console.warn('Bulk storage delete warning:', storageErr.message);
-      } catch (err) {
-        console.warn('Storage delete batch failed:', err);
+      if (filterEmployeeId && filterEmployeeId !== 'all') {
+        qRecords = qRecords.eq('employee_id', filterEmployeeId);
+        qLegacy = qLegacy.eq('employee_id', filterEmployeeId);
+      } else if (role === 'manager' && managerId) {
+        const { data: teamEmps } = await supabase.from('employees').select('id, user_id').eq('manager_id', managerId);
+        const teamIds = [
+          ...new Set((teamEmps || []).flatMap((e) => [e.id, e.user_id]).filter(Boolean)),
+        ];
+        if (teamIds.length > 0) {
+          qRecords = qRecords.in('employee_id', teamIds);
+          qLegacy = qLegacy.in('employee_id', teamIds);
+        }
       }
-    }
 
-    // 2. Batch row deletes from both database tables by id
-    for (let i = 0; i < ids.length; i += 100) {
-      const chunk = ids.slice(i, i + 100);
-      await Promise.allSettled([
-        Promise.resolve(supabase.from('screenshot_records').delete().in('id', chunk)),
-        Promise.resolve(supabase.from('screenshots').delete().in('id', chunk)),
-      ]);
-    }
+      const [recAll, legAll] = await Promise.all([qRecords, qLegacy]);
+      const allRows = [...(recAll.data || []), ...(legAll.data || [])];
 
-    // 3. Batch row deletes by storage_path
-    for (let i = 0; i < paths.length; i += 100) {
-      const chunk = paths.slice(i, i + 100);
-      await Promise.allSettled([
-        Promise.resolve(supabase.from('screenshot_records').delete().in('storage_path', chunk)),
-        Promise.resolve(supabase.from('screenshots').delete().in('storage_path', chunk)),
-      ]);
-    }
+      const allIds = new Set<string>();
+      const allPaths = new Set<string>();
 
-    // 4. Also delete by employee_id if specific employee is selected
-    if (filterEmployeeId && filterEmployeeId !== 'all') {
-      await Promise.allSettled([
-        Promise.resolve(supabase.from('screenshot_records').delete().eq('employee_id', filterEmployeeId)),
-        Promise.resolve(supabase.from('screenshots').delete().eq('employee_id', filterEmployeeId)),
-      ]);
-    }
+      allRows.forEach((r) => {
+        if (r.id) allIds.add(r.id);
+        if (r.storage_path) allPaths.add(r.storage_path);
+      });
+      if (itemsOverride) {
+        itemsOverride.forEach((s) => {
+          if (s.id) allIds.add(s.id);
+          if (s.file_path) allPaths.add(s.file_path);
+        });
+      }
 
-    const deleted = items.length;
-    return {
-      success: true,
-      deleted,
-      message: `Deleted ${deleted} screenshot${deleted === 1 ? '' : 's'} from database and storage.`,
-    };
+      // 2. Blacklist all collected IDs and paths immediately
+      addToDeletedScreenshotBlacklist([...allIds, ...allPaths]);
+
+      const pathList = Array.from(allPaths).filter(Boolean);
+      const idList = Array.from(allIds).filter(Boolean);
+
+      // 3. Batch delete all objects from Supabase Storage 'screenshots' bucket
+      for (let i = 0; i < pathList.length; i += 50) {
+        const chunk = pathList.slice(i, i + 50);
+        try {
+          const { error: storageErr } = await supabase.storage.from('screenshots').remove(chunk);
+          if (storageErr) console.warn('Bulk storage delete warning:', storageErr.message);
+        } catch (err) {
+          console.warn('Storage delete batch failed:', err);
+        }
+      }
+
+      // 4. Batch row deletes from both database tables by id
+      for (let i = 0; i < idList.length; i += 100) {
+        const chunk = idList.slice(i, i + 100);
+        await Promise.allSettled([
+          supabase.from('screenshot_records').delete().in('id', chunk),
+          supabase.from('screenshots').delete().in('id', chunk),
+        ]);
+      }
+
+      // 5. Batch row deletes by storage_path
+      for (let i = 0; i < pathList.length; i += 100) {
+        const chunk = pathList.slice(i, i + 100);
+        await Promise.allSettled([
+          supabase.from('screenshot_records').delete().in('storage_path', chunk),
+          supabase.from('screenshots').delete().in('storage_path', chunk),
+        ]);
+      }
+
+      // 6. Scope-wide table delete if employee filter or global admin
+      if (filterEmployeeId && filterEmployeeId !== 'all') {
+        await Promise.allSettled([
+          supabase.from('screenshot_records').delete().eq('employee_id', filterEmployeeId),
+          supabase.from('screenshots').delete().eq('employee_id', filterEmployeeId),
+        ]);
+      } else if (role === 'admin') {
+        // Admin selected "All employees" — wipe all rows completely!
+        await Promise.allSettled([
+          supabase.from('screenshot_records').delete().neq('id', '00000000-0000-0000-0000-000000000000'),
+          supabase.from('screenshots').delete().neq('id', '00000000-0000-0000-0000-000000000000'),
+        ]);
+      }
+
+      const totalDeleted = Math.max(allRows.length, itemsOverride?.length || 0, idList.length);
+      return {
+        success: true,
+        deleted: totalDeleted,
+        message: `Deleted ${totalDeleted} screenshot${totalDeleted === 1 ? '' : 's'} forever from database and storage.`,
+      };
+    } catch (err: any) {
+      console.error('deleteAllScreenshots failed:', err);
+      return { success: false, deleted: 0, message: err?.message || 'Failed to delete all screenshots.' };
+    }
   },
 
   // 5b. Screen Recordings Query (Stores and fetches all recorded sessions from Supabase & memory)
